@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import axios from 'axios';
 import * as crypto from 'crypto';
 
@@ -10,6 +11,7 @@ export class AuthService {
 
     constructor(
         private configService: ConfigService,
+        private jwtService: JwtService,
     ) {
         this.key = Buffer.from(String(this.configService.get<string>('encryption.key')), 'hex');
     }
@@ -65,5 +67,9 @@ export class AuthService {
         let decrypted = decipher.update(encryptedOtp, 'hex', 'utf8');
         decrypted += decipher.final('utf8');
         return decrypted === userOtp;
+    }
+
+    generateJwtToken(payload: { mobile: string }) {
+        return this.jwtService.sign(payload);
     }
 }

@@ -25,6 +25,11 @@ export class AuthController {
     @Body('mobile') mobile: number,
   ) {
     const isValid = this.authService.verifyOtp(encryptedOtp, iv, otp, mobile);
-    return { valid: isValid };
+    if (!isValid) {
+      return { valid: false, message: 'Invalid OTP' };
+    }
+    // Generate JWT token
+    const token = this.authService.generateJwtToken({ mobile: String(mobile) });
+    return { valid: true, token };
   }
 }
