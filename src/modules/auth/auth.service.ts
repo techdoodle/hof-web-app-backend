@@ -14,7 +14,7 @@ export class AuthService {
         this.key = Buffer.from(String(this.configService.get<string>('encryption.key')), 'hex');
     }
 
-    async sendOtp(mobile: string): Promise<object> {
+    async sendOtp(mobile: number): Promise<object> {
         // Generate a secure 6-digit OTP
         const otp = (await crypto.randomInt(100000, 1000000)).toString();
 
@@ -27,7 +27,7 @@ export class AuthService {
             password: this.configService.get<string>('digimiles.password'),
             type: '0',
             dlr: '1',
-            destination: mobile,
+            destination: String(mobile),
             source: 'HOFTXT',
             message,
             entityid: '1101396430000082007',
@@ -39,7 +39,10 @@ export class AuthService {
         await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', { params });
 
         // Return OTP (for demo; do NOT return in production)
-        return this.encryptOtp(otp)
+        return {
+            ...this.encryptOtp(otp),
+            mobile
+        }
     }
 
     encryptOtp(otp: string) {
@@ -53,7 +56,7 @@ export class AuthService {
         };
     }
 
-    verifyOtp(encryptedOtp: string, iv: string, userOtp: string): boolean {
+    verifyOtp(encryptedOtp: string, iv: string, userOtp: string, mobile: number): boolean {
         const decipher = crypto.createDecipheriv(
             this.algorithm,
             this.key,
