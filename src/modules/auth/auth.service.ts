@@ -1,0 +1,66 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+import * as crypto from 'crypto';
+
+@Injectable()
+export class AuthService {
+    private algorithm = 'aes-256-cbc';
+    private key: Buffer;
+
+    constructor(
+        private configService: ConfigService,
+    ) {
+        this.key = Buffer.from(String(this.configService.get<string>('encryption.key')), 'hex');
+    }
+
+    async sendOtp(mobile: string): Promise<object> {
+        // Generate a secure 6-digit OTP
+        const otp = (await crypto.randomInt(100000, 1000000)).toString();
+
+        // Prepare SMS message
+        const message = `Dear Customer, Your OTP for login is ${otp} and do not share it with anyone. Thank you, HUMANS OF FOOTBALL.`;
+
+        // Prepare API parameters
+        const params = {
+            username: this.configService.get<string>('digimiles.username'),
+            password: this.configService.get<string>('digimiles.password'),
+            type: '0',
+            dlr: '1',
+            destination: mobile,
+            source: 'HOFTXT',
+            message,
+            entityid: '1101396430000082007',
+            tempid: '1107172751406512768',
+            tmid: '1101396430000082007,1602100000000009244',
+        };
+
+        // Send SMS via API
+        await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', { params });
+
+        // Return OTP (for demo; do NOT return in production)
+        return this.encryptOtp(otp)
+    }
+
+    encryptOtp(otp: string) {
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
+        let encrypted = cipher.update(otp, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        return {
+            iv: iv.toString('hex'),
+            encryptedOtp: encrypted,
+        };
+    }
+
+    verifyOtp(encryptedOtp: string, iv: string, userOtp: string): boolean {
+        const decipher = crypto.createDecipheriv(
+            this.algorithm,
+            this.key,
+            Buffer.from(iv, 'hex'),
+        );
+        let decrypted = decipher.update(encryptedOtp, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted === userOtp;
+    }
+}
