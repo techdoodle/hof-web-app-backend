@@ -13,13 +13,14 @@ import { APP_GUARD } from '@nestjs/core';
       isGlobal: true,
       load: [configuration],
     }),
-    ThrottlerModule.forRoot([
-      {
-        name: 'sendOtp',
-        ttl: 30000,
-        limit: 1,
-      }
-    ]),
+    ThrottlerModule.forRoot({
+      throttlers: [
+        {
+          ttl: 60000,
+          limit: 1,
+        },
+      ],
+    }),
     AuthModule,
   ],
   controllers: [AppController],

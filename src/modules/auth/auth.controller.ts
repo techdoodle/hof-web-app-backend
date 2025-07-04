@@ -1,5 +1,5 @@
 import { Controller, Post, Body } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 
 @Controller('auth')
@@ -7,7 +7,6 @@ export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
   @Post('send-otp')
-  @Throttle({ sendOtp: { limit: 1, ttl: 30000 } })
   async sendOtp(@Body('mobile') mobile: number) {
     // Validate mobile number (10 digits)
     if (!/^\d{10}$/.test(String(mobile))) {
