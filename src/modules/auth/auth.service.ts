@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import axios from 'axios';
@@ -69,7 +69,23 @@ export class AuthService {
         return decrypted === userOtp;
     }
 
-    generateJwtToken(payload: { mobile: string }) {
+    generateJwtAccessToken(payload: { mobile: string }) {
         return this.jwtService.sign(payload);
+    }
+
+    generateJwtRefreshToken(payload: { mobile: string }) {
+        return this.jwtService.sign(payload, { secret: this.configService.get('JWT_REFRESH_SECRET'), expiresIn: '7d' });
+    }
+
+    regenerateAccessToken(refreshToken: string) {
+        try {
+            const payload = this.jwtService.verify(refreshToken, {
+                secret: this.configService.get('JWT_REFRESH_SECRET'),
+            });
+            const newAccessToken = this.generateJwtAccessToken({ mobile: payload.mobile });
+            return newAccessToken;
+        } catch (err) {
+            throw new UnauthorizedException('Invalid refresh token');
+        }
     }
 }

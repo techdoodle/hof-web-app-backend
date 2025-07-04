@@ -29,7 +29,14 @@ export class AuthController {
       return { valid: false, message: 'Invalid OTP' };
     }
     // Generate JWT token
-    const token = this.authService.generateJwtToken({ mobile: String(mobile) });
-    return { valid: true, token };
+    const accessToken = this.authService.generateJwtAccessToken({ mobile: String(mobile) });
+    const refreshToken = this.authService.generateJwtRefreshToken({ mobile: String(mobile) });
+    return { valid: true, accessToken, refreshToken };
+  }
+
+  @Post('refresh')
+  async refresh(@Body('refreshToken') refreshToken: string) {
+    const accessToken = this.authService.regenerateAccessToken(refreshToken);
+    return { accessToken };
   }
 }
