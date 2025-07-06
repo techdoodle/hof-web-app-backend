@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import axios from 'axios';
 import * as crypto from 'crypto';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class AuthService {
@@ -12,11 +13,12 @@ export class AuthService {
     constructor(
         private configService: ConfigService,
         private jwtService: JwtService,
+        private userService: UserService,
     ) {
         this.key = Buffer.from(String(this.configService.get<string>('encryption.key')), 'hex');
     }
 
-    async sendOtp(mobile: number): Promise<object> {
+    async sendOtp(mobile: string): Promise<object> {
         // Generate a secure 6-digit OTP
         const otp = (await crypto.randomInt(100000, 1000000)).toString();
 
@@ -58,7 +60,7 @@ export class AuthService {
         };
     }
 
-    verifyOtp(encryptedOtp: string, iv: string, userOtp: string, mobile: number): boolean {
+    verifyOtp(encryptedOtp: string, iv: string, userOtp: string, mobile: string): boolean {
         const decipher = crypto.createDecipheriv(
             this.algorithm,
             this.key,
@@ -88,4 +90,14 @@ export class AuthService {
             throw new UnauthorizedException('Invalid refresh token');
         }
     }
+
+    async findOrCreateUser(mobile: string) {
+        let user = await this.userService.findByMobile(mobile);
+        if (!user) {
+          user = await this.userService.create({ phoneNumber: mobile, lastLoginAt: new Date() });
+        } else {
+            await this.userService.update(user.id, { lastLoginAt: new Date() });
+        }
+        return user;
+      }
 }

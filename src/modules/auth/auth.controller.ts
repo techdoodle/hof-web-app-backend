@@ -7,7 +7,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
   @Post('send-otp')
-  async sendOtp(@Body('mobile') mobile: number) {
+  async sendOtp(@Body('mobile') mobile: string) {
     // Validate mobile number (10 digits)
     if (!/^\d{10}$/.test(String(mobile))) {
       return { error: 'Invalid mobile number' };
@@ -17,16 +17,19 @@ export class AuthController {
   }
 
   @Post('verify-otp')
-  verifyOtp(
+  async verifyOtp(
     @Body('encryptedOtp') encryptedOtp: string,
     @Body('iv') iv: string,
     @Body('otp') otp: string,
-    @Body('mobile') mobile: number,
+    @Body('mobile') mobile: string,
   ) {
     const isValid = this.authService.verifyOtp(encryptedOtp, iv, otp, mobile);
     if (!isValid) {
       return { valid: false, message: 'Invalid OTP' };
     }
+
+    const user = await this.authService.findOrCreateUser(mobile);
+
     // Generate JWT token
     const accessToken = this.authService.generateJwtAccessToken({ mobile: String(mobile) });
     const refreshToken = this.authService.generateJwtRefreshToken({ mobile: String(mobile) });
