@@ -33,7 +33,7 @@ export class AuthController {
     // Generate JWT token
     const accessToken = this.authService.generateJwtAccessToken({ mobile: String(mobile) });
     const refreshToken = this.authService.generateJwtRefreshToken({ mobile: String(mobile) });
-    return { valid: true, accessToken, refreshToken };
+    return { valid: true, accessToken, refreshToken, ...user };
   }
 
   @Post('refresh')

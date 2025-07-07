@@ -23,8 +23,27 @@ export class UserService {
     return this.userRepository.findOneBy({ id });
   }
 
-  update(id: number, data: Partial<User>) {
-    return this.userRepository.update({ id }, data);
+  async update(id: number, data: Partial<User>) {
+    // First update with the provided data
+    await this.userRepository.update({ id }, data);
+    
+    // Get the updated user to check if all fields are filled
+    const updatedUser = await this.userRepository.findOneBy({ id });
+    
+    if (updatedUser) {
+      // Check if all optional fields are filled
+      const allFieldsFilled = updatedUser.username && 
+                             updatedUser.email && 
+                             updatedUser.playerCategory && 
+                             updatedUser.profilePicture;
+      
+      // If all fields are filled and onboarding is not already complete, mark it as complete
+      if (allFieldsFilled && !updatedUser.onboardingComplete) {
+        await this.userRepository.update({ id }, { onboardingComplete: true });
+      }
+    }
+    
+    return this.userRepository.findOneBy({ id });
   }
 
   remove(id: number) {
