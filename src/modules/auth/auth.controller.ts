@@ -1,6 +1,7 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -40,5 +41,17 @@ export class AuthController {
   async refresh(@Body('refreshToken') refreshToken: string) {
     const accessToken = this.authService.regenerateAccessToken(refreshToken);
     return { accessToken };
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getCurrentUser(@Req() req) {
+    const mobile = req.user?.mobile;
+    if (!mobile) {
+      return { error: 'User not found' };
+    }
+
+    const user = await this.authService.findOrCreateUser(mobile);
+    return { ...user };
   }
 }

@@ -34,6 +34,9 @@ export class UserService {
       // Check if all optional fields are filled
       const allFieldsFilled = updatedUser.username && 
                              updatedUser.email && 
+                             updatedUser.firstName &&
+                             updatedUser.lastName &&
+                             updatedUser.gender &&
                              updatedUser.playerCategory && 
                              updatedUser.profilePicture;
       

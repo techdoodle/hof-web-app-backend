@@ -11,8 +11,17 @@ export class User {
   @Column({ name: 'username', type: 'varchar', length: 50, unique: true, nullable: true })
   username: string;
 
-  @Column({ name: 'email', type: 'varchar', length: 100, unique: true, nullable: true })
+  @Column({ name: 'email', type: 'varchar', length: 255, unique: true, nullable: true })
   email: string;
+
+  @Column({ name: 'first_name', type: 'varchar', length: 50, nullable: true })
+  firstName: string;
+
+  @Column({ name: 'last_name', type: 'varchar', length: 50, nullable: true })
+  lastName: string;
+
+  @Column({ name: 'gender', type: 'varchar', length: 10, nullable: true })
+  gender: string; // 'male', 'female', 'other'
 
   @Column({ name: 'onboarding_complete', type: 'boolean', default: false })
   onboardingComplete: boolean;
@@ -32,7 +41,7 @@ export class User {
   @Column({ name: 'invites_left', type: 'int', default: 3 })
   invitesLeft: number;
 
-  @Column({ name: 'profile_picture', type: 'varchar', length: 100, nullable: true })
+  @Column({ name: 'profile_picture', type: 'text', nullable: true })
   profilePicture: string;
 
   @Column({ name: 'added_to_community', type: 'boolean', default: false })
