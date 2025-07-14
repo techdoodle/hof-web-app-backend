@@ -20,6 +20,9 @@ export class User {
   @Column({ name: 'last_name', type: 'varchar', length: 50, nullable: true })
   lastName: string;
 
+  @Column({ name: 'city', type: 'varchar', length: 50, nullable: true })
+  city: string; // 'Gurugram', 'Noida', 'Delhi', 'Mumbai', 'Bengaluru', 'Pune'
+
   @Column({ name: 'gender', type: 'varchar', length: 10, nullable: true })
   gender: string; // 'male', 'female', 'other'
 

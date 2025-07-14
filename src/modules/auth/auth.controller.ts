@@ -1,11 +1,15 @@
 import { Controller, Post, Body, Get, UseGuards, Req } from '@nestjs/common';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { UserService } from '../user/user.service';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(
+    private readonly authService: AuthService,
+    private readonly userService: UserService
+  ) { }
 
   @Post('send-otp')
   async sendOtp(@Body('mobile') mobile: string) {
@@ -32,8 +36,8 @@ export class AuthController {
     const user = await this.authService.findOrCreateUser(mobile);
 
     // Generate JWT token
-    const accessToken = this.authService.generateJwtAccessToken({ mobile: String(mobile) });
-    const refreshToken = this.authService.generateJwtRefreshToken({ mobile: String(mobile) });
+    const accessToken = this.authService.generateJwtAccessToken({ mobile: String(mobile), sub: user.id });
+    const refreshToken = this.authService.generateJwtRefreshToken({ mobile: String(mobile), sub: user.id });
     return { valid: true, accessToken, refreshToken, ...user };
   }
 
@@ -46,12 +50,12 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async getCurrentUser(@Req() req) {
-    const mobile = req.user?.mobile;
-    if (!mobile) {
+    const userId = req.user?.userId;
+    if (!userId) {
       return { error: 'User not found' };
     }
 
-    const user = await this.authService.findOrCreateUser(mobile);
+    const user = await this.userService.findOne(userId);
     return { ...user };
   }
 }

@@ -53,13 +53,15 @@ export class UserController {
     }
 
     try {
-      const processedImageUrl = await this.imageProcessingService.processProfilePicture(file);
-      
-      // Optionally update user record with the new profile picture URL
       const userId = req.user?.userId; // Assuming JWT payload has userId
-      if (userId) {
-        await this.userService.update(userId, { profilePicture: processedImageUrl });
+      if (!userId) {
+        throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
       }
+
+      const processedImageUrl = await this.imageProcessingService.processProfilePicture(file, userId);
+      
+      // Update user record with the new profile picture URL
+      await this.userService.update(userId, { profilePicture: processedImageUrl });
       
       return { 
         success: true,
@@ -82,13 +84,15 @@ export class UserController {
     }
 
     try {
-      const processedImageUrl = await this.imageProcessingService.processProfilePictureBase64(body.imageData);
-      
-      // Optionally update user record with the new profile picture URL
       const userId = req.user?.userId; // Assuming JWT payload has userId
-      if (userId) {
-        await this.userService.update(userId, { profilePicture: processedImageUrl });
+      if (!userId) {
+        throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
       }
+
+      const processedImageUrl = await this.imageProcessingService.processProfilePictureBase64(body.imageData, userId);
+      
+      // Update user record with the new profile picture URL
+      await this.userService.update(userId, { profilePicture: processedImageUrl });
       
       return { 
         success: true,
@@ -105,13 +109,23 @@ export class UserController {
 
   @Post('profile-picture/process-only-base64')
   @UseGuards(JwtAuthGuard)
-  async processOnlyProfilePictureBase64(@Body() body: { imageData: string }) {
+  async processOnlyProfilePictureBase64(@Body() body: { imageData: string }, @Req() req) {
     if (!body.imageData) {
       throw new HttpException('No image data provided', HttpStatus.BAD_REQUEST);
     }
 
     try {
-      const processedImageUrl = await this.imageProcessingService.processProfilePictureBase64(body.imageData);
+      console.log('Request user:', req.user);
+      console.log('Request body keys:', Object.keys(body));
+      
+      const userId = req.user?.userId; // Assuming JWT payload has userId
+      if (!userId) {
+        console.log('No userId found in req.user:', req.user);
+        throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
+      }
+
+      console.log('Processing image for userId:', userId);
+      const processedImageUrl = await this.imageProcessingService.processProfilePictureBase64(body.imageData, userId);
       
       return { 
         success: true,
@@ -119,8 +133,38 @@ export class UserController {
         message: 'Profile picture processed successfully (not saved to profile)'
       };
     } catch (error) {
+      console.error('Profile picture processing error:', error);
       throw new HttpException(
         `Failed to process profile picture: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Post('profile-picture/extract-face')
+  @UseGuards(JwtAuthGuard)
+  async extractFaceFromImage(@Body() body: { imageData: string }, @Req() req) {
+    if (!body.imageData) {
+      throw new HttpException('No image data provided', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
+      }
+
+      const faceImageUrl = await this.imageProcessingService.extractFaceFromBase64(body.imageData, userId);
+      
+      return { 
+        success: true,
+        url: faceImageUrl,
+        message: 'Face extracted successfully'
+      };
+    } catch (error) {
+      console.error('Face extraction error:', error);
+      throw new HttpException(
+        `Failed to extract face: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }

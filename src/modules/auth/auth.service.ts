@@ -71,11 +71,11 @@ export class AuthService {
         return decrypted === userOtp;
     }
 
-    generateJwtAccessToken(payload: { mobile: string }) {
+    generateJwtAccessToken(payload: { mobile: string; sub: number }) {
         return this.jwtService.sign(payload);
     }
 
-    generateJwtRefreshToken(payload: { mobile: string }) {
+    generateJwtRefreshToken(payload: { mobile: string; sub: number }) {
         return this.jwtService.sign(payload, { secret: this.configService.get('JWT_REFRESH_SECRET'), expiresIn: '7d' });
     }
 
@@ -84,7 +84,7 @@ export class AuthService {
             const payload = this.jwtService.verify(refreshToken, {
                 secret: this.configService.get('JWT_REFRESH_SECRET'),
             });
-            const newAccessToken = this.generateJwtAccessToken({ mobile: payload.mobile });
+            const newAccessToken = this.generateJwtAccessToken({ mobile: payload.mobile, sub: payload.sub });
             return newAccessToken;
         } catch (err) {
             throw new UnauthorizedException('Invalid refresh token');

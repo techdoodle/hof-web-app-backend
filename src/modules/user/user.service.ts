@@ -36,6 +36,7 @@ export class UserService {
                              updatedUser.email && 
                              updatedUser.firstName &&
                              updatedUser.lastName &&
+                             updatedUser.city &&
                              updatedUser.gender &&
                              updatedUser.playerCategory && 
                              updatedUser.profilePicture;
