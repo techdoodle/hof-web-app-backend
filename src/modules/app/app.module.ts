@@ -34,7 +34,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       throttlers: [
         {
           ttl: 60000,
-          limit: 1,
+          limit: 7,
         },
       ],
     }),
