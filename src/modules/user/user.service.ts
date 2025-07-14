@@ -39,7 +39,8 @@ export class UserService {
                              updatedUser.city &&
                              updatedUser.gender &&
                              updatedUser.playerCategory && 
-                             updatedUser.profilePicture;
+                             updatedUser.profilePicture &&
+                             updatedUser.preferredTeam;
       
       // If all fields are filled and onboarding is not already complete, mark it as complete
       if (allFieldsFilled && !updatedUser.onboardingComplete) {

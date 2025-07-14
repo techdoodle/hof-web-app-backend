@@ -49,4 +49,7 @@ export class User {
 
   @Column({ name: 'added_to_community', type: 'boolean', default: false })
   addedToCommunity: boolean;
+
+  @Column({ name: 'preferred_team', type: 'int', nullable: true })
+  preferredTeam: number; // ID from football_teams table
 }

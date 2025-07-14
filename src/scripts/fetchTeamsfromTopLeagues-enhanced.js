@@ -51,11 +51,11 @@ if (!admin.apps.length) {
 
 // League Configuration
 const TOP_LEAGUE_IDS = [
-    // 39,  // English Premier League
-    // 140, // Spanish La Liga
-    // 135, // Italian Serie A
-    // 78,  // German Bundesliga
-    // 61,  // French Ligue 1
+    39,  // English Premier League
+    140, // Spanish La Liga
+    135, // Italian Serie A
+    78,  // German Bundesliga
+    61,  // French Ligue 1
     2,   // UEFA Champions League
     94,  // Primeira Liga (Portugal)
     88,  // Eredivisie (Netherlands)
