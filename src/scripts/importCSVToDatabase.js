@@ -8,11 +8,13 @@ const __dirname = path.dirname(__filename);
 
 // Database configuration
 const pool = new Pool({
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'hof',
-    password: process.env.DB_PASSWORD || 'test1234',
-    port: process.env.DB_PORT || 5432,
+    connectionString: 'postgresql://postgres:mRbKgXGFaLfbeoRMGjEVHBqWUsiWEYaF@nozomi.proxy.rlwy.net:24450/hof',
+    ssl: {
+        rejectUnauthorized: false, // Required for Railway/cloud databases
+    },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
 });
 
 /**
@@ -112,17 +114,6 @@ async function insertTeamToDatabase(teamData) {
                 api_team_id, team_name, team_code, country, founded, 
                 national, logo_url, league_id, league_name, league_country, season
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ON CONFLICT (api_team_id, league_id, season) 
-            DO UPDATE SET 
-                team_name = EXCLUDED.team_name,
-                team_code = EXCLUDED.team_code,
-                country = EXCLUDED.country,
-                founded = EXCLUDED.founded,
-                national = EXCLUDED.national,
-                logo_url = EXCLUDED.logo_url,
-                league_name = EXCLUDED.league_name,
-                league_country = EXCLUDED.league_country,
-                updated_at = CURRENT_TIMESTAMP
             RETURNING id;
         `;
         

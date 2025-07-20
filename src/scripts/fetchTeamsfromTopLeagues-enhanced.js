@@ -19,20 +19,16 @@ const HEADERS = {
     "x-apisports-key": API_KEY
 };
 
-// Database Configuration
-const dbConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 5432,
-    database: process.env.DB_NAME || 'hof',
-    user: process.env.DB_USERNAME || 'postgres',
-    password: process.env.DB_PASSWORD || 'test1234',
+// Initialize PostgreSQL pool
+const pool = new Pool({
+    connectionString: 'postgresql://postgres:mRbKgXGFaLfbeoRMGjEVHBqWUsiWEYaF@nozomi.proxy.rlwy.net:24450/hof',
+    ssl: {
+        rejectUnauthorized: false, // Required for Railway/cloud databases
+    },
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
-};
-
-// Initialize PostgreSQL pool
-const pool = new Pool(dbConfig);
+});
 
 // Initialize Firebase Admin (if not already initialized)
 if (!admin.apps.length) {
@@ -51,15 +47,15 @@ if (!admin.apps.length) {
 
 // League Configuration
 const TOP_LEAGUE_IDS = [
-    4335,  // English Premier League
-    4378, // Spanish La Liga
-    4399, // Italian Serie A
-    4346,  // German Bundesliga
-    4347,  // French Ligue 1
+    39,  // English Premier League
+    140, // Spanish La Liga
+    135, // Italian Serie A
+    78,  // German Bundesliga
+    61,  // French Ligue 1
     
 ];
 
-const CURRENT_SEASON = 2022;
+const CURRENT_SEASON = 2023;
 
 let allTopTeamsData = [];
 let uniqueTopTeams = new Set();
@@ -297,7 +293,6 @@ async function listTopSoccerTeams() {
                 
                 // Fetch teams for the specific league and season
                 const teamsData = await fetchData("/teams", { league: leagueId, season: CURRENT_SEASON });
-                console.log("teamsData", teamsData.response);
                 if (teamsData && teamsData.response && teamsData.response.length > 0) {
                     // Fetch league info
                     const leagueInfoData = await fetchData("/leagues", { id: leagueId });
@@ -363,7 +358,7 @@ async function listTopSoccerTeams() {
         // Generate and save CSV
         if (allTopTeamsData.length > 0) {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `football-teams-${timestamp}.csv`;
+            const filename = `football-teams.csv`;
             const csvContent = generateCSVContent(allTopTeamsData);
             
             // Save CSV locally

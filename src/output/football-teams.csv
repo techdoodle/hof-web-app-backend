@@ -1,0 +1,99 @@
+id,api_team_id,team_name,team_code,country,founded,national,logo_url,league_id,league_name,league_country,season,created_at
+1,33,"Manchester United","MUN","England",1878,false,"https://media.api-sports.io/football/teams/33.png",39,"Premier League","England",2023,2025-07-20T18:29:03.858Z
+2,34,"Newcastle","NEW","England",1892,false,"https://media.api-sports.io/football/teams/34.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+3,35,"Bournemouth","BOU","England",1899,false,"https://media.api-sports.io/football/teams/35.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+4,36,"Fulham","FUL","England",1879,false,"https://media.api-sports.io/football/teams/36.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+5,39,"Wolves","WOL","England",1877,false,"https://media.api-sports.io/football/teams/39.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+6,40,"Liverpool","LIV","England",1892,false,"https://media.api-sports.io/football/teams/40.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+7,42,"Arsenal","ARS","England",1886,false,"https://media.api-sports.io/football/teams/42.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+8,44,"Burnley","BUR","England",1882,false,"https://media.api-sports.io/football/teams/44.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+9,45,"Everton","EVE","England",1878,false,"https://media.api-sports.io/football/teams/45.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+10,47,"Tottenham","TOT","England",1882,false,"https://media.api-sports.io/football/teams/47.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+11,48,"West Ham","WES","England",1895,false,"https://media.api-sports.io/football/teams/48.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+12,49,"Chelsea","CHE","England",1905,false,"https://media.api-sports.io/football/teams/49.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+13,50,"Manchester City","MAC","England",1880,false,"https://media.api-sports.io/football/teams/50.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+14,51,"Brighton","BRI","England",1901,false,"https://media.api-sports.io/football/teams/51.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+15,52,"Crystal Palace","CRY","England",1905,false,"https://media.api-sports.io/football/teams/52.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+16,55,"Brentford","BRE","England",1889,false,"https://media.api-sports.io/football/teams/55.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+17,62,"Sheffield Utd","SHE","England",1889,false,"https://media.api-sports.io/football/teams/62.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+18,65,"Nottingham Forest","NOT","England",1865,false,"https://media.api-sports.io/football/teams/65.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+19,66,"Aston Villa","AST","England",1874,false,"https://media.api-sports.io/football/teams/66.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+20,1359,"Luton","LUT","England",1885,false,"https://media.api-sports.io/football/teams/1359.png",39,"Premier League","England",2023,2025-07-20T18:29:03.859Z
+21,529,"Barcelona","BAR","Spain",1899,false,"https://media.api-sports.io/football/teams/529.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+22,530,"Atletico Madrid","MAD","Spain",1903,false,"https://media.api-sports.io/football/teams/530.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+23,531,"Athletic Club","BIL","Spain",1898,false,"https://media.api-sports.io/football/teams/531.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+24,532,"Valencia","VAL","Spain",1919,false,"https://media.api-sports.io/football/teams/532.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+25,533,"Villarreal","VIL","Spain",1923,false,"https://media.api-sports.io/football/teams/533.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+26,534,"Las Palmas","PAL","Spain",1949,false,"https://media.api-sports.io/football/teams/534.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+27,536,"Sevilla","SEV","Spain",1890,false,"https://media.api-sports.io/football/teams/536.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+28,538,"Celta Vigo","CEL","Spain",1923,false,"https://media.api-sports.io/football/teams/538.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+29,541,"Real Madrid","REA","Spain",1902,false,"https://media.api-sports.io/football/teams/541.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+30,542,"Alaves","ALA","Spain",1921,false,"https://media.api-sports.io/football/teams/542.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+31,543,"Real Betis","BET","Spain",1907,false,"https://media.api-sports.io/football/teams/543.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+32,546,"Getafe","GET","Spain",1983,false,"https://media.api-sports.io/football/teams/546.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+33,547,"Girona","GIR","Spain",1930,false,"https://media.api-sports.io/football/teams/547.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+34,548,"Real Sociedad","RSO","Spain",1909,false,"https://media.api-sports.io/football/teams/548.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+35,715,"Granada CF","GRA","Spain",1931,false,"https://media.api-sports.io/football/teams/715.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+36,723,"Almeria","ALM","Spain",1989,false,"https://media.api-sports.io/football/teams/723.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+37,724,"Cadiz","CAD","Spain",1910,false,"https://media.api-sports.io/football/teams/724.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+38,727,"Osasuna","OSA","Spain",1920,false,"https://media.api-sports.io/football/teams/727.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+39,728,"Rayo Vallecano","RAY","Spain",1924,false,"https://media.api-sports.io/football/teams/728.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+40,798,"Mallorca","MAL","Spain",1916,false,"https://media.api-sports.io/football/teams/798.png",140,"La Liga","Spain",2023,2025-07-20T18:29:03.859Z
+41,487,"Lazio","LAZ","Italy",1900,false,"https://media.api-sports.io/football/teams/487.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+42,488,"Sassuolo","SAS","Italy",1922,false,"https://media.api-sports.io/football/teams/488.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+43,489,"AC Milan","MIL","Italy",1899,false,"https://media.api-sports.io/football/teams/489.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+44,490,"Cagliari","CAG","Italy",1920,false,"https://media.api-sports.io/football/teams/490.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+45,492,"Napoli","NAP","Italy",1904,false,"https://media.api-sports.io/football/teams/492.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+46,494,"Udinese","UDI","Italy",1896,false,"https://media.api-sports.io/football/teams/494.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+47,495,"Genoa","GEN","Italy",1893,false,"https://media.api-sports.io/football/teams/495.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+48,496,"Juventus","JUV","Italy",1897,false,"https://media.api-sports.io/football/teams/496.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+49,497,"AS Roma","ROM","Italy",1927,false,"https://media.api-sports.io/football/teams/497.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+50,499,"Atalanta","ATA","Italy",1907,false,"https://media.api-sports.io/football/teams/499.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+51,500,"Bologna","BOL","Italy",1909,false,"https://media.api-sports.io/football/teams/500.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+52,502,"Fiorentina","FIO","Italy",1926,false,"https://media.api-sports.io/football/teams/502.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+53,503,"Torino","TOR","Italy",1906,false,"https://media.api-sports.io/football/teams/503.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+54,504,"Verona","VER","Italy",1903,false,"https://media.api-sports.io/football/teams/504.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+55,505,"Inter","INT","Italy",1908,false,"https://media.api-sports.io/football/teams/505.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+56,511,"Empoli","EMP","Italy",1920,false,"https://media.api-sports.io/football/teams/511.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+57,512,"Frosinone","FRO","Italy",1928,false,"https://media.api-sports.io/football/teams/512.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+58,514,"Salernitana","SAL","Italy",2011,false,"https://media.api-sports.io/football/teams/514.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+59,867,"Lecce","LEC","Italy",1908,false,"https://media.api-sports.io/football/teams/867.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+60,1579,"Monza","MON","Italy",1912,false,"https://media.api-sports.io/football/teams/1579.png",135,"Serie A","Italy",2023,2025-07-20T18:29:03.859Z
+61,157,"Bayern München","BAY","Germany",1900,false,"https://media.api-sports.io/football/teams/157.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+62,158,"Fortuna Düsseldorf","DUS","Germany",1895,false,"https://media.api-sports.io/football/teams/158.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+63,160,"SC Freiburg","FRE","Germany",1904,false,"https://media.api-sports.io/football/teams/160.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+64,161,"VfL Wolfsburg","WOL","Germany",1945,false,"https://media.api-sports.io/football/teams/161.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+65,162,"Werder Bremen","WER","Germany",1899,false,"https://media.api-sports.io/football/teams/162.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+66,163,"Borussia Mönchengladbach","MOE","Germany",1900,false,"https://media.api-sports.io/football/teams/163.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+67,164,"FSV Mainz 05","MAI","Germany",1905,false,"https://media.api-sports.io/football/teams/164.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+68,165,"Borussia Dortmund","DOR","Germany",1909,false,"https://media.api-sports.io/football/teams/165.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+69,167,"1899 Hoffenheim","HOF","Germany",1899,false,"https://media.api-sports.io/football/teams/167.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+70,168,"Bayer Leverkusen","BAY","Germany",1904,false,"https://media.api-sports.io/football/teams/168.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+71,169,"Eintracht Frankfurt","EIN","Germany",1899,false,"https://media.api-sports.io/football/teams/169.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+72,170,"FC Augsburg","AUG","Germany",1907,false,"https://media.api-sports.io/football/teams/170.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+73,172,"VfB Stuttgart","STU","Germany",1893,false,"https://media.api-sports.io/football/teams/172.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+74,173,"RB Leipzig","LEI","Germany",2009,false,"https://media.api-sports.io/football/teams/173.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+75,176,"VfL Bochum","BOC","Germany",1848,false,"https://media.api-sports.io/football/teams/176.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+76,180,"1. FC Heidenheim","HEI","Germany",1946,false,"https://media.api-sports.io/football/teams/180.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+77,181,"SV Darmstadt 98","DAR","Germany",1898,false,"https://media.api-sports.io/football/teams/181.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+78,182,"Union Berlin","UNI","Germany",1966,false,"https://media.api-sports.io/football/teams/182.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+79,192,"1.FC Köln","KOL","Germany",1948,false,"https://media.api-sports.io/football/teams/192.png",78,"Bundesliga","Germany",2023,2025-07-20T18:29:03.859Z
+80,79,"Lille","LIL","France",1944,false,"https://media.api-sports.io/football/teams/79.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+81,80,"Lyon","LYO","France",1950,false,"https://media.api-sports.io/football/teams/80.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+82,81,"Marseille","MAR","France",1899,false,"https://media.api-sports.io/football/teams/81.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+83,82,"Montpellier","MON","France",1974,false,"https://media.api-sports.io/football/teams/82.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+84,83,"Nantes","NAN","France",1943,false,"https://media.api-sports.io/football/teams/83.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+85,84,"Nice","NIC","France",1904,false,"https://media.api-sports.io/football/teams/84.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+86,85,"Paris Saint Germain","PAR","France",1970,false,"https://media.api-sports.io/football/teams/85.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+87,91,"Monaco","MON","France",1919,false,"https://media.api-sports.io/football/teams/91.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+88,93,"Reims","REI","France",1909,false,"https://media.api-sports.io/football/teams/93.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+89,94,"Rennes","REN","France",1901,false,"https://media.api-sports.io/football/teams/94.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+90,95,"Strasbourg","STR","France",1906,false,"https://media.api-sports.io/football/teams/95.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+91,96,"Toulouse","TOU","France",1937,false,"https://media.api-sports.io/football/teams/96.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+92,97,"Lorient","LOR","France",1926,false,"https://media.api-sports.io/football/teams/97.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+93,99,"Clermont Foot","CLE","France",1990,false,"https://media.api-sports.io/football/teams/99.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+94,106,"Stade Brestois 29","BRE","France",1950,false,"https://media.api-sports.io/football/teams/106.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+95,111,"Le Havre","HAV","France",1872,false,"https://media.api-sports.io/football/teams/111.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+96,112,"Metz","MET","France",1932,false,"https://media.api-sports.io/football/teams/112.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+97,116,"Lens","LEN","France",1906,false,"https://media.api-sports.io/football/teams/116.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
+98,1063,"Saint Etienne","ETI","France",1920,false,"https://media.api-sports.io/football/teams/1063.png",61,"Ligue 1","France",2023,2025-07-20T18:29:03.859Z
