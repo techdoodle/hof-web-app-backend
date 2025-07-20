@@ -8,6 +8,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { UserModule } from '../user/user.module';
 import { FootballTeamsModule } from '../football-teams/football-teams.module';
+import { CitiesModule } from '../cities/cities.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
@@ -41,6 +42,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     AuthModule,
     UserModule,
     FootballTeamsModule,
+    CitiesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -51,20 +51,15 @@ if (!admin.apps.length) {
 
 // League Configuration
 const TOP_LEAGUE_IDS = [
-    39,  // English Premier League
-    140, // Spanish La Liga
-    135, // Italian Serie A
-    78,  // German Bundesliga
-    61,  // French Ligue 1
-    2,   // UEFA Champions League
-    94,  // Primeira Liga (Portugal)
-    88,  // Eredivisie (Netherlands)
-    71,  // Serie A (Brazil)
-    253,  // Major League Soccer (USA)
-    143 // Copa del rey
+    4335,  // English Premier League
+    4378, // Spanish La Liga
+    4399, // Italian Serie A
+    4346,  // German Bundesliga
+    4347,  // French Ligue 1
+    
 ];
 
-const CURRENT_SEASON = 2020;
+const CURRENT_SEASON = 2022;
 
 let allTopTeamsData = [];
 let uniqueTopTeams = new Set();
