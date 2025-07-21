@@ -23,4 +23,6 @@ export class City {
   @Column({ name: 'longitude', type: 'decimal', precision: 11, scale: 8, nullable: false })
   longitude: number;
 
+  @Column({ name: 'onboarded', type: 'boolean', default: false })
+  onboarded: boolean;
 } 
