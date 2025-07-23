@@ -58,4 +58,27 @@ export class UserService {
   async findByMobile(mobile: string) {
     return this.userRepository.findOne({ where: { phoneNumber: mobile } });
   }
+
+  async setWhatsappInviteOpt(userId: number): Promise<User> {
+    const user = await this.userRepository.findOneBy({ id: userId });
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // If whatsapp invite flag is already true, set invite sent flag to false
+    if (user.whatsappInviteOpt) {
+      await this.userRepository.update({ id: userId }, { inviteSent: false });
+    } else {
+      // If whatsapp invite flag is false, set it to true
+      await this.userRepository.update({ id: userId }, { whatsappInviteOpt: true });
+    }
+
+    // Return the updated user
+    const updatedUser = await this.userRepository.findOneBy({ id: userId });
+    if (!updatedUser) {
+      throw new Error('Failed to retrieve updated user');
+    }
+    return updatedUser;
+  }
 }

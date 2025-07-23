@@ -169,4 +169,29 @@ export class UserController {
       );
     }
   }
+
+  @Post('whatsapp-invite-opt')
+  @UseGuards(JwtAuthGuard)
+  async setWhatsappInviteOpt(@Req() req) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
+      }
+
+      const updatedUser = await this.userService.setWhatsappInviteOpt(userId);
+      
+      return { 
+        success: true,
+        user: updatedUser,
+        message: 'WhatsApp invite preferences updated successfully'
+      };
+    } catch (error) {
+      console.error('WhatsApp invite opt error:', error);
+      throw new HttpException(
+        `Failed to update WhatsApp invite preferences: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
 }

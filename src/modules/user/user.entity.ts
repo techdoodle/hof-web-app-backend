@@ -52,4 +52,10 @@ export class User {
 
   @Column({ name: 'preferred_team', type: 'int', nullable: true })
   preferredTeam: number; // ID from football_teams table
+
+  @Column({ name: 'whatsapp_invite_opt', type: 'boolean', default: false })
+  whatsappInviteOpt: boolean;
+
+  @Column({ name: 'invite_sent', type: 'boolean', default: false })
+  inviteSent: boolean;
 }
