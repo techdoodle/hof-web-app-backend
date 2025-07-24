@@ -1,4 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { FootballTeam } from '../football-teams/football-teams.entity';
+import { City } from '../cities/cities.entity';
 
 @Entity('users')
 export class User {
@@ -20,8 +22,9 @@ export class User {
   @Column({ name: 'last_name', type: 'varchar', length: 50, nullable: true })
   lastName: string;
 
-  @Column({ name: 'city', type: 'varchar', length: 50, nullable: true })
-  city: string; // 'Gurugram', 'Noida', 'Delhi', 'Mumbai', 'Bengaluru', 'Pune'
+  @ManyToOne(() => City, { nullable: true })
+  @JoinColumn({ name: 'city_id' })
+  city: City;
 
   @Column({ name: 'gender', type: 'varchar', length: 10, nullable: true })
   gender: string; // 'male', 'female', 'other'
@@ -47,11 +50,9 @@ export class User {
   @Column({ name: 'profile_picture', type: 'text', nullable: true })
   profilePicture: string;
 
-  @Column({ name: 'added_to_community', type: 'boolean', default: false })
-  addedToCommunity: boolean;
-
-  @Column({ name: 'preferred_team', type: 'int', nullable: true })
-  preferredTeam: number; // ID from football_teams table
+  @ManyToOne(() => FootballTeam, { nullable: true })
+  @JoinColumn({ name: 'preferred_team' })
+  preferredTeam: FootballTeam;
 
   @Column({ name: 'whatsapp_invite_opt', type: 'boolean', default: false })
   whatsappInviteOpt: boolean;
