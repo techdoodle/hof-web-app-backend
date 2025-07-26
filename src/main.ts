@@ -13,6 +13,7 @@ async function bootstrap() {
   const allowedOrigins = [
     'http://localhost:3000', // Local frontend
     'http://localhost:3001', // Local frontend alternative port
+    'https://hof-ui-git-main-techdoodle-3947s-projects.vercel.app',
     process.env.FRONTEND_URL, // Production frontend URL
   ].filter(Boolean); // Remove undefined values
 
