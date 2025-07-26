@@ -35,26 +35,24 @@ export class UserService {
     // First update with the provided data
     await this.userRepository.update({ id }, data);
     
-    // Get the updated user to check if all fields are filled
+    // Get the updated user to check if all mandatory fields are filled
     const updatedUser = await this.userRepository.findOne({
       where: { id },
       relations: ['city', 'preferredTeam']
     });
     
     if (updatedUser) {
-      // Check if all optional fields are filled
-      const allFieldsFilled = updatedUser.username && 
-                             updatedUser.email && 
-                             updatedUser.firstName &&
-                             updatedUser.lastName &&
-                             updatedUser.city &&
-                             updatedUser.gender &&
-                             updatedUser.playerCategory && 
-                             updatedUser.profilePicture &&
-                             updatedUser.preferredTeam;
+      // Check if all mandatory onboarding fields are filled
+      const mandatoryFieldsFilled = updatedUser.firstName &&
+                                   updatedUser.lastName &&
+                                   updatedUser.city &&
+                                   updatedUser.gender &&
+                                   updatedUser.profilePicture &&
+                                   updatedUser.playerCategory && 
+                                   updatedUser.preferredTeam;
       
-      // If all fields are filled and onboarding is not already complete, mark it as complete
-      if (allFieldsFilled && !updatedUser.onboardingComplete) {
+      // If all mandatory fields are filled and onboarding is not already complete, mark it as complete
+      if (mandatoryFieldsFilled && !updatedUser.onboardingComplete) {
         await this.userRepository.update({ id }, { onboardingComplete: true });
       }
     }
