@@ -35,6 +35,10 @@ export class AuthController {
 
     const user = await this.authService.findOrCreateUser(mobile);
 
+    if (!user) {
+      return { valid: false, message: 'Failed to create or retrieve user' };
+    }
+
     // Generate JWT token
     const accessToken = this.authService.generateJwtAccessToken({ mobile: String(mobile), sub: user.id });
     const refreshToken = this.authService.generateJwtRefreshToken({ mobile: String(mobile), sub: user.id });
@@ -56,6 +60,7 @@ export class AuthController {
     }
 
     const user = await this.userService.findOne(userId);
+    console.log("DEBUG: user", user);
     return { ...user };
   }
 }

@@ -10,9 +10,14 @@ export class UserService {
     private userRepository: Repository<User>,
   ) {}
 
-  create(data: Partial<User>) {
+  async create(data: Partial<User>) {
     const user = this.userRepository.create(data);
-    return this.userRepository.save(user);
+    const savedUser = await this.userRepository.save(user);
+    // Return the user with relations loaded
+    return this.userRepository.findOne({
+      where: { id: savedUser.id },
+      relations: ['city', 'preferredTeam']
+    });
   }
 
   findAll() {
@@ -20,7 +25,10 @@ export class UserService {
   }
 
   findOne(id: number) {
-    return this.userRepository.findOneBy({ id });
+    return this.userRepository.findOne({
+      where: { id },
+      relations: ['city', 'preferredTeam']
+    });
   }
 
   async update(id: number, data: Partial<User>) {
@@ -28,7 +36,10 @@ export class UserService {
     await this.userRepository.update({ id }, data);
     
     // Get the updated user to check if all fields are filled
-    const updatedUser = await this.userRepository.findOneBy({ id });
+    const updatedUser = await this.userRepository.findOne({
+      where: { id },
+      relations: ['city', 'preferredTeam']
+    });
     
     if (updatedUser) {
       // Check if all optional fields are filled
@@ -48,7 +59,10 @@ export class UserService {
       }
     }
     
-    return this.userRepository.findOneBy({ id });
+    return this.userRepository.findOne({
+      where: { id },
+      relations: ['city', 'preferredTeam']
+    });
   }
 
   remove(id: number) {
@@ -56,11 +70,17 @@ export class UserService {
   }
 
   async findByMobile(mobile: string) {
-    return this.userRepository.findOne({ where: { phoneNumber: mobile } });
+    return this.userRepository.findOne({ 
+      where: { phoneNumber: mobile },
+      relations: ['city', 'preferredTeam']
+    });
   }
 
   async setWhatsappInviteOpt(userId: number): Promise<User> {
-    const user = await this.userRepository.findOneBy({ id: userId });
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['city', 'preferredTeam']
+    });
     
     if (!user) {
       throw new Error('User not found');
@@ -75,7 +95,10 @@ export class UserService {
     }
 
     // Return the updated user
-    const updatedUser = await this.userRepository.findOneBy({ id: userId });
+    const updatedUser = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['city', 'preferredTeam']
+    });
     if (!updatedUser) {
       throw new Error('Failed to retrieve updated user');
     }
