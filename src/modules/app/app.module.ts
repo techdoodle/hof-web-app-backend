@@ -10,6 +10,7 @@ import { UserModule } from '../user/user.module';
 import { FootballTeamsModule } from '../football-teams/football-teams.module';
 import { CitiesModule } from '../cities/cities.module';
 import { VenueModule } from '../venue/venue.module';
+import { MatchesModule } from '../matches/matches.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
@@ -45,6 +46,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     FootballTeamsModule,
     CitiesModule,
     VenueModule,
+    MatchesModule,
   ],
   controllers: [AppController],
   providers: [
