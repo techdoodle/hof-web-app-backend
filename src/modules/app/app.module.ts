@@ -11,6 +11,7 @@ import { FootballTeamsModule } from '../football-teams/football-teams.module';
 import { CitiesModule } from '../cities/cities.module';
 import { VenueModule } from '../venue/venue.module';
 import { MatchesModule } from '../matches/matches.module';
+import { MatchParticipantsModule } from '../match-participants/match-participants.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
@@ -47,6 +48,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     CitiesModule,
     VenueModule,
     MatchesModule,
+    MatchParticipantsModule,
   ],
   controllers: [AppController],
   providers: [
