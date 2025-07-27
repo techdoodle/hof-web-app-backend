@@ -60,7 +60,6 @@ export class AuthController {
     }
 
     const user = await this.userService.findOne(userId);
-    console.log("DEBUG: user", user);
     return { ...user };
   }
 }
