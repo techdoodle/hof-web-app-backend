@@ -9,6 +9,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { UserModule } from '../user/user.module';
 import { FootballTeamsModule } from '../football-teams/football-teams.module';
 import { CitiesModule } from '../cities/cities.module';
+import { VenueModule } from '../venue/venue.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
@@ -43,6 +44,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
     UserModule,
     FootballTeamsModule,
     CitiesModule,
+    VenueModule,
   ],
   controllers: [AppController],
   providers: [
