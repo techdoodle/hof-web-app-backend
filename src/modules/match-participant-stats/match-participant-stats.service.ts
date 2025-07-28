@@ -228,4 +228,102 @@ export class MatchParticipantStatsService {
       averageShotAccuracy: parseFloat(stats.avgShotAccuracy) || 0,
     };
   }
+
+  async getPlayerSpiderChartStats(playerId: number): Promise<any> {
+    // Get all stats for the player
+    const rawStats = await this.matchParticipantStatsRepository
+      .createQueryBuilder('stats')
+      .select([
+        'COUNT(*) as matchesPlayed',
+        'AVG(stats.shotAccuracy) as avgShotAccuracy',
+        'SUM(stats.totalShot) as totalShots',
+        'SUM(stats.totalOnTargetShot) as totalOnTargetShots',
+        'AVG(stats.totalPassingAccuracy) as avgPassingAccuracy',
+        'AVG(stats.openPlayPassingAccuracy) as avgOpenPlayPassingAccuracy',
+        'AVG(stats.dribbleSuccessPercent) as avgDribbleSuccess',
+        'SUM(stats.totalDribbleAttempt) as totalDribbleAttempts',
+        'SUM(stats.totalSuccessfulDribble) as totalSuccessfulDribbles',
+        'SUM(stats.totalDefensiveActions) as totalDefensiveActions',
+        'SUM(stats.tackleInPossession + stats.tackleTeamPossession) as successfulTackles',
+        'SUM(stats.tackleInPossession + stats.tackleOob + stats.tackleTurnover + stats.tackleTeamPossession) as totalTackleAttempts',
+        'SUM(stats.totalGoal) as totalGoals',
+        'SUM(stats.totalAssist) as totalAssists',
+      ])
+      .where('stats.player.id = :playerId', { playerId })
+      .getRawOne();
+    
+    const matchesPlayed = parseInt(rawStats.matchesplayed) || 1; // Avoid division by zero
+
+    // Calculate normalized values (0-100) for each axis
+    
+    // 1. Shooting (based on shot accuracy and shot frequency)
+    const shotAccuracy = parseFloat(rawStats.avgshotaccuracy) || 0;
+    const shotsPerMatch = (parseInt(rawStats.totalshots) || 0) / matchesPlayed;
+    const shootingScore = Math.min(100, (shotAccuracy * 0.7) + (Math.min(shotsPerMatch * 10, 30) * 0.3));
+
+    // 2. Passing (combination of overall and open play passing accuracy)
+    const overallPassingAccuracy = parseFloat(rawStats.avgpassingaccuracy) || 0;
+    const openPlayPassingAccuracy = parseFloat(rawStats.avgopenplaypassingaccuracy) || 0;
+    const passingScore = Math.max(overallPassingAccuracy, openPlayPassingAccuracy);
+
+    // 3. Dribbling (based on dribble success percentage and frequency)
+    const dribbleSuccess = parseFloat(rawStats.avgdribblesuccess) || 0;
+    const dribbleAttemptsPerMatch = (parseInt(rawStats.totaldribbleattempts) || 0) / matchesPlayed;
+    const dribblingScore = Math.min(100, (dribbleSuccess * 0.8) + (Math.min(dribbleAttemptsPerMatch * 5, 20) * 0.2));
+
+    // 4. Tackling (based on tackle success rate and defensive actions)
+    const successfulTackles = parseInt(rawStats.successfultackles) || 0;
+    const totalTackleAttempts = parseInt(rawStats.totaltackleattempts) || 1;
+    const tackleSuccessRate = (successfulTackles / totalTackleAttempts) * 100;
+    const defensiveActionsPerMatch = (parseInt(rawStats.totaldefensiveactions) || 0) / matchesPlayed;
+    const tacklingScore = Math.min(100, (tackleSuccessRate * 0.6) + (Math.min(defensiveActionsPerMatch * 2, 40) * 0.4));
+
+    // 5. Impact (goals + assists per match, normalized)
+    const totalGoals = parseInt(rawStats.totalgoals) || 0;
+    const totalAssists = parseInt(rawStats.totalassists) || 0;
+    const impactPerMatch = (totalGoals + totalAssists) / matchesPlayed;
+    const impactScore = Math.min(100, impactPerMatch * 50); // 2 goals+assists per match = 100
+
+    return {
+      playerId,
+      matchesPlayed,
+      spiderChart: {
+        shooting: Math.round(shootingScore * 100) / 100,
+        passing: Math.round(passingScore * 100) / 100,
+        dribbling: Math.round(dribblingScore * 100) / 100,
+        tackling: Math.round(tacklingScore * 100) / 100,
+        impact: Math.round(impactScore * 100) / 100,
+      },
+      detailedStats: {
+        shooting: {
+          shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+          shotsPerMatch: Math.round(shotsPerMatch * 100) / 100,
+          totalShots: parseInt(rawStats.totalShots) || 0,
+          totalOnTargetShots: parseInt(rawStats.totalOnTargetShots) || 0,
+        },
+        passing: {
+          overallAccuracy: Math.round(overallPassingAccuracy * 100) / 100,
+          openPlayAccuracy: Math.round(openPlayPassingAccuracy * 100) / 100,
+        },
+        dribbling: {
+          successRate: Math.round(dribbleSuccess * 100) / 100,
+          attemptsPerMatch: Math.round(dribbleAttemptsPerMatch * 100) / 100,
+          totalAttempts: parseInt(rawStats.totalDribbleAttempts) || 0,
+          totalSuccessful: parseInt(rawStats.totalSuccessfulDribbles) || 0,
+        },
+        tackling: {
+          successRate: Math.round(tackleSuccessRate * 100) / 100,
+          defensiveActionsPerMatch: Math.round(defensiveActionsPerMatch * 100) / 100,
+          totalDefensiveActions: parseInt(rawStats.totalDefensiveActions) || 0,
+          successfulTackles,
+          totalTackleAttempts,
+        },
+        impact: {
+          goalsAndAssistsPerMatch: Math.round(impactPerMatch * 100) / 100,
+          totalGoals,
+          totalAssists,
+        },
+      },
+    };
+  }
 } 

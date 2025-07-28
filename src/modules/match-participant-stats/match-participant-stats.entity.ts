@@ -20,10 +20,6 @@ export class MatchParticipantStats {
   @JoinColumn({ name: 'match_participant_id' })
   matchParticipant: MatchParticipant;
 
-  // Identification
-  @Column({ name: 'name', type: 'varchar', length: 255, nullable: true })
-  name: string;
-
   // Passing
   @Column({ name: 'total_passing_actions', type: 'int', nullable: true })
   totalPassingActions: number;

@@ -103,6 +103,18 @@ export class MatchParticipantStatsController {
     return await this.matchParticipantStatsService.getSeasonStats(playerId, year);
   }
 
+  @Get('player/:playerId/spider-chart')
+  async getPlayerSpiderChartStats(@Param('playerId', ParseIntPipe) playerId: number): Promise<any> {
+    try {
+      return await this.matchParticipantStatsService.getPlayerSpiderChartStats(playerId);
+    } catch (error) {
+      throw new HttpException(
+        `Failed to get spider chart stats for player ${playerId}: ${error.message}`,
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
   @Get(':matchStatsId')
   async findOne(@Param('matchStatsId', ParseIntPipe) matchStatsId: number): Promise<MatchParticipantStats> {
     return await this.matchParticipantStatsService.findOne(matchStatsId);
