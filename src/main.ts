@@ -15,23 +15,28 @@ async function bootstrap() {
     'http://localhost:3001', // Local frontend alternative port
     'https://hof-ui-git-main-techdoodle-3947s-projects.vercel.app',
     'https://hof-ui.netlify.app/',
-    process.env.FRONTEND_URL, // Production frontend URL
+    'hof-ui.netlify.com',
+    // process.env.FRONTEND_URL, // Production frontend URL
   ].filter(Boolean); // Remove undefined values
 
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) {
+        console.log('no origin');
         return callback(null, true);
       }
+      console.log('allowedOrigins', allowedOrigins);
       
       // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
+        console.log('in the allowed origins', origin);
         return callback(null, true);
       }
       
       // For development, allow localhost variations
       if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
+        console.log('in the localhost', origin);
         return callback(null, true);
       }
       
