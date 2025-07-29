@@ -248,33 +248,41 @@ export class MatchParticipantStatsService {
         'SUM(COALESCE(stats.tackleInPossession, 0) + COALESCE(stats.tackleOob, 0) + COALESCE(stats.tackleTurnover, 0) + COALESCE(stats.tackleTeamPossession, 0)) as totalTackleAttempts',
         'SUM(COALESCE(stats.totalGoal, 0)) as totalGoals',
         'SUM(COALESCE(stats.totalAssist, 0)) as totalAssists',
+        'SUM(CASE WHEN stats.isMvp = true THEN 1 ELSE 0 END) as totalMvpWins',
+        'SUM(COALESCE(stats.totalCompletePassingActions, 0)) as totalCompletePassingActions',
+        'SUM(COALESCE(stats.steal, 0)) as totalSteals',
+        'SUM(COALESCE(stats.interceptionSameTeam, 0)) as totalInterceptionSameTeam',
       ])
       .where('stats.player.id = :playerId', { playerId })
       .getRawOne();
     
-    const matchesPlayed = parseInt(rawStats.matchesplayed) || 1; // Avoid division by zero
+    const matchesPlayed = parseInt(rawStats.matchesplayed) || 0; // Avoid division by zero
 
     // Extract values and handle percentage conversion (assuming percentages stored as decimals: 0.8 = 80%)
     const shotAccuracy = (parseFloat(rawStats.avgshotaccuracy) || 0) * 100; // Convert to percentage
     const totalShots = parseInt(rawStats.totalshots) || 0;
-    const shotsPerMatch = totalShots / matchesPlayed;
+    const shotsPerMatch = totalShots / matchesPlayed || 0;
     
     const overallPassingAccuracy = (parseFloat(rawStats.avgpassingaccuracy) || 0) * 100; // Convert to percentage
     const openPlayPassingAccuracy = (parseFloat(rawStats.avgopenplaypassingaccuracy) || 0) * 100; // Convert to percentage
     
     const dribbleSuccess = (parseFloat(rawStats.avgdribblesuccess) || 0) * 100; // Convert to percentage
     const totalDribbleAttempts = parseInt(rawStats.totaldribbleattempts) || 0;
-    const dribbleAttemptsPerMatch = totalDribbleAttempts / matchesPlayed;
+    const dribbleAttemptsPerMatch = totalDribbleAttempts / matchesPlayed || 0;
     
     const successfulTackles = parseInt(rawStats.successfultackles) || 0;
-    const totalTackleAttempts = parseInt(rawStats.totaltackleattempts) || 1;
-    const tackleSuccessRate = (successfulTackles / totalTackleAttempts) * 100;
+    const totalTackleAttempts = parseInt(rawStats.totaltackleattempts) || 0;
+    const tackleSuccessRate = (successfulTackles / totalTackleAttempts || 0) * 100;
     const totalDefensiveActions = parseInt(rawStats.totaldefensiveactions) || 0;
-    const defensiveActionsPerMatch = totalDefensiveActions / matchesPlayed;
+    const defensiveActionsPerMatch = totalDefensiveActions / matchesPlayed || 0;
     
     const totalGoals = parseInt(rawStats.totalgoals) || 0;
     const totalAssists = parseInt(rawStats.totalassists) || 0;
-    const impactPerMatch = (totalGoals + totalAssists) / matchesPlayed;
+    const totalMvpWins = parseInt(rawStats.totalmvpwins) || 0;
+    const totalCompletePassingActions = parseInt(rawStats.totalcompletepassingactions) || 0;
+    const totalSteals = parseInt(rawStats.totalsteals) || 0;
+    const totalInterceptionSameTeam = parseInt(rawStats.totalinterceptionsameteam) || 0;
+    const impactPerMatch = (totalGoals + totalAssists) / matchesPlayed || 0;
 
     // Calculate normalized values (0-100) for each axis with improved formulas
     
@@ -296,6 +304,7 @@ export class MatchParticipantStatsService {
     return {
       playerId,
       matchesPlayed,
+      totalMvpWins,
       spiderChart: {
         shooting: Math.round(shootingScore * 100) / 100,
         passing: Math.round(passingScore * 100) / 100,
@@ -313,6 +322,7 @@ export class MatchParticipantStatsService {
         passing: {
           overallAccuracy: Math.round(overallPassingAccuracy * 100) / 100,
           openPlayAccuracy: Math.round(openPlayPassingAccuracy * 100) / 100,
+          totalCompletePassingActions,
         },
         dribbling: {
           successRate: Math.round(dribbleSuccess * 100) / 100,
@@ -326,6 +336,7 @@ export class MatchParticipantStatsService {
           totalDefensiveActions,
           successfulTackles,
           totalTackleAttempts,
+          interceptions: totalSteals + totalInterceptionSameTeam,
         },
         impact: {
           goalsAndAssistsPerMatch: Math.round(impactPerMatch * 100) / 100,
