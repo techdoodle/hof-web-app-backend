@@ -305,14 +305,14 @@ export class MatchParticipantStatsService {
       playerId,
       matchesPlayed,
       totalMvpWins,
-      spiderChart: {
+      spiderChart: matchesPlayed > 0 ? {
         shooting: Math.round(shootingScore * 100) / 100,
         passing: Math.round(passingScore * 100) / 100,
         dribbling: Math.round(dribblingScore * 100) / 100,
         tackling: Math.round(tacklingScore * 100) / 100,
         impact: Math.round(impactScore * 100) / 100,
-      },
-      detailedStats: {
+      } : {},
+      detailedStats: matchesPlayed > 0 ? {
         shooting: {
           shotAccuracy: Math.round(shotAccuracy * 100) / 100,
           shotsPerMatch: Math.round(shotsPerMatch * 100) / 100,
@@ -343,7 +343,7 @@ export class MatchParticipantStatsService {
           totalGoals,
           totalAssists,
         },
-      },
+      } : {},
     };
   }
 } 
