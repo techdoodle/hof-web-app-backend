@@ -14,39 +14,51 @@ async function bootstrap() {
     'http://localhost:3000', // Local frontend
     'http://localhost:3001', // Local frontend alternative port
     'https://hof-ui-git-main-techdoodle-3947s-projects.vercel.app',
-    'https://hof-ui.netlify.app/',
-    'hof-ui.netlify.com',
-    // process.env.FRONTEND_URL, // Production frontend URL
+    'https://hof-ui.netlify.app',
+    'https://hof-ui.netlify.com',
+    'https://app.humansoffootball.in',
+    process.env.FRONTEND_URL, // Production frontend URL from environment
   ].filter(Boolean); // Remove undefined values
 
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) {
-        console.log('no origin');
+        console.log('Request with no origin - allowing');
         return callback(null, true);
       }
-      console.log('allowedOrigins', allowedOrigins);
+      
+      console.log(`Incoming request from origin: ${origin}`);
+      console.log('Allowed origins:', allowedOrigins);
       
       // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
-        console.log('in the allowed origins', origin);
+        console.log(`Origin ${origin} is in allowed list`);
         return callback(null, true);
       }
       
       // For development, allow localhost variations
       if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
-        console.log('in the localhost', origin);
+        console.log(`Development mode - allowing localhost origin: ${origin}`);
         return callback(null, true);
       }
       
-      console.log(`CORS blocked origin: ${origin}`);
-      return callback(new Error('Not allowed by CORS'));
+      // Allow all origins temporarily for debugging (remove this in production)
+      console.log(`Allowing origin temporarily for debugging: ${origin}`);
+      return callback(null, true);
+      
+      // Uncomment this when you want to restrict origins
+      // console.log(`CORS blocked origin: ${origin}`);
+      // return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Content-Length', 'X-Requested-With'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
+
   
   await app.listen(process.env.PORT || 3000); 
   console.log(`Server is running on port ${process.env.PORT}`);
