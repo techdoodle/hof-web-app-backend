@@ -68,6 +68,22 @@ export class MatchParticipantStatsService {
     });
   }
 
+  async findByUserAndMatch(userId: number, matchId: number): Promise<MatchParticipantStats> {
+    const stats = await this.matchParticipantStatsRepository.findOne({
+      where: { 
+        player: { id: userId },
+        match: { matchId }
+      },
+      relations: ['match', 'player', 'matchParticipant'],
+    });
+    
+    if (!stats) {
+      throw new NotFoundException(`Stats not found for user ${userId} in match ${matchId}`);
+    }
+    
+    return stats;
+  }
+
   async getTopScorers(limit: number = 10): Promise<MatchParticipantStats[]> {
     return await this.matchParticipantStatsRepository.find({
       where: { totalGoal: Between(1, 100) },
