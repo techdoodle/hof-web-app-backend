@@ -71,7 +71,7 @@ export class MatchParticipantsService {
   async findByUser(userId: number): Promise<MatchParticipant[]> {
     return await this.matchParticipantRepository.find({
       where: { user: { id: userId } },
-      relations: ['match', 'user'],
+      relations: ['match', 'match.venue', 'user'],
       order: { createdAt: 'DESC' },
     });
   }
