@@ -53,6 +53,21 @@ export class MatchParticipantStatsController {
     return await this.matchParticipantStatsService.findByMatchParticipant(matchParticipantId);
   }
 
+  @Get('player/:playerId/match/:matchId')
+  async findByUserAndMatch(
+    @Param('playerId', ParseIntPipe) playerId: number,
+    @Param('matchId', ParseIntPipe) matchId: number
+  ): Promise<MatchParticipantStats> {
+    try {
+      return await this.matchParticipantStatsService.findByUserAndMatch(playerId, matchId);
+    } catch (error) {
+      throw new HttpException(
+        `Failed to get stats for player ${playerId} in match ${matchId}: ${error.message}`,
+        HttpStatus.NOT_FOUND
+      );
+    }
+  }
+
   @Get('leaderboard/scorers')
   async getTopScorers(@Query('limit') limit?: string): Promise<MatchParticipantStats[]> {
     const limitNum = limit ? parseInt(limit, 10) : 10;

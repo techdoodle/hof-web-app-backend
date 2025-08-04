@@ -20,6 +20,10 @@ export class MatchParticipantStats {
   @JoinColumn({ name: 'match_participant_id' })
   matchParticipant: MatchParticipant;
 
+  // NVMP flag
+  @Column({ name: 'is_mvp', type: 'boolean', default: false, nullable: false })
+  isMvp: boolean;
+
   // Passing
   @Column({ name: 'total_passing_actions', type: 'int', nullable: true })
   totalPassingActions: number;
