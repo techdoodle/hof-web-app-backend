@@ -13,8 +13,8 @@ export class ImageProcessingService {
     private configService: ConfigService,
     private firebaseStorageService: FirebaseStorageService
   ) {
-    // this.pythonServiceUrl = this.configService.get<string>('PYTHON_SERVICE_URL') || 'http://localhost:8001';
-    this.pythonServiceUrl = 'http://localhost:8001';
+    this.pythonServiceUrl = this.configService.get<string>('PYTHON_SERVICE_URL') || 'http://localhost:8001';
+    // this.pythonServiceUrl = 'http://localhost:8001';
   }
 
   async processProfilePicture(file: Express.Multer.File, userId: string | number): Promise<string> {
