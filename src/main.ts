@@ -17,6 +17,7 @@ async function bootstrap() {
     'https://hof-ui.netlify.app',
     'https://hof-ui.netlify.com',
     'https://app.humansoffootball.in',
+    'https://hof-python-env-production.up.railway.app',
     process.env.FRONTEND_URL, // Production frontend URL from environment
   ].filter(Boolean); // Remove undefined values
 
