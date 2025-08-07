@@ -13,7 +13,8 @@ export class ImageProcessingService {
     private configService: ConfigService,
     private firebaseStorageService: FirebaseStorageService
   ) {
-    this.pythonServiceUrl = this.configService.get<string>('PYTHON_SERVICE_URL') || 'http://localhost:8001';
+    // this.pythonServiceUrl = this.configService.get<string>('PYTHON_SERVICE_URL') || 'http://localhost:8001';
+    this.pythonServiceUrl = 'http://localhost:8001';
   }
 
   async processProfilePicture(file: Express.Multer.File, userId: string | number): Promise<string> {
@@ -74,29 +75,7 @@ export class ImageProcessingService {
     }
   }
 
-  async extractFaceFromBase64(imageData: string, userId: string | number): Promise<string> {
-    try {
-      // Convert base64 to buffer
-      const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
-      
-      // Detect mime type from base64 data
-      const mimeType = this.getMimeTypeFromBase64(imageData);
-      
-      // Send to Python service for face extraction
-      const faceImageBuffer = await this.sendToPythonServiceForFaceExtraction(imageBuffer, mimeType);
-      
-      // Store face image
-      const faceImageUrl = await this.storeProcessedImage(faceImageBuffer, userId);
-      
-      return faceImageUrl;
-    } catch (error) {
-      throw new HttpException(
-        `Face extraction failed: ${error.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
-  }
+
 
   private async sendToPythonService(imageBuffer: Buffer, mimeType: string): Promise<Buffer> {
     try {
@@ -111,7 +90,7 @@ export class ImageProcessingService {
       
       // Send to Python service with SSL configuration and timeout
       const response = await axios.post(
-        `${this.pythonServiceUrl}/process-selfie`,
+        `${this.pythonServiceUrl}/process-selfie/`,
         formData,
         {
           headers: {
@@ -146,51 +125,7 @@ export class ImageProcessingService {
     }
   }
 
-  private async sendToPythonServiceForFaceExtraction(imageBuffer: Buffer, mimeType: string): Promise<Buffer> {
-    try {
-      // Create form data for Python service
-      const formData = new FormData();
-      formData.append('image', imageBuffer, {
-        filename: 'face.jpg',
-        contentType: mimeType
-      });
 
-      console.log(`Sending face extraction request to Python service: ${this.pythonServiceUrl}/extract-face`);
-
-      // Send to Python service for face extraction with SSL configuration
-      const response = await axios.post(
-        `${this.pythonServiceUrl}/extract-face`,
-        formData,
-        {
-          headers: {
-            ...formData.getHeaders(),
-          },
-          responseType: 'arraybuffer',
-          timeout: 30000, // 30 second timeout
-          maxContentLength: 50 * 1024 * 1024, // 50MB max
-          maxBodyLength: 50 * 1024 * 1024, // 50MB max
-          // SSL configuration for Railway
-          httpsAgent: new (require('https').Agent)({
-            rejectUnauthorized: false, // Allow self-signed certificates
-            secureProtocol: 'TLSv1_2_method',
-          }),
-        }
-      );
-
-      console.log(`Face extraction response received, size: ${response.data.length} bytes`);
-      return Buffer.from(response.data);
-    } catch (error) {
-      console.error('Python face extraction error:', error);
-      if (error.code === 'ECONNABORTED') {
-        console.log('Face extraction timed out, falling back to regular processing');
-      }
-      if (error.code === 'ERR_SSL_DECRYPTION_FAILED_OR_BAD_RECORD_MAC') {
-        console.log('SSL error in face extraction, falling back to regular processing');
-      }
-      // Fallback to regular processing if face extraction fails
-      return await this.sendToPythonService(imageBuffer, mimeType);
-    }
-  }
 
   private async storeProcessedImage(imageBuffer: Buffer, userId: string | number): Promise<string> {
     try {

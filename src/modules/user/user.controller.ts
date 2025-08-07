@@ -154,7 +154,7 @@ export class UserController {
         throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
       }
 
-      const faceImageUrl = await this.imageProcessingService.extractFaceFromBase64(body.imageData, userId);
+      const faceImageUrl = await this.imageProcessingService.processProfilePictureBase64(body.imageData, userId);
       
       return { 
         success: true,
