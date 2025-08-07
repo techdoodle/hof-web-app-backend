@@ -38,21 +38,35 @@ export class ImageProcessingService {
 
   async processProfilePictureBase64(imageData: string, userId: string | number): Promise<string> {
     try {
+      console.log('=== ImageProcessingService: Starting base64 processing ===');
+      
       // Convert base64 to buffer
       const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
       const imageBuffer = Buffer.from(base64Data, 'base64');
+      console.log(`Image buffer size: ${imageBuffer.length} bytes`);
       
       // Detect mime type from base64 data
       const mimeType = this.getMimeTypeFromBase64(imageData);
+      console.log(`Detected mime type: ${mimeType}`);
       
       // Send to Python service for processing
+      console.log('Sending to Python service...');
+      const pythonStartTime = Date.now();
       const processedImageBuffer = await this.sendToPythonService(imageBuffer, mimeType);
+      const pythonEndTime = Date.now();
+      console.log(`Python service processing took: ${pythonEndTime - pythonStartTime}ms`);
       
       // Store processed image
+      console.log('Storing processed image...');
+      const storageStartTime = Date.now();
       const processedImageUrl = await this.storeProcessedImage(processedImageBuffer, userId);
+      const storageEndTime = Date.now();
+      console.log(`Image storage took: ${storageEndTime - storageStartTime}ms`);
       
+      console.log('=== ImageProcessingService: Processing completed ===');
       return processedImageUrl;
     } catch (error) {
+      console.error('ImageProcessingService error:', error);
       throw new HttpException(
         `Image processing failed: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR
@@ -93,7 +107,9 @@ export class ImageProcessingService {
         contentType: mimeType
       });
 
-      // Send to Python service
+      console.log(`Sending request to Python service: ${this.pythonServiceUrl}/process-selfie`);
+      
+      // Send to Python service with SSL configuration and timeout
       const response = await axios.post(
         `${this.pythonServiceUrl}/process-selfie`,
         formData,
@@ -101,13 +117,31 @@ export class ImageProcessingService {
           headers: {
             ...formData.getHeaders(),
           },
-          responseType: 'arraybuffer'
+          responseType: 'arraybuffer',
+          timeout: 75000, // 75 second timeout
+          maxContentLength: 50 * 1024 * 1024, // 50MB max
+          maxBodyLength: 50 * 1024 * 1024, // 50MB max
+          // SSL configuration for Railway
+          httpsAgent: new (require('https').Agent)({
+            rejectUnauthorized: false, // Allow self-signed certificates
+            secureProtocol: 'TLSv1_2_method',
+          }),
         }
       );
 
+      console.log(`Python service response received, size: ${response.data.length} bytes`);
       return Buffer.from(response.data);
     } catch (error) {
       console.error('Python service error:', error);
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Python service request timed out after 75 seconds');
+      }
+      if (error.code === 'ERR_SSL_DECRYPTION_FAILED_OR_BAD_RECORD_MAC') {
+        throw new Error('SSL/TLS connection failed. Please check the Python service URL and SSL configuration.');
+      }
+      if (error.response) {
+        throw new Error(`Python service error: ${error.response.status} - ${error.response.statusText}`);
+      }
       throw new Error(`Python service communication failed: ${error.message}`);
     }
   }
@@ -121,7 +155,9 @@ export class ImageProcessingService {
         contentType: mimeType
       });
 
-      // Send to Python service for face extraction
+      console.log(`Sending face extraction request to Python service: ${this.pythonServiceUrl}/extract-face`);
+
+      // Send to Python service for face extraction with SSL configuration
       const response = await axios.post(
         `${this.pythonServiceUrl}/extract-face`,
         formData,
@@ -129,13 +165,28 @@ export class ImageProcessingService {
           headers: {
             ...formData.getHeaders(),
           },
-          responseType: 'arraybuffer'
+          responseType: 'arraybuffer',
+          timeout: 30000, // 30 second timeout
+          maxContentLength: 50 * 1024 * 1024, // 50MB max
+          maxBodyLength: 50 * 1024 * 1024, // 50MB max
+          // SSL configuration for Railway
+          httpsAgent: new (require('https').Agent)({
+            rejectUnauthorized: false, // Allow self-signed certificates
+            secureProtocol: 'TLSv1_2_method',
+          }),
         }
       );
 
+      console.log(`Face extraction response received, size: ${response.data.length} bytes`);
       return Buffer.from(response.data);
     } catch (error) {
       console.error('Python face extraction error:', error);
+      if (error.code === 'ECONNABORTED') {
+        console.log('Face extraction timed out, falling back to regular processing');
+      }
+      if (error.code === 'ERR_SSL_DECRYPTION_FAILED_OR_BAD_RECORD_MAC') {
+        console.log('SSL error in face extraction, falling back to regular processing');
+      }
       // Fallback to regular processing if face extraction fails
       return await this.sendToPythonService(imageBuffer, mimeType);
     }
