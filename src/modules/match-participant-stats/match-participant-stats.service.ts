@@ -75,7 +75,7 @@ export class MatchParticipantStatsService {
         player: { id: userId },
         match: { matchId }
       },
-      relations: ['match', 'player', 'matchParticipant'],
+      relations: ['match', 'match.venue', 'player', 'matchParticipant'],
     });
     
     if (!stats) {
