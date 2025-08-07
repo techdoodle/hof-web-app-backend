@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { MatchParticipantStats } from './match-participant-stats.entity';
+import { PlayerCategory } from '../../common/enums/player-category.enum';
 
 @Injectable()
 export class MatchParticipantStatsService {
@@ -246,11 +247,13 @@ export class MatchParticipantStatsService {
   }
 
   async getPlayerSpiderChartStats(playerId: number): Promise<any> {
-    // Get all stats for the player with better NULL handling
+    // Get all stats for the player with better NULL handling and join with user to get player category
     const rawStats = await this.matchParticipantStatsRepository
       .createQueryBuilder('stats')
+      .leftJoinAndSelect('stats.player', 'player')
       .select([
         'COUNT(*) as matchesPlayed',
+        'player.playerCategory as playerCategory',
         'AVG(COALESCE(stats.shotAccuracy, 0)) as avgShotAccuracy',
         'SUM(COALESCE(stats.totalShot, 0)) as totalShots',
         'SUM(COALESCE(stats.totalOnTargetShot, 0)) as totalOnTargetShots',
@@ -268,11 +271,21 @@ export class MatchParticipantStatsService {
         'SUM(COALESCE(stats.totalCompletePassingActions, 0)) as totalCompletePassingActions',
         'SUM(COALESCE(stats.steal, 0)) as totalSteals',
         'SUM(COALESCE(stats.interceptionSameTeam, 0)) as totalInterceptionSameTeam',
+        'SUM(COALESCE(stats.totalKeyPass, 0)) as totalKeyPass',
+        'SUM(COALESCE(stats.totalSave, 0)) as totalSave',
+        'SUM(COALESCE(stats.totalCatch, 0)) as totalCatch',
+        'SUM(COALESCE(stats.totalPunch, 0)) as totalPunch',
+        'SUM(COALESCE(stats.totalClearance, 0)) as totalClearance',
+        'SUM(COALESCE(stats.totalMiscontrol, 0)) as totalMiscontrol',
+        'SUM(COALESCE(stats.blockedShotDefensive, 0)) as totalBlocks',
+        'SUM(COALESCE(stats.totalPass, 0)) as totalPasses',
       ])
       .where('stats.player.id = :playerId', { playerId })
+      .groupBy('player.playerCategory')
       .getRawOne();
     
     const matchesPlayed = parseInt(rawStats.matchesplayed) || 0; // Avoid division by zero
+    const playerCategory = rawStats.playercategory || null;
 
     // Extract values and handle percentage conversion (assuming percentages stored as decimals: 0.8 = 80%)
     const shotAccuracy = (parseFloat(rawStats.avgshotaccuracy) || 0) * 100; // Convert to percentage
@@ -300,6 +313,17 @@ export class MatchParticipantStatsService {
     const totalInterceptionSameTeam = parseInt(rawStats.totalinterceptionsameteam) || 0;
     const impactPerMatch = (totalGoals + totalAssists) / matchesPlayed || 0;
 
+    // Extract additional stats
+    const totalKeyPass = parseInt(rawStats.totalkeypass) || 0;
+    const totalSave = parseInt(rawStats.totalsave) || 0;
+    const totalCatch = parseInt(rawStats.totalcatch) || 0;
+    const totalPunch = parseInt(rawStats.totalpunch) || 0;
+    const totalClearance = parseInt(rawStats.totalclearance) || 0;
+    const totalMiscontrol = parseInt(rawStats.totalmiscontrol) || 0;
+    const totalBlocks = parseInt(rawStats.totalblocks) || 0;
+    const totalPasses = parseInt(rawStats.totalpasses) || 0;
+    const totalSuccessfulDribbles = parseInt(rawStats.totalsuccessfuldribbles) || 0;
+
     // Calculate normalized values (0-100) for each axis with improved formulas
     
     // 1. Shooting: Prioritize accuracy, bonus for volume
@@ -317,8 +341,60 @@ export class MatchParticipantStatsService {
     // 5. Impact: Goals and assists with adjusted scaling (1.5 goals+assists per match = 100)
     const impactScore = Math.min(100, (impactPerMatch / 1.5) * 100);
 
+    // Helper function to get category-specific stats
+    const getCategorySpecificStats = () => {
+      const commonStats = {
+        goals: totalGoals,
+        assists: totalAssists,
+        passingAccuracy: Math.round(Math.max(overallPassingAccuracy, openPlayPassingAccuracy) * 100) / 100,
+      };
+
+      switch (playerCategory) {
+        case PlayerCategory.GOALKEEPER:
+          return {
+            ...commonStats,
+            totalSave,
+            totalCatch,
+            totalPunch,
+            totalClearance,
+            totalMiscontrol,
+            totalKeyPass,
+          };
+        case PlayerCategory.DEFENDER:
+          return {
+            ...commonStats,
+            totalInterceptions: totalSteals + totalInterceptionSameTeam,
+            totalTackles: totalTackleAttempts,
+            blocks: totalBlocks,
+            totalDefensiveActions,
+            steals: totalSteals,
+          };
+        case PlayerCategory.FORWARD:
+          return {
+            ...commonStats,
+            totalShots,
+            shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+            dribbleAttempts: totalDribbleAttempts,
+            dribbleCompleted: totalSuccessfulDribbles,
+            totalPasses,
+            totalSuccessfulDribbles,
+          };
+        default:
+          return {
+            ...commonStats,
+            totalShots,
+            shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+            totalDefensiveActions,
+            totalTackles: totalTackleAttempts,
+            dribbleAttempts: totalDribbleAttempts,
+            totalSuccessfulDribbles,
+          };
+      }
+    };
+
     return {
       playerId,
+      playerCategory,
       matchesPlayed,
       totalMvpWins,
       spiderChart: matchesPlayed > 0 ? {
@@ -328,6 +404,7 @@ export class MatchParticipantStatsService {
         tackling: Math.round(tacklingScore * 100) / 100,
         impact: Math.round(impactScore * 100) / 100,
       } : {},
+      categorySpecificStats: matchesPlayed > 0 ? getCategorySpecificStats() : {},
       detailedStats: matchesPlayed > 0 ? {
         shooting: {
           shotAccuracy: Math.round(shotAccuracy * 100) / 100,
@@ -339,12 +416,14 @@ export class MatchParticipantStatsService {
           overallAccuracy: Math.round(overallPassingAccuracy * 100) / 100,
           openPlayAccuracy: Math.round(openPlayPassingAccuracy * 100) / 100,
           totalCompletePassingActions,
+          totalPasses,
+          totalKeyPass,
         },
         dribbling: {
           successRate: Math.round(dribbleSuccess * 100) / 100,
           attemptsPerMatch: Math.round(dribbleAttemptsPerMatch * 100) / 100,
           totalAttempts: totalDribbleAttempts,
-          totalSuccessful: parseInt(rawStats.totalsuccessfuldribbles) || 0,
+          totalSuccessful: totalSuccessfulDribbles,
         },
         tackling: {
           successRate: Math.round(tackleSuccessRate * 100) / 100,
@@ -353,11 +432,21 @@ export class MatchParticipantStatsService {
           successfulTackles,
           totalTackleAttempts,
           interceptions: totalSteals + totalInterceptionSameTeam,
+          blocks: totalBlocks,
+          steals: totalSteals,
+        },
+        goalkeeping: {
+          totalSave,
+          totalCatch,
+          totalPunch,
+          totalClearance,
+          totalMiscontrol,
         },
         impact: {
           goalsAndAssistsPerMatch: Math.round(impactPerMatch * 100) / 100,
           totalGoals,
           totalAssists,
+          totalKeyPass,
         },
       } : {},
     };
