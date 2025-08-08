@@ -1,6 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { FootballTeam } from '../football-teams/football-teams.entity';
 import { City } from '../cities/cities.entity';
+import { Gender } from '../../common/enums/gender.enum';
+import { PlayerCategory } from '../../common/enums/player-category.enum';
 
 @Entity('users')
 export class User {
@@ -26,8 +28,13 @@ export class User {
   @JoinColumn({ name: 'city_id' })
   city: City;
 
-  @Column({ name: 'gender', type: 'varchar', length: 10, nullable: true })
-  gender: string; // 'male', 'female', 'other'
+  @Column({ 
+    name: 'gender', 
+    type: 'enum', 
+    enum: Gender, 
+    nullable: true 
+  })
+  gender: Gender;
 
   @Column({ name: 'onboarding_complete', type: 'boolean', default: false })
   onboardingComplete: boolean;
@@ -41,8 +48,13 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
   lastLoginAt: Date;
 
-  @Column({ name: 'player_category', type: 'varchar', length: 10, nullable: true })
-  playerCategory: string; // 'forward', 'defender', 'goalkeeper'
+  @Column({ 
+    name: 'player_category', 
+    type: 'enum', 
+    enum: PlayerCategory, 
+    nullable: true 
+  })
+  playerCategory: PlayerCategory;
 
   @Column({ name: 'invites_left', type: 'int', default: 3 })
   invitesLeft: number;
