@@ -69,7 +69,7 @@ export class MatchParticipantStatsService {
     });
   }
 
-  async findByUserAndMatch(userId: number, matchId: number): Promise<MatchParticipantStats> {
+  async findByUserAndMatch(userId: number, matchId: number): Promise<any> {
     const stats = await this.matchParticipantStatsRepository.findOne({
       where: { 
         player: { id: userId },
@@ -81,8 +81,138 @@ export class MatchParticipantStatsService {
     if (!stats) {
       throw new NotFoundException(`Stats not found for user ${userId} in match ${matchId}`);
     }
+
+    const playerCategory = stats.player?.playerCategory || null;
+
+    // Calculate normalized scores for spider chart (0-100)
+    const shotAccuracy = (stats.shotAccuracy || 0) * 100;
+    const passingAccuracy = Math.max((stats.totalPassingAccuracy || 0) * 100, (stats.openPlayPassingAccuracy || 0) * 100);
+    const dribbleSuccess = (stats.dribbleSuccessPercent || 0) * 100;
     
-    return stats;
+    // Calculate tackle success rate
+    const successfulTackles = (stats.tackleInPossession || 0) + (stats.tackleTeamPossession || 0);
+    const totalTackleAttempts = (stats.tackleInPossession || 0) + (stats.tackleOob || 0) + (stats.tackleTurnover || 0) + (stats.tackleTeamPossession || 0);
+    const tackleSuccessRate = totalTackleAttempts > 0 ? (successfulTackles / totalTackleAttempts) * 100 : 0;
+    
+    // Calculate impact score based on goals and assists
+    const impactScore = Math.min(100, ((stats.totalGoal || 0) + (stats.totalAssist || 0)) * 25); // Scale to 100
+
+    // Normalize scores for spider chart
+    const shootingScore = Math.min(100, shotAccuracy);
+    const passingScore = Math.min(100, passingAccuracy);
+    const dribblingScore = Math.min(100, dribbleSuccess);
+    const tacklingScore = Math.min(100, tackleSuccessRate);
+
+    // Helper function to get category-specific stats for this match
+    const getCategorySpecificStats = () => {
+      const commonStats = {
+        goals: stats.totalGoal || 0,
+        assists: stats.totalAssist || 0,
+        passingAccuracy: Math.round(passingAccuracy * 100) / 100,
+      };
+
+      switch (playerCategory) {
+        case PlayerCategory.GOALKEEPER:
+          return {
+            ...commonStats,
+            totalSave: stats.totalSave || 0,
+            totalCatch: stats.totalCatch || 0,
+            totalPunch: stats.totalPunch || 0,
+            totalClearance: stats.totalClearance || 0,
+            totalMiscontrol: stats.totalMiscontrol || 0,
+            totalKeyPass: stats.totalKeyPass || 0,
+          };
+        case PlayerCategory.DEFENDER:
+          return {
+            ...commonStats,
+            totalInterceptions: (stats.steal || 0) + (stats.interceptionSameTeam || 0),
+            totalTackles: totalTackleAttempts,
+            blocks: stats.blockedShotDefensive || 0,
+            totalDefensiveActions: stats.totalDefensiveActions || 0,
+            steals: stats.steal || 0,
+          };
+        case PlayerCategory.FORWARD:
+          return {
+            ...commonStats,
+            totalShots: stats.totalShot || 0,
+            shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+            dribbleAttempts: stats.totalDribbleAttempt || 0,
+            dribbleCompleted: stats.totalSuccessfulDribble || 0,
+            totalPasses: stats.totalPass || 0,
+            totalSuccessfulDribbles: stats.totalSuccessfulDribble || 0,
+          };
+        default:
+          return {
+            ...commonStats,
+            totalShots: stats.totalShot || 0,
+            shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+            totalDefensiveActions: stats.totalDefensiveActions || 0,
+            totalTackles: totalTackleAttempts,
+            dribbleAttempts: stats.totalDribbleAttempt || 0,
+            totalSuccessfulDribbles: stats.totalSuccessfulDribble || 0,
+          };
+      }
+    };
+
+    return {
+      playerId: userId,
+      matchId: matchId,
+      playerCategory,
+      isMvp: stats.isMvp || false,
+      match: {
+        id: stats.match?.matchId,
+        venue: stats.match?.venue?.name || null,
+        startTime: stats.match?.startTime || null,
+      },
+      spiderChart: {
+        shooting: Math.round(shootingScore * 100) / 100,
+        passing: Math.round(passingScore * 100) / 100,
+        dribbling: Math.round(dribblingScore * 100) / 100,
+        tackling: Math.round(tacklingScore * 100) / 100,
+        impact: Math.round(impactScore * 100) / 100,
+      },
+      categorySpecificStats: getCategorySpecificStats(),
+      detailedStats: {
+        shooting: {
+          shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+          totalShots: stats.totalShot || 0,
+          totalOnTargetShots: stats.totalOnTargetShot || 0,
+        },
+        passing: {
+          overallAccuracy: Math.round((stats.totalPassingAccuracy || 0) * 10000) / 100,
+          openPlayAccuracy: Math.round((stats.openPlayPassingAccuracy || 0) * 10000) / 100,
+          totalCompletePassingActions: stats.totalCompletePassingActions || 0,
+          totalPasses: stats.totalPass || 0,
+          totalKeyPass: stats.totalKeyPass || 0,
+        },
+        dribbling: {
+          successRate: Math.round(dribbleSuccess * 100) / 100,
+          totalAttempts: stats.totalDribbleAttempt || 0,
+          totalSuccessful: stats.totalSuccessfulDribble || 0,
+        },
+        tackling: {
+          successRate: Math.round(tackleSuccessRate * 100) / 100,
+          totalDefensiveActions: stats.totalDefensiveActions || 0,
+          successfulTackles,
+          totalTackleAttempts,
+          interceptions: (stats.steal || 0) + (stats.interceptionSameTeam || 0),
+          blocks: stats.blockedShotDefensive || 0,
+          steals: stats.steal || 0,
+        },
+        goalkeeping: {
+          totalSave: stats.totalSave || 0,
+          totalCatch: stats.totalCatch || 0,
+          totalPunch: stats.totalPunch || 0,
+          totalClearance: stats.totalClearance || 0,
+          totalMiscontrol: stats.totalMiscontrol || 0,
+        },
+        impact: {
+          totalGoals: stats.totalGoal || 0,
+          totalAssists: stats.totalAssist || 0,
+          totalKeyPass: stats.totalKeyPass || 0,
+        },
+      },
+    };
   }
 
   async getTopScorers(limit: number = 10): Promise<MatchParticipantStats[]> {
