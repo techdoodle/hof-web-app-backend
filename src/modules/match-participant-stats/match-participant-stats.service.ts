@@ -158,7 +158,7 @@ export class MatchParticipantStatsService {
       playerId: userId,
       matchId: matchId,
       playerCategory,
-      isMvp: stats.isMvp || false,
+      // isMvp: stats.isMvp || false,
       match: {
         id: stats.match?.matchId,
         venue: stats.match?.venue?.name || null,
@@ -397,7 +397,7 @@ export class MatchParticipantStatsService {
         'SUM(COALESCE(stats.tackleInPossession, 0) + COALESCE(stats.tackleOob, 0) + COALESCE(stats.tackleTurnover, 0) + COALESCE(stats.tackleTeamPossession, 0)) as totalTackleAttempts',
         'SUM(COALESCE(stats.totalGoal, 0)) as totalGoals',
         'SUM(COALESCE(stats.totalAssist, 0)) as totalAssists',
-        'SUM(CASE WHEN stats.isMvp = true THEN 1 ELSE 0 END) as totalMvpWins',
+        // 'SUM(CASE WHEN stats.isMvp = true THEN 1 ELSE 0 END) as totalMvpWins',
         'SUM(COALESCE(stats.totalCompletePassingActions, 0)) as totalCompletePassingActions',
         'SUM(COALESCE(stats.steal, 0)) as totalSteals',
         'SUM(COALESCE(stats.interceptionSameTeam, 0)) as totalInterceptionSameTeam',
