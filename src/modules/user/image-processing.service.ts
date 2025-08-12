@@ -85,7 +85,7 @@ export class ImageProcessingService {
       const mimeType = this.getMimeTypeFromBase64(imageData);
 
       // Send to Python service for face extraction
-      const faceImageBuffer = await this.sendToPythonServiceForFaceExtraction(imageBuffer, mimeType);
+      const faceImageBuffer = await this.sendToPythonService(imageBuffer, mimeType);
 
       // Store face image
       const faceImageUrl = await this.storeProcessedImage(faceImageBuffer, userId);
