@@ -9,7 +9,7 @@ export class UserController {
   constructor(
     private readonly userService: UserService,
     private readonly imageProcessingService: ImageProcessingService
-  ) {}
+  ) { }
 
   @Post()
   create(@Body() data) {
@@ -58,12 +58,17 @@ export class UserController {
         throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
       }
 
+      const isServiceUp = await this.imageProcessingService.isImageServiceAvailable();
+      if (!isServiceUp) {
+        throw new HttpException('Image processing service unavailable', HttpStatus.SERVICE_UNAVAILABLE);
+      }
+
       const processedImageUrl = await this.imageProcessingService.processProfilePicture(file, userId);
-      
+
       // Update user record with the new profile picture URL
       await this.userService.update(userId, { profilePicture: processedImageUrl });
-      
-      return { 
+
+      return {
         success: true,
         url: processedImageUrl,
         message: 'Profile picture processed and uploaded successfully'
@@ -89,12 +94,17 @@ export class UserController {
         throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
       }
 
+      const isServiceUp = await this.imageProcessingService.isImageServiceAvailable();
+      if (!isServiceUp) {
+        throw new HttpException('Image processing service unavailable', HttpStatus.SERVICE_UNAVAILABLE);
+      }
+
       const processedImageUrl = await this.imageProcessingService.processProfilePictureBase64(body.imageData, userId);
-      
+
       // Update user record with the new profile picture URL
       await this.userService.update(userId, { profilePicture: processedImageUrl });
-      
-      return { 
+
+      return {
         success: true,
         url: processedImageUrl,
         message: 'Profile picture processed successfully'
@@ -117,7 +127,11 @@ export class UserController {
     try {
       console.log('Request user:', req.user);
       console.log('Request body keys:', Object.keys(body));
-      
+
+      const isServiceUp = await this.imageProcessingService.isImageServiceAvailable();
+      if (!isServiceUp) {
+        throw new HttpException('Image processing service unavailable', HttpStatus.SERVICE_UNAVAILABLE);
+      }
       const userId = req.user?.userId; // Assuming JWT payload has userId
       if (!userId) {
         console.log('No userId found in req.user:', req.user);
@@ -126,8 +140,8 @@ export class UserController {
 
       console.log('Processing image for userId:', userId);
       const processedImageUrl = await this.imageProcessingService.processProfilePictureBase64(body.imageData, userId);
-      
-      return { 
+
+      return {
         success: true,
         url: processedImageUrl,
         message: 'Profile picture processed successfully (not saved to profile)'
@@ -149,14 +163,18 @@ export class UserController {
     }
 
     try {
+      const isServiceUp = await this.imageProcessingService.isImageServiceAvailable();
+      if (!isServiceUp) {
+        throw new HttpException('Image processing service unavailable', HttpStatus.SERVICE_UNAVAILABLE);
+      }
       const userId = req.user?.userId;
       if (!userId) {
         throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
       }
 
       const faceImageUrl = await this.imageProcessingService.extractFaceFromBase64(body.imageData, userId);
-      
-      return { 
+
+      return {
         success: true,
         url: faceImageUrl,
         message: 'Face extracted successfully'
@@ -180,8 +198,8 @@ export class UserController {
       }
 
       const updatedUser = await this.userService.setWhatsappInviteOpt(userId);
-      
-      return { 
+
+      return {
         success: true,
         user: updatedUser,
         message: 'WhatsApp invite preferences updated successfully'
