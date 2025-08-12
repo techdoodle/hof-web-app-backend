@@ -131,7 +131,7 @@ export class MatchParticipantStatsService {
             totalDefensiveActions: stats.totalDefensiveActions || 0,
             steals: stats.steal || 0,
           };
-        case PlayerCategory.FORWARD:
+        case PlayerCategory.STRIKER:
           return {
             ...commonStats,
             totalShots: stats.totalShot || 0,
@@ -484,7 +484,7 @@ export class MatchParticipantStatsService {
             totalDefensiveActions,
             steals: totalSteals,
           };
-        case PlayerCategory.FORWARD:
+        case PlayerCategory.STRIKER:
           return {
             ...commonStats,
             totalShots,

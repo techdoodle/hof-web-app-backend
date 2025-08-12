@@ -1,5 +1,5 @@
 export enum PlayerCategory {
-  FORWARD = 'FORWARD',
+  STRIKER = 'STRIKER',
   DEFENDER = 'DEFENDER',
   GOALKEEPER = 'GOALKEEPER'
 } 
