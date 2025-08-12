@@ -21,13 +21,13 @@ export class ImageProcessingService {
     try {
       // Convert file to buffer if needed
       const imageBuffer = file.buffer;
-      
+
       // Send to Python service for processing
       const processedImageBuffer = await this.sendToPythonService(imageBuffer, file.mimetype);
-      
+
       // Store processed image with user ID
       const processedImageUrl = await this.storeProcessedImage(processedImageBuffer, userId);
-      
+
       return processedImageUrl;
     } catch (error) {
       throw new HttpException(
@@ -75,7 +75,29 @@ export class ImageProcessingService {
     }
   }
 
+  async extractFaceFromBase64(imageData: string, userId: string | number): Promise<string> {
+    try {
+      // Convert base64 to buffer
+      const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
+      const imageBuffer = Buffer.from(base64Data, 'base64');
 
+      // Detect mime type from base64 data
+      const mimeType = this.getMimeTypeFromBase64(imageData);
+
+      // Send to Python service for face extraction
+      const faceImageBuffer = await this.sendToPythonServiceForFaceExtraction(imageBuffer, mimeType);
+
+      // Store face image
+      const faceImageUrl = await this.storeProcessedImage(faceImageBuffer, userId);
+
+      return faceImageUrl;
+    } catch (error) {
+      throw new HttpException(
+        `Face extraction failed: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
 
   private async sendToPythonService(imageBuffer: Buffer, mimeType: string): Promise<Buffer> {
     try {
@@ -134,10 +156,19 @@ export class ImageProcessingService {
       return firebaseUrl;
     } catch (error) {
       console.error('Failed to upload to Firebase Storage:', error);
-      
+
       // Fallback to base64 data URL if Firebase fails
       const base64Image = imageBuffer.toString('base64');
       return `data:image/png;base64,${base64Image}`;
+    }
+  }
+
+  async isImageServiceAvailable(): Promise<boolean> {
+    try {
+      const response = await axios.get(`${this.pythonServiceUrl}/health`, { timeout: 2000 });
+      return response.status >= 200 && response.status < 300;
+    } catch (error) {
+      return false;
     }
   }
 
