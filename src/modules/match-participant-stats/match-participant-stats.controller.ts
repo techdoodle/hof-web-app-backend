@@ -1,12 +1,12 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Delete, 
-  Param, 
-  Body, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
   ParseIntPipe,
   UseGuards,
   HttpStatus,
@@ -16,9 +16,11 @@ import { MatchParticipantStatsService } from './match-participant-stats.service'
 import { MatchParticipantStats } from './match-participant-stats.entity';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
+
 @Controller('match-participant-stats')
 export class MatchParticipantStatsController {
-  constructor(private readonly matchParticipantStatsService: MatchParticipantStatsService) {}
+  constructor(private readonly matchParticipantStatsService: MatchParticipantStatsService) { }
+
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -33,25 +35,30 @@ export class MatchParticipantStatsController {
     }
   }
 
+
   @Get()
   async findAll(): Promise<MatchParticipantStats[]> {
     return await this.matchParticipantStatsService.findAll();
   }
+
 
   @Get('match/:matchId')
   async findByMatch(@Param('matchId', ParseIntPipe) matchId: number): Promise<MatchParticipantStats[]> {
     return await this.matchParticipantStatsService.findByMatch(matchId);
   }
 
+
   @Get('player/:playerId')
   async findByPlayer(@Param('playerId', ParseIntPipe) playerId: number): Promise<MatchParticipantStats[]> {
     return await this.matchParticipantStatsService.findByPlayer(playerId);
   }
 
+
   @Get('match-participant/:matchParticipantId')
   async findByMatchParticipant(@Param('matchParticipantId', ParseIntPipe) matchParticipantId: number): Promise<MatchParticipantStats[]> {
     return await this.matchParticipantStatsService.findByMatchParticipant(matchParticipantId);
   }
+
 
   @Get('player/:playerId/match/:matchId')
   async findByUserAndMatch(
@@ -68,11 +75,13 @@ export class MatchParticipantStatsController {
     }
   }
 
+
   @Get('leaderboard/scorers')
   async getTopScorers(@Query('limit') limit?: string): Promise<MatchParticipantStats[]> {
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return await this.matchParticipantStatsService.getTopScorers(limitNum);
   }
+
 
   @Get('leaderboard/assisters')
   async getTopAssisters(@Query('limit') limit?: string): Promise<MatchParticipantStats[]> {
@@ -80,14 +89,17 @@ export class MatchParticipantStatsController {
     return await this.matchParticipantStatsService.getTopAssisters(limitNum);
   }
 
-  @Get('player/:playerId/averages')
-  async getPlayerAverageStats(@Param('playerId', ParseIntPipe) playerId: number): Promise<any> {
-    return await this.matchParticipantStatsService.getPlayerAverageStats(playerId);
-  }
-
-  @Get('match/:matchId/summary')
-  async getMatchStats(@Param('matchId', ParseIntPipe) matchId: number): Promise<any> {
-    return await this.matchParticipantStatsService.getMatchStats(matchId);
+  @Get('leaderboard/overall')
+  async getOverallLeaderboard(@Query('limit') limit?: string): Promise<any[]> {
+    try {
+      const limitNum = limit ? parseInt(limit, 10) : 10;
+      return await this.matchParticipantStatsService.getPlayersLeaderboard(limitNum);
+    } catch (error) {
+      throw new HttpException(
+        `Failed to get overall leaderboard: ${error.message}`,
+        HttpStatus.BAD_REQUEST
+      );
+    }
   }
 
   @Get('leaderboard/:category')
@@ -99,10 +111,24 @@ export class MatchParticipantStatsController {
     return await this.matchParticipantStatsService.getPlayersByStatCategory(category, limitNum);
   }
 
+
+  @Get('player/:playerId/averages')
+  async getPlayerAverageStats(@Param('playerId', ParseIntPipe) playerId: number): Promise<any> {
+    return await this.matchParticipantStatsService.getPlayerAverageStats(playerId);
+  }
+
+
+  @Get('match/:matchId/summary')
+  async getMatchStats(@Param('matchId', ParseIntPipe) matchId: number): Promise<any> {
+    return await this.matchParticipantStatsService.getMatchStats(matchId);
+  }
+
+
   @Get('match/:matchId/team-comparison')
   async getTeamStatsComparison(@Param('matchId', ParseIntPipe) matchId: number): Promise<any> {
     return await this.matchParticipantStatsService.getTeamStatsComparison(matchId);
   }
+
 
   @Get('player/:playerId/season/:year')
   async getSeasonStats(
@@ -118,6 +144,7 @@ export class MatchParticipantStatsController {
     return await this.matchParticipantStatsService.getSeasonStats(playerId, year);
   }
 
+
   @Get('player/:playerId/spider-chart')
   async getPlayerSpiderChartStats(@Param('playerId', ParseIntPipe) playerId: number): Promise<any> {
     try {
@@ -130,10 +157,12 @@ export class MatchParticipantStatsController {
     }
   }
 
+
   @Get(':matchStatsId')
   async findOne(@Param('matchStatsId', ParseIntPipe) matchStatsId: number): Promise<MatchParticipantStats> {
     return await this.matchParticipantStatsService.findOne(matchStatsId);
   }
+
 
   @Put(':matchStatsId')
   @UseGuards(JwtAuthGuard)
@@ -151,10 +180,11 @@ export class MatchParticipantStatsController {
     }
   }
 
+
   @Delete(':matchStatsId')
   @UseGuards(JwtAuthGuard)
   async remove(@Param('matchStatsId', ParseIntPipe) matchStatsId: number): Promise<{ message: string }> {
     await this.matchParticipantStatsService.remove(matchStatsId);
     return { message: 'Match participant stats deleted successfully' };
   }
-} 
+}

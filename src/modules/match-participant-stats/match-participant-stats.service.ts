@@ -567,4 +567,108 @@ export class MatchParticipantStatsService {
     };
   }
 
+  async getPlayersLeaderboard(limit: number = 10): Promise<any[]> {
+    // Get all players who have participated in matches
+    const playersWithStats = await this.matchParticipantStatsRepository
+      .createQueryBuilder('stats')
+      .leftJoinAndSelect('stats.player', 'player')
+      .select([
+        'player.id as playerId',
+        'player.firstName as firstName',
+        'player.lastName as lastName',
+        'player.profilePicture as profilePicture',
+        'player.playerCategory as playerCategory',
+        'COUNT(*) as matchesPlayed',
+        'AVG(COALESCE(stats.shotAccuracy, 0)) as avgShotAccuracy',
+        'SUM(COALESCE(stats.totalShot, 0)) as totalShots',
+        'AVG(COALESCE(stats.totalPassingAccuracy, 0)) as avgPassingAccuracy',
+        'AVG(COALESCE(stats.openPlayPassingAccuracy, 0)) as avgOpenPlayPassingAccuracy',
+        'AVG(COALESCE(stats.dribbleSuccessPercent, 0)) as avgDribbleSuccess',
+        'SUM(COALESCE(stats.totalDribbleAttempt, 0)) as totalDribbleAttempts',
+        'SUM(COALESCE(stats.totalDefensiveActions, 0)) as totalDefensiveActions',
+        'SUM(COALESCE(stats.tackleInPossession, 0) + COALESCE(stats.tackleTeamPossession, 0)) as successfulTackles',
+        'SUM(COALESCE(stats.tackleInPossession, 0) + COALESCE(stats.tackleOob, 0) + COALESCE(stats.tackleTurnover, 0) + COALESCE(stats.tackleTeamPossession, 0)) as totalTackleAttempts',
+        'SUM(COALESCE(stats.totalGoal, 0)) as totalGoals',
+        'SUM(COALESCE(stats.totalAssist, 0)) as totalAssists',
+      ])
+      .groupBy('player.id, player.firstName, player.lastName, player.profilePicture, player.playerCategory')
+      .having('COUNT(*) > 0') // Only include players with at least one match
+      .getRawMany();
+
+    // Calculate spider chart scores for each player
+    const leaderboardData = playersWithStats.map((rawStats) => {
+      const playerId = parseInt(rawStats.playerid);
+      const firstName = rawStats.firstname || '';
+      const lastName = rawStats.lastname || '';
+      const profilePicture = rawStats.profilepicture || '';
+      const playerCategory = rawStats.playercategory;
+      const matchesPlayed = parseInt(rawStats.matchesplayed) || 0;
+
+      if (matchesPlayed === 0) return null;
+
+      // Calculate individual scores using same logic as spider chart
+      const shotAccuracy = (parseFloat(rawStats.avgshotaccuracy) || 0) * 100;
+      const totalShots = parseInt(rawStats.totalshots) || 0;
+      const shotsPerMatch = totalShots / matchesPlayed || 0;
+
+      const overallPassingAccuracy = (parseFloat(rawStats.avgpassingaccuracy) || 0) * 100;
+      const openPlayPassingAccuracy = (parseFloat(rawStats.avgopenplaypassingaccuracy) || 0) * 100;
+
+      const dribbleSuccess = (parseFloat(rawStats.avgdribblesuccess) || 0) * 100;
+      const totalDribbleAttempts = parseInt(rawStats.totaldribbleattempts) || 0;
+      const dribbleAttemptsPerMatch = totalDribbleAttempts / matchesPlayed || 0;
+
+      const successfulTackles = parseInt(rawStats.successfultackles) || 0;
+      const totalTackleAttempts = parseInt(rawStats.totaltackleattempts) || 0;
+      const tackleSuccessRate = (successfulTackles / totalTackleAttempts || 0) * 100;
+      const totalDefensiveActions = parseInt(rawStats.totaldefensiveactions) || 0;
+      const defensiveActionsPerMatch = totalDefensiveActions / matchesPlayed || 0;
+
+      const totalGoals = parseInt(rawStats.totalgoals) || 0;
+      const totalAssists = parseInt(rawStats.totalassists) || 0;
+      const impactPerMatch = (totalGoals + totalAssists) / matchesPlayed || 0;
+
+      // Calculate spider chart scores
+      const shootingScore = Math.min(100, (shotAccuracy * 0.8) + (Math.min(shotsPerMatch * 4, 20) * 0.2));
+      const passingScore = Math.max(overallPassingAccuracy, openPlayPassingAccuracy);
+      const dribblingScore = Math.min(100, (dribbleSuccess * 0.9) + (Math.min(dribbleAttemptsPerMatch * 2, 10) * 0.1));
+      const tacklingScore = Math.min(100, (tackleSuccessRate * 0.7) + (Math.min(defensiveActionsPerMatch * 1.5, 30) * 0.3));
+      const impactScore = Math.min(100, (impactPerMatch / 1.5) * 100);
+
+      // Calculate overall score by averaging all spider chart scores
+      const overallScore = (shootingScore + passingScore + dribblingScore + tacklingScore + impactScore) / 5;
+
+      return {
+        id: playerId,
+        name: `${firstName} ${lastName}`.trim() || `Player ${playerId}`,
+        score: Math.round(overallScore),
+        suffix: 'xp',
+        imageUrl: profilePicture || '',
+        playerCategory,
+        matchesPlayed,
+        spiderChart: {
+          shooting: Math.round(shootingScore * 100) / 100,
+          passing: Math.round(passingScore * 100) / 100,
+          dribbling: Math.round(dribblingScore * 100) / 100,
+          tackling: Math.round(tacklingScore * 100) / 100,
+          impact: Math.round(impactScore * 100) / 100,
+        }
+      };
+    }).filter(player => player !== null);
+
+    // Sort by score and add ranks
+    leaderboardData.sort((a, b) => b.score - a.score);
+    
+    const rankedLeaderboard = leaderboardData.slice(0, limit).map((player, index) => ({
+      id: player.id,
+      rank: index + 1,
+      name: player.name,
+      score: player.score,
+      suffix: player.suffix,
+      imageUrl: player.imageUrl,
+    }));
+
+    return rankedLeaderboard;
+  }
+
 } 
