@@ -1,9 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { Match } from '../matches/matches.entity';
 import { User } from '../user/user.entity';
 import { MatchParticipant } from '../match-participants/match-participants.entity';
 
 @Entity('match_participant_stats')
+@Unique(['match', 'player'])
 export class MatchParticipantStats {
   @PrimaryGeneratedColumn('increment', { name: 'match_stats_id' })
   matchStatsId: number;

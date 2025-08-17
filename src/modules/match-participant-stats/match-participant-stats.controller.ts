@@ -10,16 +10,24 @@ import {
   ParseIntPipe,
   UseGuards,
   HttpStatus,
-  HttpException
+  HttpException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { MatchParticipantStatsService } from './match-participant-stats.service';
 import { MatchParticipantStats } from './match-participant-stats.entity';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CsvUploadService } from './csv-upload.service';
+import { CsvUploadResponseDto } from './dto/csv-upload.dto';
 
 
 @Controller('match-participant-stats')
 export class MatchParticipantStatsController {
-  constructor(private readonly matchParticipantStatsService: MatchParticipantStatsService) { }
+  constructor(
+    private readonly matchParticipantStatsService: MatchParticipantStatsService,
+    private readonly csvUploadService: CsvUploadService,
+  ) { }
 
 
   @Post()
@@ -30,6 +38,23 @@ export class MatchParticipantStatsController {
     } catch (error) {
       throw new HttpException(
         `Failed to create match participant stats: ${error.message}`,
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+
+  @Post('upload-csv')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadCsv(
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<CsvUploadResponseDto> {
+    try {
+      return await this.csvUploadService.uploadCsv(file);
+    } catch (error) {
+      throw new HttpException(
+        `Failed to upload CSV: ${error.message}`,
         HttpStatus.BAD_REQUEST
       );
     }

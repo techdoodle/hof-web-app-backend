@@ -74,6 +74,13 @@ export class UserService {
     });
   }
 
+  async findByEmail(email: string) {
+    return this.userRepository.findOne({ 
+      where: { email },
+      relations: ['city', 'preferredTeam']
+    });
+  }
+
   async setWhatsappInviteOpt(userId: number): Promise<User> {
     const user = await this.userRepository.findOne({
       where: { id: userId },

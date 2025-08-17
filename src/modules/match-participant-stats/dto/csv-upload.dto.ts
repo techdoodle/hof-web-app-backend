@@ -1,0 +1,383 @@
+import { IsString, IsNumber, IsBoolean, IsOptional, IsEnum, ValidateIf, IsEmail } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { TeamSide } from '../../../common/enums/team-side.enum';
+
+export class CsvRowDto {
+  // User identification - either phone number or email
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  // Custom validation to ensure at least one identification method is provided
+  @ValidateIf(o => !o.phoneNumber && !o.email)
+  @IsString({ message: 'Either phoneNumber or email must be provided' })
+  userIdentifier?: string;
+
+  // Match Participant fields
+  @Type(() => Number)
+  @IsNumber()
+  matchId: number;
+
+  @IsEnum(TeamSide)
+  teamSide: TeamSide;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  paidStatsOptIn?: boolean = false;
+
+  // Match Participant Stats fields
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isMvp?: boolean = false;
+
+  // Passing stats
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalPassingActions?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalCompletePassingActions?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalIncompletePassingActions?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalPassingAccuracy?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalOpenPlayPassingActions?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalOpenPlayCompletePassingActions?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalOpenPlayIncompletePassingActions?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayPassingAccuracy?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalPass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalCompletePass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalIncompletePass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalThroughBall?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalCompleteThroughBall?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalIncompleteThroughBall?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalLongPass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalCompleteLongPass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalIncompleteLongPass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalCross?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalCompleteCross?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalIncompleteCross?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayCompletePass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayIncompletePass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayCompleteThroughBall?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayIncompleteThroughBall?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayCompleteLongPass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayIncompleteLongPass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayCompleteCross?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPlayIncompleteCross?: number;
+
+  // Shooting stats
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalShot?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalOnTargetShot?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalOffTargetShot?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalBlockedShotTaken?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalOtherShot?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  shotAccuracy?: number;
+
+  // Attack stats
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalGoal?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalAssist?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalKeyPass?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalDribbleAttempt?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalSuccessfulDribble?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalUnsuccessfulDribble?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  dribbleSuccessPercent?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalOffensiveActions?: number;
+
+  // Defense stats
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalDefensiveActions?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  tackleInPossession?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  tackleOob?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  tackleTurnover?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  tackleTeamPossession?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  recovery?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  recoveryOther?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  blockedShotDefensive?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  steal?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  interceptionSameTeam?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  deflectionTurnover?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  deflectionOob?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalClearance?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalSave?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalCatch?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalPunch?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalMiscontrol?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalWoodwork?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalOwnGoals?: number;
+
+  // Team stats
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  teamBlackGoals?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  teamWhiteGoals?: number;
+}
+
+export class CsvUploadResponseDto {
+  @IsNumber()
+  totalRows: number;
+
+  @IsNumber()
+  successfulRows: number;
+
+  @IsNumber()
+  failedRows: number;
+
+  @IsOptional()
+  errors?: Array<{
+    row: number;
+    errors: string[];
+    data?: any;
+  }>;
+
+  @IsOptional()
+  warnings?: Array<{
+    row: number;
+    message: string;
+    data?: any;
+  }>;
+} 

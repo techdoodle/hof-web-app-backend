@@ -1,0 +1,327 @@
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import { validate } from 'class-validator';
+import { plainToClass } from 'class-transformer';
+import * as csv from 'csv-parser';
+import { Readable } from 'stream';
+
+import { MatchParticipantStats } from './match-participant-stats.entity';
+import { MatchParticipant } from '../match-participants/match-participants.entity';
+import { User } from '../user/user.entity';
+import { Match } from '../matches/matches.entity';
+import { CsvRowDto, CsvUploadResponseDto } from './dto/csv-upload.dto';
+import { TeamSide } from '../../common/enums/team-side.enum';
+
+@Injectable()
+export class CsvUploadService {
+  private readonly logger = new Logger(CsvUploadService.name);
+
+  constructor(
+    @InjectRepository(MatchParticipantStats)
+    private readonly matchParticipantStatsRepository: Repository<MatchParticipantStats>,
+    @InjectRepository(MatchParticipant)
+    private readonly matchParticipantRepository: Repository<MatchParticipant>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(Match)
+    private readonly matchRepository: Repository<Match>,
+    private readonly dataSource: DataSource,
+  ) {}
+
+  async uploadCsv(file: Express.Multer.File): Promise<CsvUploadResponseDto> {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    if (!file.originalname.toLowerCase().endsWith('.csv')) {
+      throw new BadRequestException('File must be a CSV');
+    }
+
+    const csvData = await this.parseCsv(file.buffer);
+    return await this.processCsvData(csvData);
+  }
+
+  private async parseCsv(buffer: Buffer): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      const results: any[] = [];
+      const stream = Readable.from(buffer.toString());
+
+      stream
+        .pipe(csv({
+          mapHeaders: ({ header }) => header.trim().replace(/\s+/g, ''),
+        }))
+        .on('data', (data) => {
+          // Convert empty strings to null for optional fields
+          const cleanedData = Object.fromEntries(
+            Object.entries(data).map(([key, value]) => [
+              key,
+              value === '' || value === undefined ? null : value
+            ])
+          );
+          
+          // Skip empty rows (rows where all required fields are null/empty)
+          const hasRequiredData = cleanedData.phoneNumber || cleanedData.email || cleanedData.matchId;
+          if (hasRequiredData) {
+            results.push(cleanedData);
+          }
+        })
+        .on('end', () => resolve(results))
+        .on('error', (error) => reject(error));
+    });
+  }
+
+  private async processCsvData(csvData: any[]): Promise<CsvUploadResponseDto> {
+    const response: CsvUploadResponseDto = {
+      totalRows: csvData.length,
+      successfulRows: 0,
+      failedRows: 0,
+      errors: [],
+      warnings: [],
+    };
+
+    // Track processed combinations to detect duplicates in the CSV itself
+    const processedCombinations = new Set<string>();
+
+    for (let i = 0; i < csvData.length; i++) {
+      const rowIndex = i + 1; // 1-based for user readability
+      
+      try {
+        // Check for duplicate combinations in the CSV
+        const userIdentifier = csvData[i].phoneNumber || csvData[i].email;
+        const matchId = csvData[i].matchId;
+        const combinationKey = `${userIdentifier}-${matchId}`;
+        
+        if (processedCombinations.has(combinationKey)) {
+          throw new BadRequestException(`Duplicate entry in CSV for user ${userIdentifier} in match ${matchId}`);
+        }
+        
+        processedCombinations.add(combinationKey);
+        await this.processRow(csvData[i], rowIndex, response);
+        response.successfulRows++;
+      } catch (error) {
+        response.failedRows++;
+        this.logger.error(`Error processing row ${rowIndex}:`, error);
+        
+        response.errors?.push({
+          row: rowIndex,
+          errors: [error.message || 'Unknown error'],
+          data: csvData[i],
+        });
+      }
+    }
+
+    return response;
+  }
+
+  private async processRow(
+    rowData: any,
+    rowIndex: number,
+    response: CsvUploadResponseDto,
+  ): Promise<void> {
+    // Convert and validate the row data
+    const dto = plainToClass(CsvRowDto, rowData, {
+      enableImplicitConversion: true,
+      excludeExtraneousValues: false,
+    });
+
+    // Validate the DTO
+    const validationErrors = await validate(dto);
+    if (validationErrors.length > 0) {
+      const errorMessages = validationErrors
+        .map(error => Object.values(error.constraints || {}).join(', '))
+        .join('; ');
+      throw new BadRequestException(`Validation failed: ${errorMessages}`);
+    }
+
+    // Validate user identification
+    if (!dto.phoneNumber && !dto.email) {
+      throw new BadRequestException('Either phoneNumber or email must be provided');
+    }
+
+    // Use database transaction for atomicity
+    await this.dataSource.transaction(async (manager) => {
+      // Find user by phone number or email
+      const user = await this.findUserByIdentification(dto, manager);
+      if (!user) {
+        throw new NotFoundException(
+          `User not found with ${dto.phoneNumber ? 'phone: ' + dto.phoneNumber : 'email: ' + dto.email}`
+        );
+      }
+
+      // Find match
+      const match = await manager.findOne(Match, {
+        where: { matchId: dto.matchId },
+      });
+      if (!match) {
+        throw new NotFoundException(`Match with ID ${dto.matchId} not found`);
+      }
+
+      // Check if match participant already exists
+      let matchParticipant = await manager.findOne(MatchParticipant, {
+        where: {
+          match: { matchId: dto.matchId },
+          user: { id: user.id },
+        },
+        relations: ['match', 'user'],
+      });
+
+      // Create or update match participant
+      if (!matchParticipant) {
+        matchParticipant = manager.create(MatchParticipant, {
+          match,
+          user,
+          teamSide: dto.teamSide,
+          paidStatsOptIn: dto.paidStatsOptIn || false,
+        });
+        await manager.save(MatchParticipant, matchParticipant);
+        
+        response.warnings?.push({
+          row: rowIndex,
+          message: `Created new match participant for user ${user.id}`,
+          data: { userId: user.id, matchId: dto.matchId },
+        });
+      } else {
+        // Update existing match participant if team side changed
+        if (matchParticipant.teamSide !== dto.teamSide) {
+          matchParticipant.teamSide = dto.teamSide;
+          await manager.save(MatchParticipant, matchParticipant);
+          
+          response.warnings?.push({
+            row: rowIndex,
+            message: `Updated team side for existing match participant`,
+            data: { userId: user.id, matchId: dto.matchId, newTeamSide: dto.teamSide },
+          });
+        }
+      }
+
+      // Check if stats already exist
+      const existingStats = await manager.findOne(MatchParticipantStats, {
+        where: {
+          match: { matchId: dto.matchId },
+          player: { id: user.id },
+        },
+      });
+
+      if (existingStats) {
+        response.warnings?.push({
+          row: rowIndex,
+          message: `Stats already exist for this player in this match, skipping stats creation`,
+          data: { userId: user.id, matchId: dto.matchId },
+        });
+        return;
+      }
+
+      // Create match participant stats
+      const statsData = this.mapDtoToStatsEntity(dto, match, user, matchParticipant);
+      const stats = manager.create(MatchParticipantStats, statsData);
+      await manager.save(MatchParticipantStats, stats);
+    });
+  }
+
+  private async findUserByIdentification(
+    dto: CsvRowDto,
+    manager: any,
+  ): Promise<User | null> {
+    if (dto.phoneNumber) {
+      return await manager.findOne(User, {
+        where: { phoneNumber: dto.phoneNumber },
+      });
+    }
+    
+    if (dto.email) {
+      return await manager.findOne(User, {
+        where: { email: dto.email },
+      });
+    }
+    
+    return null;
+  }
+
+  private mapDtoToStatsEntity(
+    dto: CsvRowDto,
+    match: Match,
+    player: User,
+    matchParticipant: MatchParticipant,
+  ): Partial<MatchParticipantStats> {
+    return {
+      match,
+      player,
+      matchParticipant,
+      isMvp: dto.isMvp || false,
+      
+      // Passing stats
+      totalPassingActions: dto.totalPassingActions,
+      totalCompletePassingActions: dto.totalCompletePassingActions,
+      totalIncompletePassingActions: dto.totalIncompletePassingActions,
+      totalPassingAccuracy: dto.totalPassingAccuracy,
+      totalOpenPlayPassingActions: dto.totalOpenPlayPassingActions,
+      totalOpenPlayCompletePassingActions: dto.totalOpenPlayCompletePassingActions,
+      totalOpenPlayIncompletePassingActions: dto.totalOpenPlayIncompletePassingActions,
+      openPlayPassingAccuracy: dto.openPlayPassingAccuracy,
+      totalPass: dto.totalPass,
+      totalCompletePass: dto.totalCompletePass,
+      totalIncompletePass: dto.totalIncompletePass,
+      totalThroughBall: dto.totalThroughBall,
+      totalCompleteThroughBall: dto.totalCompleteThroughBall,
+      totalIncompleteThroughBall: dto.totalIncompleteThroughBall,
+      totalLongPass: dto.totalLongPass,
+      totalCompleteLongPass: dto.totalCompleteLongPass,
+      totalIncompleteLongPass: dto.totalIncompleteLongPass,
+      totalCross: dto.totalCross,
+      totalCompleteCross: dto.totalCompleteCross,
+      totalIncompleteCross: dto.totalIncompleteCross,
+      openPlayCompletePass: dto.openPlayCompletePass,
+      openPlayIncompletePass: dto.openPlayIncompletePass,
+      openPlayCompleteThroughBall: dto.openPlayCompleteThroughBall,
+      openPlayIncompleteThroughBall: dto.openPlayIncompleteThroughBall,
+      openPlayCompleteLongPass: dto.openPlayCompleteLongPass,
+      openPlayIncompleteLongPass: dto.openPlayIncompleteLongPass,
+      openPlayCompleteCross: dto.openPlayCompleteCross,
+      openPlayIncompleteCross: dto.openPlayIncompleteCross,
+
+      // Shooting stats
+      totalShot: dto.totalShot,
+      totalOnTargetShot: dto.totalOnTargetShot,
+      totalOffTargetShot: dto.totalOffTargetShot,
+      totalBlockedShotTaken: dto.totalBlockedShotTaken,
+      totalOtherShot: dto.totalOtherShot,
+      shotAccuracy: dto.shotAccuracy,
+
+      // Attack stats
+      totalGoal: dto.totalGoal,
+      totalAssist: dto.totalAssist,
+      totalKeyPass: dto.totalKeyPass,
+      totalDribbleAttempt: dto.totalDribbleAttempt,
+      totalSuccessfulDribble: dto.totalSuccessfulDribble,
+      totalUnsuccessfulDribble: dto.totalUnsuccessfulDribble,
+      dribbleSuccessPercent: dto.dribbleSuccessPercent,
+      totalOffensiveActions: dto.totalOffensiveActions,
+
+      // Defense stats
+      totalDefensiveActions: dto.totalDefensiveActions,
+      tackleInPossession: dto.tackleInPossession,
+      tackleOob: dto.tackleOob,
+      tackleTurnover: dto.tackleTurnover,
+      tackleTeamPossession: dto.tackleTeamPossession,
+      recovery: dto.recovery,
+      recoveryOther: dto.recoveryOther,
+      blockedShotDefensive: dto.blockedShotDefensive,
+      steal: dto.steal,
+      interceptionSameTeam: dto.interceptionSameTeam,
+      deflectionTurnover: dto.deflectionTurnover,
+      deflectionOob: dto.deflectionOob,
+      totalClearance: dto.totalClearance,
+      totalSave: dto.totalSave,
+      totalCatch: dto.totalCatch,
+      totalPunch: dto.totalPunch,
+      totalMiscontrol: dto.totalMiscontrol,
+      totalWoodwork: dto.totalWoodwork,
+      totalOwnGoals: dto.totalOwnGoals,
+
+      // Team stats
+      teamBlackGoals: dto.teamBlackGoals,
+      teamWhiteGoals: dto.teamWhiteGoals,
+    };
+  }
+} 
