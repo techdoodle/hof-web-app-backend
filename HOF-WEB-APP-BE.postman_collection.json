@@ -1,0 +1,444 @@
+{
+	"info": {
+		"_postman_id": "41a32e38-7556-4eef-b53d-1a1c5acc4734",
+		"name": "HOF-WEB-APP-BE",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "46397733",
+		"_collection_link": "https://abhinavtyagi-2480390.postman.co/workspace/Abhinav-Tyagi's-Workspace~69408abc-1621-406e-83cb-440f96c4f351/collection/46397733-41a32e38-7556-4eef-b53d-1a1c5acc4734?action=share&source=collection_link&creator=46397733"
+	},
+	"item": [
+		{
+			"name": "auth",
+			"item": [
+				{
+					"name": "send-otp",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"mobile\": \"9457537534\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "localhost:8000/auth/send-otp",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"auth",
+								"send-otp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "verify-otp",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"iv\": \"6e211b05f9daaf0b8e18af094516f8d9\",\n    \"encryptedOtp\": \"45a3503513b98338d54e6f8c72357bae\",\n    \"mobile\": \"9457537534\",\n    \"otp\": \"470987\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/verify-otp",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"verify-otp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "refresh access token",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"refreshToken\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtb2JpbGUiOiI4MjE4OTU4MDMwIiwiaWF0IjoxNzUxNjYxNTE0LCJleHAiOjE3NTIyNjYzMTR9.REadwEk6rVesQ9nWq3l1QuLlK_7tI8kl0ChskvGptks\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "localhost:3000/auth/refresh",
+							"host": [
+								"localhost"
+							],
+							"port": "3000",
+							"path": [
+								"auth",
+								"refresh"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "user",
+			"item": [
+				{
+					"name": "update user",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtb2JpbGUiOiI4MjE4OTU4MDMwIiwiaWF0IjoxNzUyMzE5NTAyLCJleHAiOjE3NTIzMjMxMDJ9.ZSezzYbV-A_4pD-wUoeQorXNCmfw09_iD7wafJPttH0",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"id\": 1,\n    \"phoneNumber\": \"8218958030\",\n    \"username\": null,\n    \"email\": \"anna.tyagi4@gmail.com\",\n    \"onboardingComplete\": false,\n    \"createdAt\": \"2025-07-06T19:56:17.622Z\",\n    \"updatedAt\": \"2025-07-07T17:09:31.418Z\",\n    \"lastLoginAt\": \"2025-07-07T17:09:31.415Z\",\n    \"playerCategory\": null,\n    \"invitesLeft\": 3,\n    \"profilePicture\": null,\n    \"addedToCommunity\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "localhost:3000/users/:id",
+							"host": [
+								"localhost"
+							],
+							"port": "3000",
+							"path": [
+								"users",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete User",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtb2JpbGUiOiI4MjE4OTU4MDMwIiwiaWF0IjoxNzUxOTA5OTEzLCJleHAiOjE3NTE5MTM1MTN9.ERbxNYsXc7nQQ_9RxdHiJuPGWOEcx4X525NCM8a1iUI",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"url": {
+							"raw": "localhost:3000/users/:id",
+							"host": [
+								"localhost"
+							],
+							"port": "3000",
+							"path": [
+								"users",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "match_participants_stats",
+			"item": [
+				{
+					"name": "Spider web",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "localhost:8000/match-participant-stats/player/:playerId/spider-chart",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"match-participant-stats",
+								"player",
+								":playerId",
+								"spider-chart"
+							],
+							"variable": [
+								{
+									"key": "playerId",
+									"value": "3"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Leaderboard",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "localhost:8000/match-participant-stats/leaderboard/overall?limit=10",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"match-participant-stats",
+								"leaderboard",
+								"overall"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "User stats for a particular user in a particular match",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "localhost:8000/match-participant-stats/player/:playerId/match/:matchId",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"match-participant-stats",
+								"player",
+								":playerId",
+								"match",
+								":matchId"
+							],
+							"variable": [
+								{
+									"key": "playerId",
+									"value": "1"
+								},
+								{
+									"key": "matchId",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "match participant",
+			"item": [
+				{
+					"name": "Matches for a particular user",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "localhost:8000/match-participants/user/:userId",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"match-participants",
+								"user",
+								":userId"
+							],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "1"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Admin Matches and stats",
+			"item": [
+				{
+					"name": "Create matches",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"matchType\": \"recorded\",\n    \"startTime\": \"2024-01-15T14:30:00.000Z\",\n    \"footballChief\": 1,\n    \"matchStatsId\": \"MATCH_2024_001\",\n    \"endTime\": \"2024-01-15T16:30:00.000Z\",\n    \"teamAScore\": 2,\n    \"teamBScore\": 1,\n    \"city\": 77,\n    \"venue\": 1,\n    \"statsReceived\": true\n  }",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:8000/matches",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8000",
+							"path": [
+								"matches"
+							]
+						},
+						"description": "Generated from cURL: curl -X POST http://localhost:3000/matches \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Bearer YOUR_JWT_TOKEN\" \\\n  -d '{\n    \"matchType\": \"recorded\",\n    \"startTime\": \"2024-01-15T14:30:00.000Z\",\n    \"footballChief\": 1,\n    \"matchStatsId\": \"MATCH_2024_001\",\n    \"endTime\": \"2024-01-15T16:30:00.000Z\",\n    \"teamAScore\": 2,\n    \"teamBScore\": 1,\n    \"city\": 1,\n    \"venue\": 1,\n    \"statsReceived\": false\n  }'"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "root",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtb2JpbGUiOiI4NTI3MjI4ODM5IiwiaWF0IjoxNzUyMzI5MTgzLCJleHAiOjE3NTIzMzI3ODN9.MfZhpbPwtSbnqN-TSMfI4ebNPyW0V3NLf8mtwrIOf4A",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "localhost:3000/",
+					"host": [
+						"localhost"
+					],
+					"port": "3000",
+					"path": [
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Match stat upload",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer YOUR_JWT_TOKEN"
+					}
+				],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": "/home/tyagi/Projects/hof-web-app-backend/sample_match_stats_complete.csv"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8000/match-participant-stats/upload-csv",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"match-participant-stats",
+						"upload-csv"
+					]
+				},
+				"description": "Generated from cURL: curl -X POST \\\n  http://localhost:3000/match-participant-stats/upload-csv \\\n  -H 'Authorization: Bearer YOUR_JWT_TOKEN' \\\n  -F 'file=@match_stats.csv'"
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{access token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "access token",
+			"value": ""
+		},
+		{
+			"key": "baseUrl",
+			"value": "localhost:8000"
+		}
+	]
+}
