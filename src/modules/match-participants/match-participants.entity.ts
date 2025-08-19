@@ -1,7 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { Match } from '../matches/matches.entity';
 import { User } from '../user/user.entity';
-import { TeamSide } from '../../common/enums/team-side.enum';
 
 @Entity('match_participants')
 @Unique(['match', 'user'])
@@ -18,12 +17,12 @@ export class MatchParticipant {
   user: User;
 
   @Column({ 
-    name: 'team_side', 
+    name: 'team_name', 
     type: 'varchar', 
-    length: 1, 
+    length: 100, 
     nullable: false 
   })
-  teamSide: TeamSide;
+  teamName: string;
 
   @Column({ name: 'paid_stats_opt_in', type: 'boolean', default: false })
   paidStatsOptIn: boolean;

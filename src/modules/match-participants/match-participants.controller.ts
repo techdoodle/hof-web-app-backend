@@ -1,21 +1,20 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Delete, 
-  Param, 
-  Body, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
   ParseIntPipe,
   UseGuards,
   HttpStatus,
-  HttpException
+  HttpException,
 } from '@nestjs/common';
 import { MatchParticipantsService } from './match-participants.service';
 import { MatchParticipant } from './match-participants.entity';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { TeamSide } from '../../common/enums/team-side.enum';
+
 
 @Controller('match-participants')
 export class MatchParticipantsController {
@@ -52,12 +51,12 @@ export class MatchParticipantsController {
     return await this.matchParticipantsService.findByUser(userId);
   }
 
-  @Get('match/:matchId/team/:teamSide')
-  async findByMatchAndTeamSide(
+  @Get('match/:matchId/team/:teamName')
+  async findByMatchAndTeamName(
     @Param('matchId', ParseIntPipe) matchId: number,
-    @Param('teamSide') teamSide: TeamSide
+    @Param('teamName') teamName: string
   ): Promise<MatchParticipant[]> {
-    return await this.matchParticipantsService.findByMatchAndTeamSide(matchId, teamSide);
+    return await this.matchParticipantsService.findByMatchAndTeamName(matchId, teamName);
   }
 
   @Get('user/:userId/match/:matchId')
@@ -75,13 +74,18 @@ export class MatchParticipantsController {
   }
 
   @Get('match/:matchId/count')
-  async getMatchParticipantsCount(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ teamA: number; teamB: number; total: number }> {
+  async getMatchParticipantsCount(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ teams: Record<string, number>; total: number }> {
     return await this.matchParticipantsService.getMatchParticipantsCount(matchId);
   }
 
   @Get('match/:matchId/users')
-  async getUsersByMatch(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ teamA: any[]; teamB: any[] }> {
+  async getUsersByMatch(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ teams: Record<string, any[]> }> {
     return await this.matchParticipantsService.getUsersByMatch(matchId);
+  }
+
+  @Get('match/:matchId/two-teams')
+  async getTwoTeamsForMatch(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ team1: { name: string; users: any[] }; team2: { name: string; users: any[] } } | null> {
+    return await this.matchParticipantsService.getTwoTeamsForMatch(matchId);
   }
 
   @Get(':matchParticipantId')
@@ -105,17 +109,17 @@ export class MatchParticipantsController {
     }
   }
 
-  @Put(':matchParticipantId/team-side')
+  @Put(':matchParticipantId/team-name')
   @UseGuards(JwtAuthGuard)
-  async updateTeamSide(
+  async updateTeamName(
     @Param('matchParticipantId', ParseIntPipe) matchParticipantId: number,
-    @Body('teamSide') teamSide: TeamSide
+    @Body('teamName') teamName: string
   ): Promise<MatchParticipant> {
     try {
-      return await this.matchParticipantsService.updateTeamSide(matchParticipantId, teamSide);
+      return await this.matchParticipantsService.updateTeamName(matchParticipantId, teamName);
     } catch (error) {
       throw new HttpException(
-        `Failed to update team side: ${error.message}`,
+        `Failed to update team name: ${error.message}`,
         HttpStatus.BAD_REQUEST
       );
     }

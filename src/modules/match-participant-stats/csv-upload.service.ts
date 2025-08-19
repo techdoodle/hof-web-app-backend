@@ -11,7 +11,6 @@ import { MatchParticipant } from '../match-participants/match-participants.entit
 import { User } from '../user/user.entity';
 import { Match } from '../matches/matches.entity';
 import { CsvRowDto, CsvUploadResponseDto } from './dto/csv-upload.dto';
-import { TeamSide } from '../../common/enums/team-side.enum';
 
 @Injectable()
 export class CsvUploadService {
@@ -168,10 +167,20 @@ export class CsvUploadService {
 
       // Create or update match participant
       if (!matchParticipant) {
+        // Validate that we don't exceed 2 teams
+        const existingParticipants = await manager.find(MatchParticipant, {
+          where: { match: { matchId: dto.matchId } },
+        });
+        const existingTeamNames = new Set(existingParticipants.map(p => p.teamName));
+        
+        if (!existingTeamNames.has(dto.teamName) && existingTeamNames.size >= 2) {
+          throw new BadRequestException(`Cannot add more than 2 teams to match ${dto.matchId}. Existing teams: ${Array.from(existingTeamNames).join(', ')}`);
+        }
+
         matchParticipant = manager.create(MatchParticipant, {
           match,
           user,
-          teamSide: dto.teamSide,
+          teamName: dto.teamName,
           paidStatsOptIn: dto.paidStatsOptIn || false,
         });
         await manager.save(MatchParticipant, matchParticipant);
@@ -182,15 +191,25 @@ export class CsvUploadService {
           data: { userId: user.id, matchId: dto.matchId },
         });
       } else {
-        // Update existing match participant if team side changed
-        if (matchParticipant.teamSide !== dto.teamSide) {
-          matchParticipant.teamSide = dto.teamSide;
+        // Update existing match participant if team name changed
+        if (matchParticipant.teamName !== dto.teamName) {
+          // Validate that we don't exceed 2 teams
+          const existingParticipants = await manager.find(MatchParticipant, {
+            where: { match: { matchId: dto.matchId } },
+          });
+          const existingTeamNames = new Set(existingParticipants.map(p => p.teamName));
+          
+          if (!existingTeamNames.has(dto.teamName) && existingTeamNames.size >= 2) {
+            throw new BadRequestException(`Cannot add more than 2 teams to match ${dto.matchId}. Existing teams: ${Array.from(existingTeamNames).join(', ')}`);
+          }
+
+          matchParticipant.teamName = dto.teamName;
           await manager.save(MatchParticipant, matchParticipant);
           
           response.warnings?.push({
             row: rowIndex,
-            message: `Updated team side for existing match participant`,
-            data: { userId: user.id, matchId: dto.matchId, newTeamSide: dto.teamSide },
+            message: `Updated team name for existing match participant`,
+            data: { userId: user.id, matchId: dto.matchId, newTeamName: dto.teamName },
           });
         }
       }
@@ -309,6 +328,8 @@ export class CsvUploadService {
       blockedShotDefensive: dto.blockedShotDefensive,
       steal: dto.steal,
       interceptionSameTeam: dto.interceptionSameTeam,
+      totalTackles: dto.totalTackles,
+      totalInterceptions: dto.totalInterceptions,
       deflectionTurnover: dto.deflectionTurnover,
       deflectionOob: dto.deflectionOob,
       totalClearance: dto.totalClearance,
@@ -322,6 +343,8 @@ export class CsvUploadService {
       // Team stats
       teamBlackGoals: dto.teamBlackGoals,
       teamWhiteGoals: dto.teamWhiteGoals,
+      teamAGoals: dto.teamAGoals,
+      teamBGoals: dto.teamBGoals,
     };
   }
 } 

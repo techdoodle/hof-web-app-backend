@@ -1,6 +1,5 @@
-import { IsString, IsNumber, IsBoolean, IsOptional, IsEnum, ValidateIf, IsEmail } from 'class-validator';
+import { IsString, IsNumber, IsBoolean, IsOptional, IsEnum, ValidateIf, IsEmail, IsNotEmpty } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { TeamSide } from '../../../common/enums/team-side.enum';
 
 export class CsvRowDto {
   // User identification - either phone number or email
@@ -22,8 +21,9 @@ export class CsvRowDto {
   @IsNumber()
   matchId: number;
 
-  @IsEnum(TeamSide)
-  teamSide: TeamSide;
+  @IsString()
+  @IsNotEmpty()
+  teamName: string;
 
   @IsOptional()
   @Type(() => Boolean)
@@ -303,6 +303,16 @@ export class CsvRowDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  totalTackles?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalInterceptions?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   deflectionTurnover?: number;
 
   @IsOptional()
@@ -355,6 +365,16 @@ export class CsvRowDto {
   @Type(() => Number)
   @IsNumber()
   teamWhiteGoals?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  teamAGoals?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  teamBGoals?: number;
 }
 
 export class CsvUploadResponseDto {
