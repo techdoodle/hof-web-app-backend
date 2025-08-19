@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MatchParticipant } from './match-participants.entity';
-import { TeamSide } from '../../common/enums/team-side.enum';
+
 
 @Injectable()
 export class MatchParticipantsService {
@@ -25,6 +25,14 @@ export class MatchParticipantsService {
 
     if (existingParticipant) {
       throw new ConflictException('User is already a participant in this match');
+    }
+
+    // Validate that we don't exceed 2 teams
+    const existingParticipants = await this.findByMatch(createMatchParticipantDto.match.matchId);
+    const existingTeamNames = new Set(existingParticipants.map(p => p.teamName));
+    
+    if (createMatchParticipantDto.teamName && !existingTeamNames.has(createMatchParticipantDto.teamName) && existingTeamNames.size >= 2) {
+      throw new ConflictException('Cannot add more than 2 teams to a match');
     }
 
     const matchParticipant = this.matchParticipantRepository.create(createMatchParticipantDto);
@@ -64,7 +72,7 @@ export class MatchParticipantsService {
     return await this.matchParticipantRepository.find({
       where: { match: { matchId } },
       relations: ['match', 'user'],
-      order: { teamSide: 'ASC', createdAt: 'ASC' },
+      order: { teamName: 'ASC', createdAt: 'ASC' },
     });
   }
 
@@ -76,11 +84,11 @@ export class MatchParticipantsService {
     });
   }
 
-  async findByMatchAndTeamSide(matchId: number, teamSide: TeamSide): Promise<MatchParticipant[]> {
+  async findByMatchAndTeamName(matchId: number, teamName: string): Promise<MatchParticipant[]> {
     return await this.matchParticipantRepository.find({
       where: { 
         match: { matchId },
-        teamSide 
+        teamName 
       },
       relations: ['match', 'user'],
       order: { createdAt: 'ASC' },
@@ -105,15 +113,16 @@ export class MatchParticipantsService {
     });
   }
 
-  async getMatchParticipantsCount(matchId: number): Promise<{ teamA: number; teamB: number; total: number }> {
+  async getMatchParticipantsCount(matchId: number): Promise<{ teams: Record<string, number>; total: number }> {
     const participants = await this.findByMatch(matchId);
     
-    const teamA = participants.filter(p => p.teamSide === TeamSide.A).length;
-    const teamB = participants.filter(p => p.teamSide === TeamSide.B).length;
+    const teams: Record<string, number> = {};
+    participants.forEach(p => {
+      teams[p.teamName] = (teams[p.teamName] || 0) + 1;
+    });
     
     return {
-      teamA,
-      teamB,
+      teams,
       total: participants.length
     };
   }
@@ -126,9 +135,22 @@ export class MatchParticipantsService {
     await this.matchParticipantRepository.remove(participant);
   }
 
-  async updateTeamSide(matchParticipantId: number, teamSide: TeamSide): Promise<MatchParticipant> {
+  async updateTeamName(matchParticipantId: number, teamName: string): Promise<MatchParticipant> {
     const participant = await this.findOne(matchParticipantId);
-    participant.teamSide = teamSide;
+    
+    // Check if the new team name is different from current
+    if (participant.teamName !== teamName) {
+      // Get all participants in this match
+      const matchParticipants = await this.findByMatch(participant.match.matchId);
+      const existingTeamNames = new Set(matchParticipants.map(p => p.teamName));
+      
+      // If this is a new team name and we already have 2 teams, prevent the change
+      if (!existingTeamNames.has(teamName) && existingTeamNames.size >= 2) {
+        throw new ConflictException('Cannot add more than 2 teams to a match');
+      }
+    }
+    
+    participant.teamName = teamName;
     return await this.matchParticipantRepository.save(participant);
   }
 
@@ -138,17 +160,38 @@ export class MatchParticipantsService {
     return await this.matchParticipantRepository.save(participant);
   }
 
-  async getUsersByMatch(matchId: number): Promise<{ teamA: any[]; teamB: any[] }> {
+  async getUsersByMatch(matchId: number): Promise<{ teams: Record<string, any[]> }> {
     const participants = await this.findByMatch(matchId);
     
-    const teamA = participants
-      .filter(p => p.teamSide === TeamSide.A)
-      .map(p => p.user);
+    const teams: Record<string, any[]> = {};
+    participants.forEach(p => {
+      if (!teams[p.teamName]) {
+        teams[p.teamName] = [];
+      }
+      teams[p.teamName].push(p.user);
+    });
     
-    const teamB = participants
-      .filter(p => p.teamSide === TeamSide.B)
-      .map(p => p.user);
+    return { teams };
+  }
+
+  async getTwoTeamsForMatch(matchId: number): Promise<{ team1: { name: string; users: any[] }; team2: { name: string; users: any[] } } | null> {
+    const participants = await this.findByMatch(matchId);
     
-    return { teamA, teamB };
+    const teamNames = [...new Set(participants.map(p => p.teamName))];
+    
+    if (teamNames.length !== 2) {
+      return null; // Return null if there aren't exactly 2 teams
+    }
+    
+    const team1Name = teamNames[0];
+    const team2Name = teamNames[1];
+    
+    const team1Users = participants.filter(p => p.teamName === team1Name).map(p => p.user);
+    const team2Users = participants.filter(p => p.teamName === team2Name).map(p => p.user);
+    
+    return {
+      team1: { name: team1Name, users: team1Users },
+      team2: { name: team2Name, users: team2Users }
+    };
   }
 } 

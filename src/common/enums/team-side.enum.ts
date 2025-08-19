@@ -1,4 +1,2 @@
-export enum TeamSide {
-  A = 'A',
-  B = 'B'
-} 
+// For dynamic team names, we'll use string type instead of enum
+export type TeamNameType = string; 

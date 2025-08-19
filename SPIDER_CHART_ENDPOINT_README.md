@@ -145,16 +145,29 @@ The endpoint extracts data from the following database fields:
 
 ### 5. Impact Score (0-100)
 
-**Formula**: `Math.min(100, (impactPerMatch / 1.5) * 100)`
+**Formula**: `Math.min(100, (impactPerMatch / 2.0) * 100)`
 
 **Components**:
 - **Impact Per Match**: `(totalGoals + totalAssists) / matchesPlayed`
-- **Scaling Factor**: 1.5 goals + assists per match = 100 points
-- **Normalization**: Linear scaling where 1.5 impact per match equals maximum score
+- **Scaling Factor**: 2.0 goals + assists per match = 100 points
+- **Normalization**: Linear scaling where 2.0 impact per match equals maximum score
+- **Performance-Based**: Better performance = higher score (no penalties)
 
 **Example**: Player with 12 goals and 8 assists in 15 matches
 - Impact per match: (12 + 8) / 15 = 1.33
-- Impact score: min(100, (1.33 / 1.5) × 100) = 88.67
+- Impact score: min(100, (1.33 / 2.0) × 100) = 66.5
+
+**Example**: Player with 6 goals and 1 assist in 1 match
+- Impact per match: (6 + 1) / 1 = 7.0
+- Impact score: min(100, (7.0 / 2.0) × 100) = 100
+
+**Example**: Player with 1 goal and 1 assist in 1 match
+- Impact per match: (1 + 1) / 1 = 2.0
+- Impact score: min(100, (2.0 / 2.0) × 100) = 100
+
+**Example**: Player with 0 goals and 1 assist in 1 match
+- Impact per match: (0 + 1) / 1 = 1.0
+- Impact score: min(100, (1.0 / 2.0) × 100) = 50
 
 ## Response Structure
 

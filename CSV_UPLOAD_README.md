@@ -24,7 +24,7 @@ POST /match-participant-stats/upload-csv
   - `email`: User's email address
 - **Match Participant Data**:
   - `matchId`: ID of the match (number)
-  - `teamSide`: Team side assignment (`A` or `B`)
+  - `teamName`: Team name assignment (any string, e.g., "Team A", "Red Team", "Lions")
 
 #### Optional Fields
 - **Match Participant**:
@@ -72,13 +72,13 @@ Use the file `sample_match_stats_complete.csv` as a reference. It includes all 6
 
 **Header Structure:**
 ```csv
-phoneNumber,email,matchId,teamSide,paidStatsOptIn,isMvp,totalPassingActions,totalCompletePassingActions,totalIncompletePassingActions,totalPassingAccuracy,totalOpenPlayPassingActions,totalOpenPlayCompletePassingActions,totalOpenPlayIncompletePassingActions,openPlayPassingAccuracy,totalPass,totalCompletePass,totalIncompletePass,totalThroughBall,totalCompleteThroughBall,totalIncompleteThroughBall,totalLongPass,totalCompleteLongPass,totalIncompleteLongPass,totalCross,totalCompleteCross,totalIncompleteCross,openPlayCompletePass,openPlayIncompletePass,openPlayCompleteThroughBall,openPlayIncompleteThroughBall,openPlayCompleteLongPass,openPlayIncompleteLongPass,openPlayCompleteCross,openPlayIncompleteCross,totalShot,totalOnTargetShot,totalOffTargetShot,totalBlockedShotTaken,totalOtherShot,shotAccuracy,totalGoal,totalAssist,totalKeyPass,totalDribbleAttempt,totalSuccessfulDribble,totalUnsuccessfulDribble,dribbleSuccessPercent,totalOffensiveActions,totalDefensiveActions,tackleInPossession,tackleOob,tackleTurnover,tackleTeamPossession,recovery,recoveryOther,blockedShotDefensive,steal,interceptionSameTeam,deflectionTurnover,deflectionOob,totalClearance,totalSave,totalCatch,totalPunch,totalMiscontrol,totalWoodwork,totalOwnGoals,teamBlackGoals,teamWhiteGoals
+phoneNumber,email,matchId,teamName,paidStatsOptIn,isMvp,totalPassingActions,totalCompletePassingActions,totalIncompletePassingActions,totalPassingAccuracy,totalOpenPlayPassingActions,totalOpenPlayCompletePassingActions,totalOpenPlayIncompletePassingActions,openPlayPassingAccuracy,totalPass,totalCompletePass,totalIncompletePass,totalThroughBall,totalCompleteThroughBall,totalIncompleteThroughBall,totalLongPass,totalCompleteLongPass,totalIncompleteLongPass,totalCross,totalCompleteCross,totalIncompleteCross,openPlayCompletePass,openPlayIncompletePass,openPlayCompleteThroughBall,openPlayIncompleteThroughBall,openPlayCompleteLongPass,openPlayIncompleteLongPass,openPlayCompleteCross,openPlayIncompleteCross,totalShot,totalOnTargetShot,totalOffTargetShot,totalBlockedShotTaken,totalOtherShot,shotAccuracy,totalGoal,totalAssist,totalKeyPass,totalDribbleAttempt,totalSuccessfulDribble,totalUnsuccessfulDribble,dribbleSuccessPercent,totalOffensiveActions,totalDefensiveActions,tackleInPossession,tackleOob,tackleTurnover,tackleTeamPossession,recovery,recoveryOther,blockedShotDefensive,steal,interceptionSameTeam,deflectionTurnover,deflectionOob,totalClearance,totalSave,totalCatch,totalPunch,totalMiscontrol,totalWoodwork,totalOwnGoals,teamBlackGoals,teamWhiteGoals
 ```
 
 ### Sample Data Rows
 ```csv
-9717759793,,3,A,true,false,85,72,13,0.85,65,55,10,0.85,60,48,12,8,6,2,12,9,3,5,3,2,45,8,5,1,7,2,2,1,8,5,2,1,0,0.63,2,1,4,6,4,2,0.67,45,35,12,3,2,15,8,5,2,3,2,1,1,4,0,0,0,0,0,0,2,1
-,midfielder@email.com,3,B,false,true,78,65,13,0.83,58,48,10,0.83,55,44,11,6,4,2,10,7,3,4,2,2,40,9,3,1,5,2,1,1,6,4,1,1,0,0.67,1,2,6,4,3,1,0.75,38,28,8,2,1,12,6,4,1,2,1,0,1,2,0,0,0,0,0,0,1,2
+9717759793,,3,Red Team,true,false,85,72,13,0.85,65,55,10,0.85,60,48,12,8,6,2,12,9,3,5,3,2,45,8,5,1,7,2,2,1,8,5,2,1,0,0.63,2,1,4,6,4,2,0.67,45,35,12,3,2,15,8,5,2,3,2,1,1,4,0,0,0,0,0,0,2,1
+,midfielder@email.com,3,Blue Team,false,true,78,65,13,0.83,58,48,10,0.83,55,44,11,6,4,2,10,7,3,4,2,2,40,9,3,1,5,2,1,1,6,4,1,1,0,0.67,1,2,6,4,3,1,0.75,38,28,8,2,1,12,6,4,1,2,1,0,1,2,0,0,0,0,0,0,1,2
 ```
 
 ### Response Format
@@ -113,7 +113,7 @@ phoneNumber,email,matchId,teamSide,paidStatsOptIn,isMvp,totalPassingActions,tota
 
 ### Match Participant Creation
 - If a match participant record doesn't exist, it will be created automatically
-- If it exists but has a different team side, it will be updated
+- If it exists but has a different team name, it will be updated
 - Warnings will be generated for these operations
 
 ### Stats Creation
@@ -124,11 +124,12 @@ phoneNumber,email,matchId,teamSide,paidStatsOptIn,isMvp,totalPassingActions,tota
 
 ### Validation
 - All numeric fields are validated
-- Team side must be 'A' or 'B'
+- Team name can be any string (e.g., "Team A", "Red Team", "Lions", etc.)
 - Boolean fields accept true/false, 1/0, or boolean strings
 - Empty strings are converted to null for optional fields
 - Empty rows are automatically skipped
 - Duplicate entries in the same CSV file are detected and rejected
+- Maximum of 2 teams per match is enforced
 
 ## Error Handling
 - File validation (must be .csv)

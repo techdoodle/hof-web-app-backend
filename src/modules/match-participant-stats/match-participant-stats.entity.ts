@@ -185,6 +185,12 @@ export class MatchParticipantStats {
   @Column({ name: 'interception_same_team', type: 'int', nullable: true })
   interceptionSameTeam: number;
 
+  @Column({ name: 'total_tackles', type: 'int', nullable: true })
+  totalTackles: number;
+
+  @Column({ name: 'total_interceptions', type: 'int', nullable: true })
+  totalInterceptions: number;
+
   @Column({ name: 'deflection_turnover', type: 'int', nullable: true })
   deflectionTurnover: number;
 
@@ -218,6 +224,12 @@ export class MatchParticipantStats {
 
   @Column({ name: 'team_white_goals', type: 'int', nullable: true })
   teamWhiteGoals: number;
+
+  @Column({ name: 'team_a_goals', type: 'int', nullable: true })
+  teamAGoals: number;
+
+  @Column({ name: 'team_b_goals', type: 'int', nullable: true })
+  teamBGoals: number;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
