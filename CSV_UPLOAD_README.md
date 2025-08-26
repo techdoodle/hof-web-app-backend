@@ -19,9 +19,8 @@ POST /match-participant-stats/upload-csv
 ### CSV Format Requirements
 
 #### Required Fields
-- **User Identification** (at least one):
+- **User Identification** :
   - `phoneNumber`: User's phone number
-  - `email`: User's email address
 - **Match Participant Data**:
   - `matchId`: ID of the match (number)
   - `teamName`: Team name assignment (any string, e.g., "Team A", "Red Team", "Lions")
@@ -33,52 +32,55 @@ POST /match-participant-stats/upload-csv
 - **Match Participant Stats** (all optional):
   - `isMvp`: Boolean (default: false)
   
-  **Passing Stats (16 fields)**:
-  - `totalPassingActions`, `totalCompletePassingActions`, `totalIncompletePassingActions`, `totalPassingAccuracy`
-  - `totalOpenPlayPassingActions`, `totalOpenPlayCompletePassingActions`, `totalOpenPlayIncompletePassingActions`, `openPlayPassingAccuracy`
-  - `totalPass`, `totalCompletePass`, `totalIncompletePass`
-  - `totalThroughBall`, `totalCompleteThroughBall`, `totalIncompleteThroughBall`
-  - `totalLongPass`, `totalCompleteLongPass`, `totalIncompleteLongPass`
-  - `totalCross`, `totalCompleteCross`, `totalIncompleteCross`
-  - `openPlayCompletePass`, `openPlayIncompletePass`
-  - `openPlayCompleteThroughBall`, `openPlayIncompleteThroughBall`
-  - `openPlayCompleteLongPass`, `openPlayIncompleteLongPass`
-  - `openPlayCompleteCross`, `openPlayIncompleteCross`
+  **Passing Stats (2 fields)**:
+  - `totalPassingActions`: Total number of passing actions
+  - `totalPassingAccuracy`: Passing accuracy (decimal, e.g., 0.72 = 72%)
 
-  **Shooting Stats (6 fields)**:
-  - `totalShot`, `totalOnTargetShot`, `totalOffTargetShot`
-  - `totalBlockedShotTaken`, `totalOtherShot`, `shotAccuracy`
+  **Shooting Stats (2 fields)**:
+  - `totalShot`: Total number of shots attempted
+  - `shotAccuracy`: Shot accuracy (decimal, e.g., 0.2 = 20%)
 
-  **Attack Stats (8 fields)**:
-  - `totalGoal`, `totalAssist`, `totalKeyPass`
-  - `totalDribbleAttempt`, `totalSuccessfulDribble`, `totalUnsuccessfulDribble`
-  - `dribbleSuccessPercent`, `totalOffensiveActions`
+  **Attack Stats (4 fields)**:
+  - `totalGoal`: Total goals scored
+  - `totalAssist`: Total assists provided
+  - `totalKeyPass`: Total key passes made
+  - `totalDribbleAttempt`: Total dribbling attempts
+  - `totalSuccessfulDribble`: Successful dribbles
+  - `totalUnsuccessfulDribble`: Unsuccessful dribbles
+  - `dribbleSuccessPercent`: Dribbling success rate (decimal)
 
-  **Defense Stats (15 fields)**:
-  - `totalDefensiveActions`, `tackleInPossession`, `tackleOob`, `tackleTurnover`
-  - `tackleTeamPossession`, `recovery`, `recoveryOther`
-  - `blockedShotDefensive`, `steal`, `interceptionSameTeam`
-  - `deflectionTurnover`, `deflectionOob`, `totalClearance`
+  **Defense Stats (6 fields)**:
+  - `totalDefensiveActions`: Total defensive actions performed
+  - `totalTackles`: Total tackles attempted
+  - `totalInterceptions`: Total interceptions made
+  - `blockedShotDefensive`: Shots blocked defensively
+  - `steal`: Number of steals
+  - `totalClearance`: Total clearances made
 
-  **Goalkeeper Stats (4 fields)**:
-  - `totalSave`, `totalCatch`, `totalPunch`, `totalMiscontrol`
+  **Goalkeeper Stats (3 fields)**:
+  - `totalSave`: Total saves made
+  - `totalCatch`: Total catches made
+  - `totalPunch`: Total punches made
 
   **Miscellaneous (4 fields)**:
-  - `totalWoodwork`, `totalOwnGoals`
-  - `teamBlackGoals`, `teamWhiteGoals`
+  - `totalMiscontrol`: Total miscontrols
+  - `totalOwnGoals`: Total own goals
+  - `teamAGoals`: Goals scored by Team A in the match
+  - `teamBGoals`: Goals scored by Team B in the match
 
 ### Complete CSV Template
-Use the file `sample_match_stats_complete.csv` as a reference. It includes all 66+ stat fields:
+Use the file `sample_match_stats.csv` as a reference. It includes all the essential stat fields:
 
 **Header Structure:**
 ```csv
-phoneNumber,email,matchId,teamName,paidStatsOptIn,isMvp,totalPassingActions,totalCompletePassingActions,totalIncompletePassingActions,totalPassingAccuracy,totalOpenPlayPassingActions,totalOpenPlayCompletePassingActions,totalOpenPlayIncompletePassingActions,openPlayPassingAccuracy,totalPass,totalCompletePass,totalIncompletePass,totalThroughBall,totalCompleteThroughBall,totalIncompleteThroughBall,totalLongPass,totalCompleteLongPass,totalIncompleteLongPass,totalCross,totalCompleteCross,totalIncompleteCross,openPlayCompletePass,openPlayIncompletePass,openPlayCompleteThroughBall,openPlayIncompleteThroughBall,openPlayCompleteLongPass,openPlayIncompleteLongPass,openPlayCompleteCross,openPlayIncompleteCross,totalShot,totalOnTargetShot,totalOffTargetShot,totalBlockedShotTaken,totalOtherShot,shotAccuracy,totalGoal,totalAssist,totalKeyPass,totalDribbleAttempt,totalSuccessfulDribble,totalUnsuccessfulDribble,dribbleSuccessPercent,totalOffensiveActions,totalDefensiveActions,tackleInPossession,tackleOob,tackleTurnover,tackleTeamPossession,recovery,recoveryOther,blockedShotDefensive,steal,interceptionSameTeam,deflectionTurnover,deflectionOob,totalClearance,totalSave,totalCatch,totalPunch,totalMiscontrol,totalWoodwork,totalOwnGoals,teamBlackGoals,teamWhiteGoals
+id,name,teamName,phoneNumber,date,totalPassingActions,totalPassingAccuracy,totalShot,shotAccuracy,totalGoal,totalAssist,totalKeyPass,totalDribbleAttempt,totalSuccessfulDribble,totalUnsuccessfulDribble,dribbleSuccessPercent,totalDefensiveActions,totalTackles,totalInterceptions,blockedShotDefensive,steal,totalClearance,totalSave,totalCatch,totalPunch,totalMiscontrol,totalOwnGoals,teamAGoals,teamBGoals,matchId
 ```
 
 ### Sample Data Rows
 ```csv
-9717759793,,3,Red Team,true,false,85,72,13,0.85,65,55,10,0.85,60,48,12,8,6,2,12,9,3,5,3,2,45,8,5,1,7,2,2,1,8,5,2,1,0,0.63,2,1,4,6,4,2,0.67,45,35,12,3,2,15,8,5,2,3,2,1,1,4,0,0,0,0,0,0,2,1
-,midfielder@email.com,3,Blue Team,false,true,78,65,13,0.83,58,48,10,0.83,55,44,11,6,4,2,10,7,3,4,2,2,40,9,3,1,5,2,1,1,6,4,1,1,0,0.67,1,2,6,4,3,1,0.75,38,28,8,2,1,12,6,4,1,2,1,0,1,2,0,0,0,0,0,0,1,2
+A711,Dhruv,Team White,8810663584,"Aug 24, 2025",53,0.72,10,0.2,0,3,5,5,1,4,0.2,12,4,2,0,1,0,0,0,0,1,0,11,23,4
+B407,Maulik,Team Black,7204888969,"Aug 24, 2025",24,0.75,1,1,1,1,2,0,0,0,,10,1,3,0,3,0,3,0,0,1,0,11,23,4
+A861,Manav,Team White,7701969691,"Aug 24, 2025",63,0.86,14,0.79,6,4,8,6,2,4,0.33,31,6,7,4,7,0,0,0,0,1,0,11,23,4
 ```
 
 ### Response Format
@@ -98,7 +100,7 @@ phoneNumber,email,matchId,teamName,paidStatsOptIn,isMvp,totalPassingActions,tota
     {
       "row": 1,
       "message": "Created new match participant for user 123",
-      "data": { "userId": 123, "matchId": 3 }
+      "data": { "userId": 123, "matchId": 4 }
     }
   ]
 }
@@ -145,14 +147,16 @@ phoneNumber,email,matchId,teamName,paidStatsOptIn,isMvp,totalPassingActions,tota
 curl -X POST \
   http://localhost:3000/match-participant-stats/upload-csv \
   -H 'Authorization: Bearer YOUR_JWT_TOKEN' \
-  -F 'file=@sample_match_stats_complete.csv'
+  -F 'file=@sample_match_stats.csv'
 ```
 
 ## Notes
-- **Complete Template**: Use `sample_match_stats_complete.csv` for the full 66+ field template
+- **Complete Template**: Use `sample_match_stats.csv` for the essential stat fields template
 - **Minimal Template**: You can also use a subset of fields - only include columns you need
 - Large CSV files are processed sequentially to avoid database overload
 - Consider breaking very large files (>1000 rows) into smaller chunks
 - All operations are logged for debugging purposes
 - Database transactions ensure data consistency
-- Unique constraints prevent duplicate stats for the same player/match combination 
+- Unique constraints prevent duplicate stats for the same player/match combination
+- The `id` and `name` fields in the CSV are for reference only and are not stored in the database
+- The `date` field is for reference only and is not stored in the database 

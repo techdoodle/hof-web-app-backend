@@ -388,7 +388,7 @@ export class MatchParticipantStatsService {
         'SUM(CASE WHEN stats.isMvp = true THEN 1 ELSE 0 END) as totalMvpWins',
         'SUM(COALESCE(stats.steal, 0)) as totalSteals',
         'SUM(COALESCE(stats.totalInterceptions, 0)) as totalInterceptions',
-        'SUM(COALESCE(stats.totalKeyPass, 0)) as totalKeyPass',
+        'SUM(COALESCE(stats.totalPassingActions, 0)) as totalPassingActions',
         'SUM(COALESCE(stats.totalSave, 0)) as totalSave',
         'SUM(COALESCE(stats.totalCatch, 0)) as totalCatch',
         'SUM(COALESCE(stats.totalPunch, 0)) as totalPunch',
@@ -425,7 +425,7 @@ export class MatchParticipantStatsService {
     const totalInterceptions = parseInt(rawStats?.totalinterceptions) || 0;
     const impactPerMatch = (totalGoals + totalAssists) / matchesPlayed || 0;
 
-    const totalKeyPass = parseInt(rawStats?.totalkeypass) || 0;
+    const totalPassingActions = parseInt(rawStats?.totalpassingactions) || 0;
     const totalSave = parseInt(rawStats?.totalsave) || 0;
     const totalCatch = parseInt(rawStats?.totalcatch) || 0;
     const totalPunch = parseInt(rawStats?.totalpunch) || 0;
@@ -449,6 +449,7 @@ export class MatchParticipantStatsService {
         goals: totalGoals,
         assists: totalAssists,
         passingAccuracy: Math.round(overallPassingAccuracy * 100) / 100,
+        totalPassingActions,
       };
 
       switch (playerCategory) {
@@ -460,7 +461,7 @@ export class MatchParticipantStatsService {
             totalPunch,
             totalClearance,
             totalMiscontrol,
-            totalKeyPass,
+            totalKeyPass: totalPassingActions,
           };
         case PlayerCategory.DEFENDER:
           return {
@@ -514,7 +515,7 @@ export class MatchParticipantStatsService {
         },
         passing: {
           overallAccuracy: Math.round(overallPassingAccuracy * 100) / 100,
-          totalKeyPass,
+          totalPassingActions,
         },
         dribbling: {
           successRate: Math.round(dribbleSuccess * 100) / 100,
@@ -541,7 +542,6 @@ export class MatchParticipantStatsService {
           goalsAndAssistsPerMatch: Math.round(impactPerMatch * 100) / 100,
           totalGoals,
           totalAssists,
-          totalKeyPass,
         },
       } : {},
     };
