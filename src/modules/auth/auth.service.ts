@@ -76,7 +76,7 @@ export class AuthService {
     }
 
     generateJwtRefreshToken(payload: { mobile: string; sub: number }) {
-        return this.jwtService.sign(payload, { secret: this.configService.get('JWT_REFRESH_SECRET'), expiresIn: '7d' });
+        return this.jwtService.sign(payload, { secret: this.configService.get('JWT_REFRESH_SECRET'), expiresIn: '60d' });
     }
 
     regenerateAccessToken(refreshToken: string) {
@@ -94,10 +94,10 @@ export class AuthService {
     async findOrCreateUser(mobile: string) {
         let user = await this.userService.findByMobile(mobile);
         if (!user) {
-          user = await this.userService.create({ phoneNumber: mobile, lastLoginAt: new Date() });
+            user = await this.userService.create({ phoneNumber: mobile, lastLoginAt: new Date() });
         } else {
             await this.userService.update(user.id, { lastLoginAt: new Date() });
         }
         return user;
-      }
+    }
 }

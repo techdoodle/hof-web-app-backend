@@ -15,7 +15,7 @@ import { UserModule } from '../user/user.module';
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '1h' },
+        signOptions: { expiresIn: '28d' },
       }),
     }),
     UserModule,
@@ -26,4 +26,4 @@ import { UserModule } from '../user/user.module';
     JwtStrategy,
   ],
 })
-export class AuthModule {}
+export class AuthModule { }
