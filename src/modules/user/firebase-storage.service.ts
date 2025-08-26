@@ -17,10 +17,10 @@ export class FirebaseStorageService {
   async uploadImage(imageBuffer: Buffer, userId: string | number): Promise<string> {
     try {
       const bucket = this.firebaseConfig.getBucket();
-      
+
       // Clear existing images in user folder before uploading new one
       await this.clearUserFolder(userId);
-      
+
       const fileName = `${this.storageRoot}/${userId}/${uuidv4()}.png`;
       const file = bucket.file(fileName);
 
@@ -49,7 +49,7 @@ export class FirebaseStorageService {
       // Remove data URL prefix if present
       const base64String = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
       const imageBuffer = Buffer.from(base64String, 'base64');
-      
+
       return await this.uploadImage(imageBuffer, userId);
     } catch (error) {
       console.error('Firebase Storage base64 upload error:', error);
@@ -60,16 +60,16 @@ export class FirebaseStorageService {
   async deleteImage(imageUrl: string): Promise<void> {
     try {
       const bucket = this.firebaseConfig.getBucket();
-      
+
       // Extract file path from URL
       const urlParts = imageUrl.split(`https://storage.googleapis.com/${bucket.name}/`);
       if (urlParts.length !== 2) {
         throw new Error('Invalid Firebase Storage URL');
       }
-      
+
       const filePath = urlParts[1];
       const file = bucket.file(filePath);
-      
+
       await file.delete();
     } catch (error) {
       console.error('Firebase Storage delete error:', error);
@@ -81,12 +81,12 @@ export class FirebaseStorageService {
     try {
       const bucket = this.firebaseConfig.getBucket();
       const file = bucket.file(filePath);
-      
+
       const [signedUrl] = await file.getSignedUrl({
         action: 'read',
         expires: Date.now() + (expiresInMinutes * 60 * 1000),
       });
-      
+
       return signedUrl;
     } catch (error) {
       console.error('Firebase Storage signed URL error:', error);
@@ -98,7 +98,7 @@ export class FirebaseStorageService {
     try {
       const bucket = this.firebaseConfig.getBucket();
       const folderPath = `${this.storageRoot}/${userId}/`;
-      
+
       // List all files in the user's folder
       const [files] = await bucket.getFiles({
         prefix: folderPath,

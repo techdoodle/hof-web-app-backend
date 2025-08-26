@@ -17,6 +17,7 @@ async function bootstrap() {
     'https://hof-ui.netlify.app',
     'https://hof-ui.netlify.com',
     'https://app.humansoffootball.in',
+    'https://hof-ui-stg.netlify.app',
     'https://hof-python-env-production.up.railway.app',
     process.env.FRONTEND_URL, // Production frontend URL from environment
   ].filter(Boolean); // Remove undefined values
@@ -28,26 +29,26 @@ async function bootstrap() {
         console.log('Request with no origin - allowing');
         return callback(null, true);
       }
-      
+
       console.log(`Incoming request from origin: ${origin}`);
       console.log('Allowed origins:', allowedOrigins);
-      
+
       // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
         console.log(`Origin ${origin} is in allowed list`);
         return callback(null, true);
       }
-      
+
       // For development, allow localhost variations
       if (process.env.NODE_ENV !== 'production' && origin.includes('localhost')) {
         console.log(`Development mode - allowing localhost origin: ${origin}`);
         return callback(null, true);
       }
-      
+
       // Allow all origins temporarily for debugging (remove this in production)
       console.log(`Allowing origin temporarily for debugging: ${origin}`);
       return callback(null, true);
-      
+
       // Uncomment this when you want to restrict origins
       // console.log(`CORS blocked origin: ${origin}`);
       // return callback(new Error('Not allowed by CORS'));
@@ -60,8 +61,8 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  
-  await app.listen(process.env.PORT || 3000); 
+
+  await app.listen(process.env.PORT || 3000);
   console.log(`Server is running on port ${process.env.PORT}`);
 }
 bootstrap();
