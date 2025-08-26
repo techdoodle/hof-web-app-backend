@@ -10,5 +10,14 @@ RENAME COLUMN team_side TO team_name;
 ALTER TABLE match_participants 
 ALTER COLUMN team_name TYPE VARCHAR(100);
 
+-- Update any NULL values to a default value (for existing records)
+UPDATE match_participants 
+SET team_name = 'Team A' 
+WHERE team_name IS NULL;
+
+-- Make the column NOT NULL after updating existing records
+ALTER TABLE match_participants 
+ALTER COLUMN team_name SET NOT NULL;
+
 -- Add comment for documentation
 COMMENT ON COLUMN match_participants.team_name IS 'Name of the team the player belongs to (e.g., Team A, Team B, Red Team, etc.)';

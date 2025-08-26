@@ -1,0 +1,17 @@
+id,name,teamName,phoneNumber,date,totalPassingActions,totalPassingAccuracy,totalShot,shotAccuracy,totalGoal,totalAssist,totalKeyPass,totalDribbleAttempt,totalSuccessfulDribble,totalUnsuccessfulDribble,dribbleSuccessPercent,totalDefensiveActions,totalTackles,totalInterceptions,blockedShotDefensive,steal,totalClearance,totalSave,totalCatch,totalPunch,totalMiscontrol,totalOwnGoals,teamAGoals,teamBGoals,matchId
+A711,Dhruv,Team White,8810663584,"Aug 24, 2025",53,0.72,10,0.2,0,3,5,5,1,4,0.2,12,4,2,0,1,0,0,0,0,1,0,11,23,4
+B407,Maulik,Team Black,7204888969,"Aug 24, 2025",24,0.75,1,1,1,1,2,0,0,0,,10,1,3,0,3,0,3,0,0,1,0,11,23,4
+A861,Manav,Team White,7701969691,"Aug 24, 2025",63,0.86,14,0.79,6,4,8,6,2,4,0.33,31,6,7,4,7,0,0,0,0,1,0,11,23,4
+A987,Mandeep,Team White,8527998906,"Aug 24, 2025",77,0.88,2,1,2,1,5,3,1,2,0.33,37,5,2,3,1,0,9,1,0,2,0,11,23,4
+A551,Dvikesh,Team White,,"Aug 24, 2025",68,0.84,8,0.62,3,1,4,7,2,5,0.29,17,2,5,0,4,0,1,0,0,3,0,11,23,4
+A734,Luvnit,Team White,,"Aug 24, 2025",4,0.25,0,,0,0,0,0,0,0,,2,0,0,0,0,1,0,0,0,0,0,11,23,4
+B333,Vinay,Team Black,9779229885,"Aug 24, 2025",37,0.65,16,0.75,6,5,9,4,3,1,0.75,21,8,6,1,6,1,0,2,0,2,0,11,23,4
+B927,Mrigesh,Team Black,9803063261,"Aug 24, 2025",66,0.65,18,0.56,5,2,9,11,3,8,0.27,26,5,12,3,11,0,0,0,0,2,0,11,23,4
+B462,Ramanuj,Team Black,,"Aug 24, 2025",11,0.82,3,1,3,1,2,0,0,0,,5,1,3,0,1,0,0,0,0,0,0,11,23,4
+B770,Nandini,Team Black,8448447497,"Aug 24, 2025",50,0.84,11,0.64,6,5,12,3,2,1,0.67,15,4,2,1,2,0,4,1,0,1,0,11,23,4
+A988,Ramanuj,Team White,,"Aug 24, 2025",31,0.94,3,0.67,0,2,6,1,0,1,0,20,2,8,2,6,0,4,0,0,1,0,11,23,4
+B928,Luvnit,Team Black,,"Aug 24, 2025",7,0.57,0,,0,0,1,0,0,0,,4,0,0,0,0,1,1,0,0,0,0,11,23,4
+B929,Shubhankar,Team Black,,"Aug 24, 2025",10,0.6,3,0.67,0,1,1,1,0,1,0,12,0,2,1,2,1,2,0,0,0,0,11,23,4
+B930,Rahul,Team Black,,"Aug 24, 2025",15,0.87,3,0.67,2,0,2,1,1,0,1,7,2,2,0,2,0,1,0,0,0,0,11,23,4
+A989,Shubhankar,Team White,,"Aug 24, 2025",2,0.5,0,,0,0,0,0,0,0,,1,0,0,0,0,0,0,0,0,0,0,11,23,4
+A988,Pranab,Team White,9717759793,"Aug 24, 2025",31,0.94,3,0.67,0,2,6,1,0,1,0,20,2,8,2,6,0,4,0,0,1,0,11,23,4
