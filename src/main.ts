@@ -3,6 +3,9 @@ import { AppModule } from './modules/app/app.module';
 import { json, urlencoded } from 'express';
 
 async function bootstrap() {
+  // Set timezone for the application
+  process.env.TZ = 'Asia/Kolkata';
+  
   const app = await NestFactory.create(AppModule);
 
   // Configure body parser with larger limits for image uploads

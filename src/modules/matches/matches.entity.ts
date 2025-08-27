@@ -20,10 +20,20 @@ export class Match {
   })
   matchType: MatchType;
 
-  @Column({ name: 'start_time', type: 'timestamp', nullable: false })
+  @Column({ 
+    name: 'start_time', 
+    type: 'timestamp with time zone', 
+    precision: 6,
+    nullable: false 
+  })
   startTime: Date;
 
-  @Column({ name: 'end_time', type: 'timestamp', nullable: true })
+  @Column({ 
+    name: 'end_time', 
+    type: 'timestamp with time zone', 
+    precision: 6,
+    nullable: false 
+  })
   endTime: Date;
 
   @Column({ name: 'stats_received', type: 'boolean', default: false })

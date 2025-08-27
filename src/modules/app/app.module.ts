@@ -30,6 +30,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
         entities: [__dirname + '/modules/**/*.entity{.ts,.js}'],
         autoLoadEntities: true,
         synchronize: true,
+        timezone: 'Asia/Kolkata', // Set timezone to IST
+        extra: {
+          timezone: 'Asia/Kolkata',
+        },
         ssl: {
           rejectUnauthorized: false, // Railway requires SSL
         },
