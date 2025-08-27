@@ -91,11 +91,7 @@ export class MatchParticipantStatsService {
 
     // Tackling: derive score from available fields (tackle breakdown + totalDefensiveActions)
     const totalDefensiveActions = stats.totalDefensiveActions || 0;
-    const totalTackleAttempts =
-      (stats.tackleInPossession || 0) +
-      (stats.tackleOob || 0) +
-      (stats.tackleTurnover || 0) +
-      (stats.tackleTeamPossession || 0);
+    const totalTackleAttempts = stats.totalTackles || 0;
     const tacklesComponent = Math.min(totalTackleAttempts * 10, 70);
     const defensiveComponent = Math.min(totalDefensiveActions * 1.5, 30);
     const tackleDerivedScore = Math.min(100, tacklesComponent + defensiveComponent);
