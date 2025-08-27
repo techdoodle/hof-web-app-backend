@@ -184,7 +184,7 @@ export class MatchParticipantStatsService {
         },
         passing: {
           overallAccuracy: Math.round((stats.totalPassingAccuracy || 0) * 10000) / 100,
-          totalKeyPass: stats.totalKeyPass || 0,
+          totalPassingActions: stats.totalPassingActions || 0,
         },
         dribbling: {
           successRate: Math.round(dribbleSuccess * 100) / 100,
