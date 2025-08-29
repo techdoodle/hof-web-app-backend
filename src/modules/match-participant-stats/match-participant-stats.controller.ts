@@ -117,13 +117,21 @@ export class MatchParticipantStatsController {
 
   @Get('leaderboard/overall')
   async getOverallLeaderboard(
+    @Query('type') type?: string,
+    @Query('city') city?: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string
   ): Promise<any> {
     try {
+      const typeParam = type || 'overall';
       const limitNum = limit ? parseInt(limit, 10) : 10;
       const pageNum = page ? parseInt(page, 10) : 1;
-      return await this.matchParticipantStatsService.getPlayersLeaderboard(limitNum, pageNum);
+      
+      return await this.matchParticipantStatsService.getPlayersLeaderboard(
+        limitNum, 
+        pageNum, 
+        typeParam
+      );
     } catch (error) {
       throw new HttpException(
         `Failed to get overall leaderboard: ${error.message}`,
