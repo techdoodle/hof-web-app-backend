@@ -28,7 +28,7 @@ export class CsvUploadService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async uploadCsv(file: Express.Multer.File): Promise<CsvUploadResponseDto> {
+  async uploadCsv(file: Express.Multer.File, matchId: number): Promise<CsvUploadResponseDto> {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
@@ -38,7 +38,7 @@ export class CsvUploadService {
     }
 
     const csvData = await this.parseCsv(file.buffer);
-    return await this.processCsvData(csvData);
+    return await this.processCsvData(csvData, matchId);
   }
 
   private async parseCsv(buffer: Buffer): Promise<any[]> {
@@ -60,7 +60,7 @@ export class CsvUploadService {
           );
           
           // Skip empty rows (rows where all required fields are null/empty)
-          const hasRequiredData = cleanedData.phoneNumber || cleanedData.email || cleanedData.matchId;
+          const hasRequiredData = cleanedData.phoneNumber || cleanedData.email;
           if (hasRequiredData) {
             results.push(cleanedData);
           }
@@ -70,7 +70,7 @@ export class CsvUploadService {
     });
   }
 
-  private async processCsvData(csvData: any[]): Promise<CsvUploadResponseDto> {
+  private async processCsvData(csvData: any[], matchId: number): Promise<CsvUploadResponseDto> {
     const response: CsvUploadResponseDto = {
       totalRows: csvData.length,
       successfulRows: 0,
@@ -88,7 +88,6 @@ export class CsvUploadService {
       try {
         // Check for duplicate combinations in the CSV
         const userIdentifier = csvData[i].phoneNumber || csvData[i].email;
-        const matchId = csvData[i].matchId;
         const combinationKey = `${userIdentifier}-${matchId}`;
         
         if (processedCombinations.has(combinationKey)) {
@@ -96,7 +95,7 @@ export class CsvUploadService {
         }
         
         processedCombinations.add(combinationKey);
-        await this.processRow(csvData[i], rowIndex, response);
+        await this.processRow(csvData[i], rowIndex, response, matchId);
         response.successfulRows++;
       } catch (error) {
         response.failedRows++;
@@ -117,6 +116,7 @@ export class CsvUploadService {
     rowData: any,
     rowIndex: number,
     response: CsvUploadResponseDto,
+    matchId: number,
   ): Promise<void> {
     // Convert and validate the row data
     const dto = plainToClass(CsvRowDto, rowData, {
@@ -150,16 +150,16 @@ export class CsvUploadService {
 
       // Find match
       const match = await manager.findOne(Match, {
-        where: { matchId: dto.matchId },
+        where: { matchId: matchId },
       });
       if (!match) {
-        throw new NotFoundException(`Match with ID ${dto.matchId} not found`);
+        throw new NotFoundException(`Match with ID ${matchId} not found`);
       }
 
       // Check if match participant already exists
       let matchParticipant = await manager.findOne(MatchParticipant, {
         where: {
-          match: { matchId: dto.matchId },
+          match: { matchId: matchId },
           user: { id: user.id },
         },
         relations: ['match', 'user'],
@@ -169,12 +169,12 @@ export class CsvUploadService {
       if (!matchParticipant) {
         // Validate that we don't exceed 2 teams
         const existingParticipants = await manager.find(MatchParticipant, {
-          where: { match: { matchId: dto.matchId } },
+          where: { match: { matchId: matchId } },
         });
         const existingTeamNames = new Set(existingParticipants.map(p => p.teamName));
         
         if (!existingTeamNames.has(dto.teamName) && existingTeamNames.size >= 2) {
-          throw new BadRequestException(`Cannot add more than 2 teams to match ${dto.matchId}. Existing teams: ${Array.from(existingTeamNames).join(', ')}`);
+          throw new BadRequestException(`Cannot add more than 2 teams to match ${matchId}. Existing teams: ${Array.from(existingTeamNames).join(', ')}`);
         }
 
         matchParticipant = manager.create(MatchParticipant, {
@@ -188,19 +188,19 @@ export class CsvUploadService {
         response.warnings?.push({
           row: rowIndex,
           message: `Created new match participant for user ${user.id}`,
-          data: { userId: user.id, matchId: dto.matchId },
+          data: { userId: user.id, matchId: matchId },
         });
       } else {
         // Update existing match participant if team name changed
         if (matchParticipant.teamName !== dto.teamName) {
           // Validate that we don't exceed 2 teams
           const existingParticipants = await manager.find(MatchParticipant, {
-            where: { match: { matchId: dto.matchId } },
+            where: { match: { matchId: matchId } },
           });
           const existingTeamNames = new Set(existingParticipants.map(p => p.teamName));
           
           if (!existingTeamNames.has(dto.teamName) && existingTeamNames.size >= 2) {
-            throw new BadRequestException(`Cannot add more than 2 teams to match ${dto.matchId}. Existing teams: ${Array.from(existingTeamNames).join(', ')}`);
+            throw new BadRequestException(`Cannot add more than 2 teams to match ${matchId}. Existing teams: ${Array.from(existingTeamNames).join(', ')}`);
           }
 
           matchParticipant.teamName = dto.teamName;
@@ -209,7 +209,7 @@ export class CsvUploadService {
           response.warnings?.push({
             row: rowIndex,
             message: `Updated team name for existing match participant`,
-            data: { userId: user.id, matchId: dto.matchId, newTeamName: dto.teamName },
+            data: { userId: user.id, matchId: matchId, newTeamName: dto.teamName },
           });
         }
       }
@@ -217,7 +217,7 @@ export class CsvUploadService {
       // Check if stats already exist
       const existingStats = await manager.findOne(MatchParticipantStats, {
         where: {
-          match: { matchId: dto.matchId },
+          match: { matchId: matchId },
           player: { id: user.id },
         },
       });
@@ -226,7 +226,7 @@ export class CsvUploadService {
         response.warnings?.push({
           row: rowIndex,
           message: `Stats already exist for this player in this match, skipping stats creation`,
-          data: { userId: user.id, matchId: dto.matchId },
+          data: { userId: user.id, matchId: matchId },
         });
         return;
       }

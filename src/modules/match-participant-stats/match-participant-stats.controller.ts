@@ -44,14 +44,15 @@ export class MatchParticipantStatsController {
   }
 
 
-  @Post('upload-csv')
+  @Post('upload-csv/:matchId')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
   async uploadCsv(
+    @Param('matchId', ParseIntPipe) matchId: number,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<CsvUploadResponseDto> {
     try {
-      return await this.csvUploadService.uploadCsv(file);
+      return await this.csvUploadService.uploadCsv(file, matchId);
     } catch (error) {
       throw new HttpException(
         `Failed to upload CSV: ${error.message}`,

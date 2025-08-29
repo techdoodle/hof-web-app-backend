@@ -16,11 +16,7 @@ export class CsvRowDto {
   @IsString({ message: 'Either phoneNumber or email must be provided' })
   userIdentifier?: string;
 
-  // Match Participant fields
-  @Type(() => Number)
-  @IsNumber()
-  matchId: number;
-
+  // Match Participant fields - matchId is now passed as URL parameter
   @IsString()
   @IsNotEmpty()
   teamName: string;
