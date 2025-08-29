@@ -543,7 +543,7 @@ export class MatchParticipantStatsService {
     };
   }
 
-  async getPlayersLeaderboard(limit: number = 10): Promise<any[]> {
+  async getPlayersLeaderboard(limit: number = 10, page: number = 1): Promise<any> {
     // Get all players who have participated in matches
     const playersWithStats = await this.matchParticipantStatsRepository
       .createQueryBuilder('stats')
@@ -636,17 +636,31 @@ export class MatchParticipantStatsService {
 
     // Sort by score and add ranks
     leaderboardData.sort((a, b) => b.score - a.score);
-    
-    const rankedLeaderboard = leaderboardData.slice(0, limit).map((player, index) => ({
+
+    // Calculate pagination
+    const totalPlayers = leaderboardData.length;
+    const totalPages = Math.ceil(totalPlayers / limit);
+    const skip = (page - 1) * limit;
+
+    const rankedLeaderboard = leaderboardData.slice(skip, skip + limit).map((player, index) => ({
       id: player.id,
-      rank: index + 1,
+      rank: skip + index + 1,
       name: player.name,
       score: player.score,
       suffix: player.suffix,
       imageUrl: player.imageUrl,
     }));
 
-    return rankedLeaderboard;
+    return {
+      data: rankedLeaderboard,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalPlayers,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      }
+    };
   }
 
 } 
