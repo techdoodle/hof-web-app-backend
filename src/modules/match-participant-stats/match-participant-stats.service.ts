@@ -591,7 +591,7 @@ export class MatchParticipantStatsService {
       if (type === 'gna') {
         // For goals + assists type, use the sum as the score
         score = totalGoals + totalAssists;
-        suffix = 'g+a';
+        suffix = '';
       } else {
         // Original overall calculation
         // Calculate individual scores using same logic as spider chart
