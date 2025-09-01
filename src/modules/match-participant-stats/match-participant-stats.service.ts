@@ -84,6 +84,57 @@ export class MatchParticipantStatsService {
 
     const playerCategory = stats.player?.playerCategory || null;
 
+    // Get all players and their stats for this match
+    const allMatchStats = await this.matchParticipantStatsRepository.find({
+      where: { match: { matchId } },
+      relations: ['player', 'matchParticipant'],
+    });
+
+    // Get the current player's team
+    const currentPlayerTeam = stats.matchParticipant.teamName;
+
+    // Separate players into myTeam and opponentTeam
+    const myTeam: any[] = [];
+    const opponentTeam: any[] = [];
+
+    for (const playerStats of allMatchStats) {
+      const player = playerStats.player;
+      const isCurrentPlayer = player.id === userId;
+      const playerTeam = playerStats.matchParticipant.teamName;
+
+      // Get position-based stat value
+      let statVal = '';
+      switch (player.playerCategory) {
+        case 'GOALKEEPER':
+          statVal = (playerStats.totalSave || 0).toString() + ' Saves';
+          break;
+        case 'DEFENDER':
+          statVal = (playerStats.totalTackles || 0).toString() + ' Tackles';
+          break;
+        case 'STRIKER':
+          statVal = (playerStats.totalGoal || 0).toString() + ' Goals';
+          break;
+        default:
+          statVal = '0';
+      }
+
+      const playerData = {
+        id: player.id,
+        firstName: player.firstName || '',
+        lastName: player.lastName || '',
+        position: player.playerCategory || 'STRIKER',
+        profilePicture: player.profilePicture || '',
+        statVal: statVal,
+        mvp: playerStats.isMvp || false
+      };
+
+      if (playerTeam === currentPlayerTeam && !isCurrentPlayer) {
+        myTeam.push(playerData);
+      } else if (playerTeam !== currentPlayerTeam) {
+        opponentTeam.push(playerData);
+      }
+    }
+
     // Calculate normalized scores for spider chart (0-100)
     const shotAccuracy = (stats.shotAccuracy || 0) * 100;
     const passingAccuracy = (stats.totalPassingAccuracy || 0) * 100;
@@ -165,6 +216,8 @@ export class MatchParticipantStatsService {
         venue: stats.match?.venue?.name || null,
         startTime: stats.match?.startTime || null,
       },
+      myTeam: myTeam,
+      opponentTeam: opponentTeam,
       spiderChart: {
         shooting: Math.round(shootingScore * 100) / 100,
         passing: Math.round(passingScore * 100) / 100,
@@ -584,7 +637,7 @@ export class MatchParticipantStatsService {
 
       const totalGoals = parseInt(rawStats.totalgoals) || 0;
       const totalAssists = parseInt(rawStats.totalassists) || 0;
-      
+
       let score: number;
       let suffix: string;
 

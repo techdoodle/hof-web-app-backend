@@ -126,10 +126,10 @@ export class MatchParticipantStatsController {
       const typeParam = type || 'overall';
       const limitNum = limit ? parseInt(limit, 10) : 10;
       const pageNum = page ? parseInt(page, 10) : 1;
-      
+
       return await this.matchParticipantStatsService.getPlayersLeaderboard(
-        limitNum, 
-        pageNum, 
+        limitNum,
+        pageNum,
         typeParam
       );
     } catch (error) {
