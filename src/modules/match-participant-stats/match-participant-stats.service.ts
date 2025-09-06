@@ -690,6 +690,8 @@ export class MatchParticipantStatsService {
         imageUrl: profilePicture || '',
         playerCategory,
         matchesPlayed,
+        totalGoals,
+        totalAssists,
         spiderChart: type === 'overall' ? {
           shooting: Math.round((Math.min(100, ((parseFloat(rawStats.avgshotaccuracy) || 0) * 100 * 0.8) + (Math.min((parseInt(rawStats.totalshots) || 0) / matchesPlayed * 4, 20) * 0.2))) * 100) / 100,
           passing: Math.round(Math.max((parseFloat(rawStats.avgpassingaccuracy) || 0) * 100, (parseFloat(rawStats.avgopenplaypassingaccuracy) || 0) * 100) * 100) / 100,
@@ -708,14 +710,29 @@ export class MatchParticipantStatsService {
     const totalPages = Math.ceil(totalPlayers / limit);
     const skip = (page - 1) * limit;
 
-    const rankedLeaderboard = leaderboardData.slice(skip, skip + limit).map((player, index) => ({
-      id: player.id,
-      rank: skip + index + 1,
-      name: player.name,
-      score: player.score,
-      suffix: player.suffix,
-      imageUrl: player.imageUrl,
-    }));
+    const rankedLeaderboard = leaderboardData.slice(skip, skip + limit).map((player, index) => {
+      const baseData = {
+        id: player.id,
+        rank: skip + index + 1,
+        name: player.name,
+        score: player.score,
+        suffix: player.suffix,
+        imageUrl: player.imageUrl,
+      };
+
+      // Add detailed stats only for G+A type
+      if (type === 'gna') {
+        return {
+          ...baseData,
+          appearances: player.matchesPlayed,
+          goals: player.totalGoals,
+          assists: player.totalAssists,
+        };
+      }
+
+      // Return basic format for overall type
+      return baseData;
+    });
 
     return {
       data: rankedLeaderboard,
