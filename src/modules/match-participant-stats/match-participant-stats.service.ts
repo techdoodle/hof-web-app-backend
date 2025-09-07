@@ -84,6 +84,57 @@ export class MatchParticipantStatsService {
 
     const playerCategory = stats.player?.playerCategory || null;
 
+    // Get all players and their stats for this match
+    const allMatchStats = await this.matchParticipantStatsRepository.find({
+      where: { match: { matchId } },
+      relations: ['player', 'matchParticipant'],
+    });
+
+    // Get the current player's team
+    const currentPlayerTeam = stats.matchParticipant.teamName;
+
+    // Separate players into myTeam and opponentTeam
+    const myTeam: any[] = [];
+    const opponentTeam: any[] = [];
+
+    for (const playerStats of allMatchStats) {
+      const player = playerStats.player;
+      const isCurrentPlayer = player.id === userId;
+      const playerTeam = playerStats.matchParticipant.teamName;
+
+      // Get position-based stat value
+      let statVal = '';
+      switch (player.playerCategory) {
+        case 'GOALKEEPER':
+          statVal = (playerStats.totalSave || 0).toString() + ' Saves';
+          break;
+        case 'DEFENDER':
+          statVal = (playerStats.totalTackles || 0).toString() + ' Tackles';
+          break;
+        case 'STRIKER':
+          statVal = (playerStats.totalGoal || 0).toString() + ' Goals';
+          break;
+        default:
+          statVal = '0';
+      }
+
+      const playerData = {
+        id: player.id,
+        firstName: player.firstName || '',
+        lastName: player.lastName || '',
+        position: player.playerCategory || 'STRIKER',
+        profilePicture: player.profilePicture || '',
+        statVal: statVal,
+        mvp: playerStats.isMvp || false
+      };
+
+      if (playerTeam === currentPlayerTeam && !isCurrentPlayer) {
+        myTeam.push(playerData);
+      } else if (playerTeam !== currentPlayerTeam) {
+        opponentTeam.push(playerData);
+      }
+    }
+
     // Calculate normalized scores for spider chart (0-100)
     const shotAccuracy = (stats.shotAccuracy || 0) * 100;
     const passingAccuracy = (stats.totalPassingAccuracy || 0) * 100;
@@ -165,6 +216,8 @@ export class MatchParticipantStatsService {
         venue: stats.match?.venue?.name || null,
         startTime: stats.match?.startTime || null,
       },
+      myTeam: myTeam,
+      opponentTeam: opponentTeam,
       spiderChart: {
         shooting: Math.round(shootingScore * 100) / 100,
         passing: Math.round(passingScore * 100) / 100,
@@ -584,7 +637,7 @@ export class MatchParticipantStatsService {
 
       const totalGoals = parseInt(rawStats.totalgoals) || 0;
       const totalAssists = parseInt(rawStats.totalassists) || 0;
-      
+
       let score: number;
       let suffix: string;
 
@@ -637,6 +690,8 @@ export class MatchParticipantStatsService {
         imageUrl: profilePicture || '',
         playerCategory,
         matchesPlayed,
+        totalGoals,
+        totalAssists,
         spiderChart: type === 'overall' ? {
           shooting: Math.round((Math.min(100, ((parseFloat(rawStats.avgshotaccuracy) || 0) * 100 * 0.8) + (Math.min((parseInt(rawStats.totalshots) || 0) / matchesPlayed * 4, 20) * 0.2))) * 100) / 100,
           passing: Math.round(Math.max((parseFloat(rawStats.avgpassingaccuracy) || 0) * 100, (parseFloat(rawStats.avgopenplaypassingaccuracy) || 0) * 100) * 100) / 100,
@@ -655,14 +710,29 @@ export class MatchParticipantStatsService {
     const totalPages = Math.ceil(totalPlayers / limit);
     const skip = (page - 1) * limit;
 
-    const rankedLeaderboard = leaderboardData.slice(skip, skip + limit).map((player, index) => ({
-      id: player.id,
-      rank: skip + index + 1,
-      name: player.name,
-      score: player.score,
-      suffix: player.suffix,
-      imageUrl: player.imageUrl,
-    }));
+    const rankedLeaderboard = leaderboardData.slice(skip, skip + limit).map((player, index) => {
+      const baseData = {
+        id: player.id,
+        rank: skip + index + 1,
+        name: player.name,
+        score: player.score,
+        suffix: player.suffix,
+        imageUrl: player.imageUrl,
+      };
+
+      // Add detailed stats only for G+A type
+      if (type === 'gna') {
+        return {
+          ...baseData,
+          appearances: player.matchesPlayed,
+          goals: player.totalGoals,
+          assists: player.totalAssists,
+        };
+      }
+
+      // Return basic format for overall type
+      return baseData;
+    });
 
     return {
       data: rankedLeaderboard,
