@@ -13,7 +13,7 @@ export class UserController {
 
   @Post()
   create(@Body() data) {
-    return this.userService.create(data);
+    return this.userService.create(data)
   }
 
   @Get()
