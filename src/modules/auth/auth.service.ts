@@ -40,7 +40,27 @@ export class AuthService {
         };
 
         // Send SMS via API
-        await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', { params });
+        // await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', { params });
+        // Send SMS via API with timeout and error handling
+        try {
+            await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', {
+                params,
+                timeout: 10000, // 10 second timeout
+                headers: {
+                    'User-Agent': 'HOF-Backend/1.0'
+                }
+            });
+            console.log('SMS sent successfully');
+        } catch (error) {
+            console.error('SMS sending failed:', error.message);
+            // For development: log OTP, for production: might want to throw error
+            const isDevelopment = this.configService.get<string>('NODE_ENV') === 'development';
+            if (isDevelopment) {
+                console.log(`Development mode: OTP for ${mobile} is ${otp}`);
+            } else {
+                throw new Error('Failed to send SMS. Please try again later.');
+            }
+        }
 
         // Return OTP (for demo; do NOT return in production)
         return {
@@ -99,5 +119,9 @@ export class AuthService {
             await this.userService.update(user.id, { lastLoginAt: new Date() });
         }
         return user;
+    }
+
+    async logout(userId: number) {
+        return true;
     }
 }
