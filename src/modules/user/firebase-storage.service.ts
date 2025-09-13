@@ -18,8 +18,8 @@ export class FirebaseStorageService {
     try {
       const bucket = this.firebaseConfig.getBucket();
 
-      // Clear existing images in user folder before uploading new one
-      await this.clearUserFolder(userId);
+      // Archive existing images in user folder before uploading new one
+      await this.archiveUserImages(userId);
 
       const fileName = `${this.storageRoot}/${userId}/${uuidv4()}.png`;
       const file = bucket.file(fileName);
@@ -94,24 +94,52 @@ export class FirebaseStorageService {
     }
   }
 
-  async clearUserFolder(userId: string | number): Promise<void> {
+  async archiveUserImages(userId: string | number): Promise<void> {
     try {
       const bucket = this.firebaseConfig.getBucket();
       const folderPath = `${this.storageRoot}/${userId}/`;
+      const archiveFolderPath = `${this.storageRoot}/${userId}/archive/`;
 
-      // List all files in the user's folder
+      // List all files in the user's folder (excluding already archived files)
       const [files] = await bucket.getFiles({
         prefix: folderPath,
       });
 
-      // Delete all files in the folder
-      if (files.length > 0) {
-        await Promise.all(files.map(file => file.delete()));
-        console.log(`Cleared ${files.length} files from user ${userId} folder`);
+      // Filter out files already in archive folder
+      const filesToArchive = files.filter(file => !file.name.includes('/archive/'));
+
+      if (filesToArchive.length > 0) {
+        const timestamp = Date.now();
+
+        // Move each file to archive folder with timestamp
+        const archivePromises = filesToArchive.map(async (file) => {
+          const originalFileName = file.name.split('/').pop(); // Get just the filename
+          const archiveFileName = `${archiveFolderPath}${timestamp}_${originalFileName}`;
+
+          try {
+            // Copy file to archive location
+            await file.copy(archiveFileName);
+
+            // Delete original file
+            await file.delete();
+
+            console.log(`Archived ${file.name} to ${archiveFileName}`);
+          } catch (error) {
+            console.error(`Failed to archive ${file.name}:`, error);
+          }
+        });
+
+        await Promise.all(archivePromises);
+        console.log(`Archived ${filesToArchive.length} files for user ${userId}`);
       }
     } catch (error) {
-      console.error('Error clearing user folder:', error);
-      // Don't throw error - continue with upload even if cleanup fails
+      console.error('Error archiving user images:', error);
+      // Don't throw error - continue with upload even if archiving fails
     }
+  }
+
+  async clearUserFolder(userId: string | number): Promise<void> {
+    // Keep this method for backward compatibility, but now it calls archive
+    await this.archiveUserImages(userId);
   }
 } 
