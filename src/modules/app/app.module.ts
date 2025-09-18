@@ -26,11 +26,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
-        url: config.get<string>('DB_URL'),
-        entities: [__dirname + '/modules/**/*.entity{.ts,.js}'],
+        url: config.get<string>('database.url') || config.get<string>('DB_URL'),
+        entities: [__dirname + '/../**/*.entity{.ts,.js}'],
+        migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
         autoLoadEntities: true,
-        synchronize: true,
-        timezone: 'Asia/Kolkata', // Set timezone to IST
+        synchronize: config.get<boolean>('database.synchronize') ?? false,
+        migrationsRun: config.get<boolean>('database.migrationsRun') ?? true,
+        logging: config.get<any>('database.logging') ?? ['error'],
         extra: {
           timezone: 'Asia/Kolkata',
         },
@@ -63,7 +65,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-  
+
   ],
 })
-export class AppModule {}
+export class AppModule { }

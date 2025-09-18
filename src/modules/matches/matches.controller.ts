@@ -1,12 +1,12 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Delete, 
-  Param, 
-  Body, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
   ParseIntPipe,
   UseGuards,
   HttpStatus,
@@ -19,7 +19,7 @@ import { MatchType } from '../../common/enums/match-type.enum';
 
 @Controller('matches')
 export class MatchesController {
-  constructor(private readonly matchesService: MatchesService) {}
+  constructor(private readonly matchesService: MatchesService) { }
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -47,7 +47,7 @@ export class MatchesController {
     if (!query || query.trim().length === 0) {
       return [];
     }
-    
+
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return await this.matchesService.searchMatches(query.trim(), limitNum);
   }
@@ -79,14 +79,14 @@ export class MatchesController {
   ): Promise<Match[]> {
     const start = new Date(startDate);
     const end = new Date(endDate);
-    
+
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       throw new HttpException(
         'Invalid date parameters',
         HttpStatus.BAD_REQUEST
       );
     }
-    
+
     return await this.matchesService.findByDateRange(start, end);
   }
 
@@ -127,6 +127,50 @@ export class MatchesController {
         HttpStatus.BAD_REQUEST
       );
     }
+  }
+
+  @Put(':matchId/highlights')
+  @UseGuards(JwtAuthGuard)
+  async updateMatchHighlights(
+    @Param('matchId', ParseIntPipe) matchId: number,
+    @Body('matchHighlights') matchHighlights: string
+  ): Promise<Match> {
+    try {
+      return await this.matchesService.updateMatchHighlights(matchId, matchHighlights);
+    } catch (error) {
+      throw new HttpException(
+        `Failed to update match highlights: ${error.message}`,
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  @Put(':matchId/recap')
+  @UseGuards(JwtAuthGuard)
+  async updateMatchRecap(
+    @Param('matchId', ParseIntPipe) matchId: number,
+    @Body('matchRecap') matchRecap: string
+  ): Promise<Match> {
+    try {
+      return await this.matchesService.updateMatchRecap(matchId, matchRecap);
+    } catch (error) {
+      throw new HttpException(
+        `Failed to update match recap: ${error.message}`,
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  @Get(':matchId/highlights')
+  async getMatchHighlights(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ matchHighlights: string | null }> {
+    const match = await this.matchesService.findOne(matchId);
+    return { matchHighlights: match.matchHighlights || null };
+  }
+
+  @Get(':matchId/recap')
+  async getMatchRecap(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ matchRecap: string | null }> {
+    const match = await this.matchesService.findOne(matchId);
+    return { matchRecap: match.matchRecap || null };
   }
 
   @Delete(':matchId')

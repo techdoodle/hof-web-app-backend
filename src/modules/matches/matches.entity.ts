@@ -12,27 +12,27 @@ export class Match {
   @Column({ name: 'match_stats_id', type: 'varchar', length: 255, unique: true, nullable: true })
   matchStatsId: string;
 
-  @Column({ 
-    name: 'match_type', 
-    type: 'enum', 
-    enum: MatchType, 
-    nullable: false 
+  @Column({
+    name: 'match_type',
+    type: 'enum',
+    enum: MatchType,
+    nullable: false
   })
   matchType: MatchType;
 
-  @Column({ 
-    name: 'start_time', 
-    type: 'timestamp with time zone', 
+  @Column({
+    name: 'start_time',
+    type: 'timestamp with time zone',
     precision: 6,
-    nullable: false 
+    nullable: false
   })
   startTime: Date;
 
-  @Column({ 
-    name: 'end_time', 
-    type: 'timestamp with time zone', 
+  @Column({
+    name: 'end_time',
+    type: 'timestamp with time zone',
     precision: 6,
-    nullable: false 
+    nullable: false
   })
   endTime: Date;
 
@@ -44,6 +44,12 @@ export class Match {
 
   @Column({ name: 'team_b_score', type: 'int', nullable: true })
   teamBScore: number;
+
+  @Column({ name: 'match_highlights', nullable: true, default: null })
+  matchHighlights?: string;
+
+  @Column({ name: 'match_recap', nullable: true, default: null })
+  matchRecap?: string;
 
   @ManyToOne(() => User, { nullable: false })
   @JoinColumn({ name: 'football_chief' })
