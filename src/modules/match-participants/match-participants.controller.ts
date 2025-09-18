@@ -18,7 +18,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('match-participants')
 export class MatchParticipantsController {
-  constructor(private readonly matchParticipantsService: MatchParticipantsService) {}
+  constructor(private readonly matchParticipantsService: MatchParticipantsService) { }
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -139,6 +139,28 @@ export class MatchParticipantsController {
         HttpStatus.BAD_REQUEST
       );
     }
+  }
+
+  @Put(':matchParticipantId/player-highlights')
+  @UseGuards(JwtAuthGuard)
+  async updatePlayerHighlights(
+    @Param('matchParticipantId', ParseIntPipe) matchParticipantId: number,
+    @Body('playerHighlights') playerHighlights: string
+  ): Promise<MatchParticipant> {
+    try {
+      return await this.matchParticipantsService.updatePlayerHighlights(matchParticipantId, playerHighlights);
+    } catch (error) {
+      throw new HttpException(
+        `Failed to update player highlights: ${error.message}`,
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+  @Get(':matchParticipantId/player-highlights')
+  async getPlayerHighlights(@Param('matchParticipantId', ParseIntPipe) matchParticipantId: number): Promise<{ playerHighlights: string | null }> {
+    const participant = await this.matchParticipantsService.findOne(matchParticipantId);
+    return { playerHighlights: participant.playerHighlights || null };
   }
 
   @Delete(':matchParticipantId')

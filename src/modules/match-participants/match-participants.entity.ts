@@ -16,16 +16,19 @@ export class MatchParticipant {
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column({ 
-    name: 'team_name', 
-    type: 'varchar', 
-    length: 100, 
-    nullable: false 
+  @Column({
+    name: 'team_name',
+    type: 'varchar',
+    length: 100,
+    nullable: false
   })
   teamName: string;
 
   @Column({ name: 'paid_stats_opt_in', type: 'boolean', default: false })
   paidStatsOptIn: boolean;
+
+  @Column({ name: 'player_highlights', nullable: true, default: null })
+  playerHighlights?: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;

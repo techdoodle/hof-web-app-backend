@@ -9,7 +9,7 @@ export class MatchesService {
   constructor(
     @InjectRepository(Match)
     private readonly matchRepository: Repository<Match>,
-  ) {}
+  ) { }
 
   async create(createMatchDto: Partial<Match>): Promise<Match> {
     const match = this.matchRepository.create(createMatchDto);
@@ -24,7 +24,7 @@ export class MatchesService {
   }
 
   async findOne(matchId: number): Promise<Match> {
-    const match = await this.matchRepository.findOne({ 
+    const match = await this.matchRepository.findOne({
       where: { matchId },
       relations: ['footballChief', 'city', 'venue'],
     });
@@ -101,7 +101,7 @@ export class MatchesService {
     }
 
     const searchTerm = query.trim();
-    
+
     return await this.matchRepository.find({
       where: [
         { matchStatsId: Like(`%${searchTerm}%`) },
@@ -136,4 +136,24 @@ export class MatchesService {
       take: limit,
     });
   }
+
+  async updateMatchHighlights(matchId: number, matchHighlights: string): Promise<Match> {
+    const match = await this.findOne(matchId);
+    match.matchHighlights = matchHighlights;
+    return await this.matchRepository.save(match);
+  }
+
+  async updateMatchRecap(matchId: number, matchRecap: string): Promise<Match> {
+    const match = await this.findOne(matchId);
+    match.matchRecap = matchRecap;
+    return await this.matchRepository.save(match);
+  }
+
+  async updateMatchHighlightsAndRecap(matchId: number, matchHighlights: string, matchRecap: string): Promise<Match> {
+    const match = await this.findOne(matchId);
+    match.matchHighlights = matchHighlights;
+    match.matchRecap = matchRecap;
+    return await this.matchRepository.save(match);
+  }
+
 } 

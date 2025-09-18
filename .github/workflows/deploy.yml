@@ -1,0 +1,116 @@
+name: Deploy to Staging and Production
+
+on:
+  push:
+    branches:
+      - dev # Triggers on push to dev branch for staging
+      - main # Triggers on push to main branch for production
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  deploy-staging:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build application
+        run: npm run build
+        
+      - name: Run staging migrations
+        env:
+          DB_URL: ${{ secrets.STAGING_DB_URL }}
+          NODE_ENV: staging
+        run: npm run migration:run
+        
+      # - name: Deploy to Railway (Staging)
+      #   env:
+      #     RAILWAY_TOKEN: ${{ secrets.RAILWAY_STAGING_TOKEN }}
+      #   run: |
+      #     npm install -g @railway/cli
+      #     railway link ${{ secrets.RAILWAY_STAGING_PROJECT_ID }}
+      #     railway up --service ${{ secrets.RAILWAY_STAGING_SERVICE_NAME }}
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build application
+        run: npm run build
+        
+      - name: Show pending migrations
+        env:
+          DB_URL: ${{ secrets.PRODUCTION_DB_URL }}
+          NODE_ENV: production
+        run: npm run migration:show
+        
+      - name: Run production migrations
+        env:
+          DB_URL: ${{ secrets.PRODUCTION_DB_URL }}
+          NODE_ENV: production
+        run: npm run migration:run
+        
+      - name: Verify migration status
+        env:
+          DB_URL: ${{ secrets.PRODUCTION_DB_URL }}
+          NODE_ENV: production
+        run: npm run migration:show
+        
+      # - name: Deploy to Railway (Production)
+      #   env:
+      #     RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+      #   run: |
+      #     npm install -g @railway/cli
+      #     railway link ${{ secrets.RAILWAY_PRODUCTION_PROJECT_ID }}
+      #     railway up --service ${{ secrets.RAILWAY_PRODUCTION_SERVICE_NAME }}
+
+  # Rollback job that can be triggered manually if needed
+  rollback-production:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Rollback last migration
+        env:
+          DB_URL: ${{ secrets.PRODUCTION_DB_URL }}
+          NODE_ENV: production
+        run: npm run migration:revert
