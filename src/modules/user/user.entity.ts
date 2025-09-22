@@ -3,6 +3,7 @@ import { FootballTeam } from '../football-teams/football-teams.entity';
 import { City } from '../cities/cities.entity';
 import { Gender } from '../../common/enums/gender.enum';
 import { PlayerCategory } from '../../common/enums/player-category.enum';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 @Entity('users')
 export class User {
@@ -28,11 +29,11 @@ export class User {
   @JoinColumn({ name: 'city_id' })
   city: City;
 
-  @Column({ 
-    name: 'gender', 
-    type: 'enum', 
-    enum: Gender, 
-    nullable: true 
+  @Column({
+    name: 'gender',
+    type: 'enum',
+    enum: Gender,
+    nullable: true
   })
   gender: Gender;
 
@@ -48,11 +49,11 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
   lastLoginAt: Date;
 
-  @Column({ 
-    name: 'player_category', 
-    type: 'enum', 
-    enum: PlayerCategory, 
-    nullable: true 
+  @Column({
+    name: 'player_category',
+    type: 'enum',
+    enum: PlayerCategory,
+    nullable: true
   })
   playerCategory: PlayerCategory;
 
@@ -71,4 +72,12 @@ export class User {
 
   @Column({ name: 'invite_sent', type: 'boolean', default: false })
   inviteSent: boolean;
+
+  @Column({
+    name: 'role',
+    type: 'enum',
+    enum: UserRole,
+    default: UserRole.PLAYER
+  })
+  role: UserRole;
 }

@@ -7,9 +7,11 @@ import { JwtStrategy } from 'src/common/guards/jwt.strategy';
 import { User } from '../user/user.entity';
 import { UserService } from '../user/user.service';
 import { UserModule } from '../user/user.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
   imports: [
+    TypeOrmModule.forFeature([User]),
     JwtModule.registerAsync({
       imports: [], // Required if ConfigModule is not global
       inject: [ConfigService],
