@@ -5,7 +5,7 @@ import { json, urlencoded } from 'express';
 async function bootstrap() {
   // Set timezone for the application
   process.env.TZ = 'Asia/Kolkata';
-  
+
   const app = await NestFactory.create(AppModule);
 
   // Configure body parser with larger limits for image uploads
@@ -22,6 +22,9 @@ async function bootstrap() {
     'https://app.humansoffootball.in',
     'https://hof-ui-stg.netlify.app',
     'https://hof-python-env-production.up.railway.app',
+    'https://admin-stg-hof.netlify.app',
+    'https://admin-prod-hof.netlify.app',
+    'https://hof-admin.netlify.app',
     process.env.FRONTEND_URL, // Production frontend URL from environment
   ].filter(Boolean); // Remove undefined values
 
