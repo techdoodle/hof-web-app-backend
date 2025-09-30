@@ -200,33 +200,69 @@ export class AdminService {
     }
 
     async createMatch(createMatchDto: CreateMatchDto) {
+        let cityId = createMatchDto.city;
+
+        // If venue is provided but city is not, get city from venue
+        if (createMatchDto.venue && !cityId) {
+            const venue = await this.venueRepository.findOne({
+                where: { id: createMatchDto.venue },
+                relations: ['city']
+            });
+            console.log("venuedebugging", venue);
+            if (venue && venue.city) {
+                cityId = venue.city.id;
+            }
+        }
+
         const match = this.matchRepository.create({
             ...createMatchDto,
             footballChief: { id: createMatchDto.footballChief } as any,
             venue: createMatchDto.venue ? { id: createMatchDto.venue } as any : null,
-            city: createMatchDto.city ? { id: createMatchDto.city } as any : null
+            city: cityId ? { id: cityId } as any : null
         });
         const savedMatch = await this.matchRepository.save(match);
         return { ...savedMatch, id: savedMatch.matchId };
     }
 
     async updateMatch(id: number, updateMatchDto: UpdateMatchDto) {
-        const match = await this.matchRepository.findOne({ where: { matchId: id } });
-        if (!match) {
-            throw new NotFoundException(`Match with ID ${id} not found`);
+        try {
+            console.log('updateMatch called with:', { id, updateMatchDto });
+
+            const match = await this.matchRepository.findOne({ where: { matchId: id } });
+            if (!match) {
+                throw new NotFoundException(`Match with ID ${id} not found`);
+            }
+
+            if (updateMatchDto.venue && !updateMatchDto.city) {
+                const venue = await this.venueRepository.findOne({
+                    where: { id: updateMatchDto.venue },
+                    relations: ['city']
+                });
+                console.log("venuedebugging", venue);
+                if (venue && venue.city) {
+                    updateMatchDto.city = venue.city.id;
+                }
+            }
+
+            // Handle entity references
+            const updateData = {
+                ...updateMatchDto,
+                footballChief: updateMatchDto.footballChief ? { id: updateMatchDto.footballChief } as any : undefined,
+                venue: updateMatchDto.venue ? { id: updateMatchDto.venue } as any : undefined,
+                city: updateMatchDto.city ? { id: updateMatchDto.city } as any : undefined
+            };
+
+            console.log('updateData prepared:', updateData);
+
+            Object.assign(match, updateData);
+            console.log('match after assign:', match);
+
+            const updatedMatch = await this.matchRepository.save(match);
+            return { ...updatedMatch, id: updatedMatch.matchId };
+        } catch (error) {
+            console.error('updateMatch error:', error);
+            throw error;
         }
-
-        // Handle entity references
-        const updateData = {
-            ...updateMatchDto,
-            footballChief: updateMatchDto.footballChief ? { id: updateMatchDto.footballChief } as any : undefined,
-            venue: updateMatchDto.venue ? { id: updateMatchDto.venue } as any : undefined,
-            city: updateMatchDto.city ? { id: updateMatchDto.city } as any : undefined
-        };
-
-        Object.assign(match, updateData);
-        const updatedMatch = await this.matchRepository.save(match);
-        return { ...updatedMatch, id: updatedMatch.matchId };
     }
 
     async deleteMatch(id: number) {
@@ -353,6 +389,12 @@ export class AdminService {
             throw new NotFoundException('Match participant not found');
         }
 
+        // First delete any related match participant stats
+        await this.matchParticipantStatsRepository.delete({
+            matchParticipant: { matchParticipantId: participant.matchParticipantId }
+        });
+
+        // Then delete the participant
         await this.matchParticipantRepository.remove(participant);
         return { message: 'Match participant removed successfully' };
     }

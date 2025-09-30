@@ -1,12 +1,12 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Delete, 
-  Param, 
-  Body, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
   ParseIntPipe,
   UseGuards,
   HttpStatus,
@@ -18,7 +18,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('venues')
 export class VenueController {
-  constructor(private readonly venueService: VenueService) {}
+  constructor(private readonly venueService: VenueService) { }
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -46,7 +46,7 @@ export class VenueController {
     if (!query || query.trim().length === 0) {
       return [];
     }
-    
+
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return await this.venueService.searchVenues(query.trim(), limitNum);
   }
