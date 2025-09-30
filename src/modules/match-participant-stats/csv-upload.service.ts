@@ -26,7 +26,7 @@ export class CsvUploadService {
     @InjectRepository(Match)
     private readonly matchRepository: Repository<Match>,
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   async uploadCsv(file: Express.Multer.File, matchId: number): Promise<CsvUploadResponseDto> {
     if (!file) {
@@ -58,7 +58,7 @@ export class CsvUploadService {
               value === '' || value === undefined ? null : value
             ])
           );
-          
+
           // Skip empty rows (rows where all required fields are null/empty)
           const hasRequiredData = cleanedData.phoneNumber || cleanedData.email;
           if (hasRequiredData) {
@@ -84,23 +84,25 @@ export class CsvUploadService {
 
     for (let i = 0; i < csvData.length; i++) {
       const rowIndex = i + 1; // 1-based for user readability
-      
+
       try {
         // Check for duplicate combinations in the CSV
         const userIdentifier = csvData[i].phoneNumber || csvData[i].email;
         const combinationKey = `${userIdentifier}-${matchId}`;
-        
+
         if (processedCombinations.has(combinationKey)) {
           throw new BadRequestException(`Duplicate entry in CSV for user ${userIdentifier} in match ${matchId}`);
         }
-        
+
         processedCombinations.add(combinationKey);
-        await this.processRow(csvData[i], rowIndex, response, matchId);
-        response.successfulRows++;
+        const wasSuccessful = await this.processRow(csvData[i], rowIndex, response, matchId);
+        if (wasSuccessful) {
+          response.successfulRows++;
+        }
       } catch (error) {
         response.failedRows++;
         this.logger.error(`Error processing row ${rowIndex}:`, error);
-        
+
         response.errors?.push({
           row: rowIndex,
           errors: [error.message || 'Unknown error'],
@@ -117,7 +119,7 @@ export class CsvUploadService {
     rowIndex: number,
     response: CsvUploadResponseDto,
     matchId: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // Convert and validate the row data
     const dto = plainToClass(CsvRowDto, rowData, {
       enableImplicitConversion: true,
@@ -137,6 +139,8 @@ export class CsvUploadService {
     if (!dto.phoneNumber && !dto.email) {
       throw new BadRequestException('Either phoneNumber or email must be provided');
     }
+
+    let statsCreated = false;
 
     // Use database transaction for atomicity
     await this.dataSource.transaction(async (manager) => {
@@ -172,7 +176,7 @@ export class CsvUploadService {
           where: { match: { matchId: matchId } },
         });
         const existingTeamNames = new Set(existingParticipants.map(p => p.teamName));
-        
+
         if (!existingTeamNames.has(dto.teamName) && existingTeamNames.size >= 2) {
           throw new BadRequestException(`Cannot add more than 2 teams to match ${matchId}. Existing teams: ${Array.from(existingTeamNames).join(', ')}`);
         }
@@ -184,7 +188,7 @@ export class CsvUploadService {
           paidStatsOptIn: dto.paidStatsOptIn || false,
         });
         await manager.save(MatchParticipant, matchParticipant);
-        
+
         response.warnings?.push({
           row: rowIndex,
           message: `Created new match participant for user ${user.id}`,
@@ -198,14 +202,14 @@ export class CsvUploadService {
             where: { match: { matchId: matchId } },
           });
           const existingTeamNames = new Set(existingParticipants.map(p => p.teamName));
-          
+
           if (!existingTeamNames.has(dto.teamName) && existingTeamNames.size >= 2) {
             throw new BadRequestException(`Cannot add more than 2 teams to match ${matchId}. Existing teams: ${Array.from(existingTeamNames).join(', ')}`);
           }
 
           matchParticipant.teamName = dto.teamName;
           await manager.save(MatchParticipant, matchParticipant);
-          
+
           response.warnings?.push({
             row: rowIndex,
             message: `Updated team name for existing match participant`,
@@ -228,14 +232,17 @@ export class CsvUploadService {
           message: `Stats already exist for this player in this match, skipping stats creation`,
           data: { userId: user.id, matchId: matchId },
         });
-        return;
+        return; // Don't create stats, but don't throw error
       }
 
       // Create match participant stats
       const statsData = this.mapDtoToStatsEntity(dto, match, user, matchParticipant);
       const stats = manager.create(MatchParticipantStats, statsData);
       await manager.save(MatchParticipantStats, stats);
+      statsCreated = true; // Mark that stats were actually created
     });
+
+    return statsCreated; // Only successful if stats were actually created
   }
 
   private async findUserByIdentification(
@@ -247,13 +254,13 @@ export class CsvUploadService {
         where: { phoneNumber: dto.phoneNumber },
       });
     }
-    
+
     if (dto.email) {
       return await manager.findOne(User, {
         where: { email: dto.email },
       });
     }
-    
+
     return null;
   }
 
@@ -268,7 +275,7 @@ export class CsvUploadService {
       player,
       matchParticipant,
       isMvp: dto.isMvp || false,
-      
+
       // Passing stats
       totalPassingActions: dto.totalPassingActions,
       totalCompletePassingActions: dto.totalCompletePassingActions,
