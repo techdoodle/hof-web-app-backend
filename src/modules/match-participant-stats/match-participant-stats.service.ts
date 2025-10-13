@@ -194,9 +194,10 @@ export class MatchParticipantStatsService {
     // Tackling: derive score from available fields (tackle breakdown + totalDefensiveActions)
     const totalDefensiveActions = stats.totalDefensiveActions || 0;
     const totalTackleAttempts = stats.totalTackles || 0;
+    const totalInterceptions = stats.totalInterceptions || 0;
     const tacklesComponent = Math.min(totalTackleAttempts * 10, 70);
-    const defensiveComponent = Math.min(totalDefensiveActions * 1.5, 30);
-    const tackleDerivedScore = Math.min(100, tacklesComponent + defensiveComponent);
+    const interceptionsComponent = Math.min(totalInterceptions * 10, 30);
+    const tackleDerivedScore = Math.min(100, tacklesComponent + interceptionsComponent);
 
     // Calculate impact score based on goals and assists
     const impactScore = Math.min(100, ((stats.totalGoal || 0) + (stats.totalAssist || 0)) * 25); // Scale to 100
@@ -229,7 +230,7 @@ export class MatchParticipantStatsService {
         case PlayerCategory.DEFENDER:
           return {
             ...commonStats,
-            totalInterceptions: (stats.steal || 0) + (stats.interceptionSameTeam || 0),
+            totalInterceptions: stats.totalInterceptions || 0,
             totalTackles: totalTackleAttempts,
             blocks: stats.blockedShotDefensive || 0,
             totalDefensiveActions: totalDefensiveActions,
@@ -287,7 +288,7 @@ export class MatchParticipantStatsService {
         },
         passing: {
           overallAccuracy: Math.round((stats.totalPassingAccuracy || 0) * 10000) / 100,
-          totalPassingActions: stats.totalPassingActions || 0,
+          totalPasses: stats.totalPass || 0,
         },
         dribbling: {
           successRate: Math.round(dribbleSuccess * 100) / 100,
@@ -297,7 +298,7 @@ export class MatchParticipantStatsService {
         tackling: {
           totalDefensiveActions: totalDefensiveActions,
           totalTackles: totalTackleAttempts,
-          interceptions: (stats.steal || 0) + (stats.interceptionSameTeam || 0),
+          interceptions: stats.totalInterceptions || 0,
           blocks: stats.blockedShotDefensive || 0,
           steals: stats.steal || 0,
         },
