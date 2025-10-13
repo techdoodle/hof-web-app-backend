@@ -2,19 +2,16 @@ import { IsString, IsNumber, IsBoolean, IsOptional, IsEnum, ValidateIf, IsEmail,
 import { Transform, Type } from 'class-transformer';
 
 export class CsvRowDto {
-  // User identification - either phone number or email
-  @IsOptional()
+  // User identification - phone number is now required
   @IsString()
-  phoneNumber?: string;
+  @IsNotEmpty()
+  phoneNumber!: string;
 
   @IsOptional()
   @IsEmail()
   email?: string;
 
-  // Custom validation to ensure at least one identification method is provided
-  @ValidateIf(o => !o.phoneNumber && !o.email)
-  @IsString({ message: 'Either phoneNumber or email must be provided' })
-  userIdentifier?: string;
+  // Legacy validation no longer needed; phoneNumber is mandatory
 
   // Match Participant fields - matchId is now passed as URL parameter
   @IsString()
@@ -31,6 +28,37 @@ export class CsvRowDto {
   @Type(() => Boolean)
   @IsBoolean()
   isMvp?: boolean = false;
+
+  // Compact stats (10) - optional, prefer these for XP
+  @IsOptional() @Type(() => Number) @IsNumber()
+  goals?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  assists?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  totalPasses?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  passingAccuracy?: number; // decimal 0..1
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  keyPasses?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  totalShots?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  shotAccuracy?: number; // decimal 0..1
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  tackles?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  interceptions?: number;
+
+  @IsOptional() @Type(() => Number) @IsNumber()
+  saves?: number;
 
   // Passing stats
   @IsOptional()
@@ -202,7 +230,7 @@ export class CsvRowDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  shotAccuracy?: number;
+  // shotAccuracy defined in compact section above; keep only one definition
 
   // Attack stats
   @IsOptional()

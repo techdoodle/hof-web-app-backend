@@ -5,7 +5,7 @@ The CSV upload endpoint allows bulk upload of match participant statistics along
 
 ## Endpoint
 ```
-POST /match-participant-stats/upload-csv
+POST /match-participant-stats/upload-csv/:matchId
 ```
 
 ### Authentication
@@ -18,69 +18,34 @@ POST /match-participant-stats/upload-csv
 
 ### CSV Format Requirements
 
-#### Required Fields
-- **User Identification** :
-  - `phoneNumber`: User's phone number
-- **Match Participant Data**:
-  - `matchId`: ID of the match (number)
-  - `teamName`: Team name assignment (any string, e.g., "Team A", "Red Team", "Lions")
+#### Required Columns
+- `phoneNumber`: User's phone number (primary identifier)
+- `teamName`: Team name (e.g., "Team A", "Red Team")
 
-#### Optional Fields
-- **Match Participant**:
-  - `paidStatsOptIn`: Boolean (default: false)
+#### Compact Stats Columns (used for XP)
+- `goals`, `assists`
+- `totalPasses`, `passingAccuracy` (decimal 0..1)
+- `keyPasses`
+- `totalShots`, `shotAccuracy` (decimal 0..1)
+- `tackles`, `interceptions`
+- `saves`
 
-- **Match Participant Stats** (all optional):
-  - `isMvp`: Boolean (default: false)
-  
-  **Passing Stats (2 fields)**:
-  - `totalPassingActions`: Total number of passing actions
-  - `totalPassingAccuracy`: Passing accuracy (decimal, e.g., 0.72 = 72%)
+#### Optional Columns
+- `Name`, `Date` (for reference only)
+- `paidStatsOptIn`, `isMvp`
 
-  **Shooting Stats (2 fields)**:
-  - `totalShot`: Total number of shots attempted
-  - `shotAccuracy`: Shot accuracy (decimal, e.g., 0.2 = 20%)
-
-  **Attack Stats (4 fields)**:
-  - `totalGoal`: Total goals scored
-  - `totalAssist`: Total assists provided
-  - `totalKeyPass`: Total key passes made
-  - `totalDribbleAttempt`: Total dribbling attempts
-  - `totalSuccessfulDribble`: Successful dribbles
-  - `totalUnsuccessfulDribble`: Unsuccessful dribbles
-  - `dribbleSuccessPercent`: Dribbling success rate (decimal)
-
-  **Defense Stats (6 fields)**:
-  - `totalDefensiveActions`: Total defensive actions performed
-  - `totalTackles`: Total tackles attempted
-  - `totalInterceptions`: Total interceptions made
-  - `blockedShotDefensive`: Shots blocked defensively
-  - `steal`: Number of steals
-  - `totalClearance`: Total clearances made
-
-  **Goalkeeper Stats (3 fields)**:
-  - `totalSave`: Total saves made
-  - `totalCatch`: Total catches made
-  - `totalPunch`: Total punches made
-
-  **Miscellaneous (4 fields)**:
-  - `totalMiscontrol`: Total miscontrols
-  - `totalOwnGoals`: Total own goals
-  - `teamAGoals`: Goals scored by Team A in the match
-  - `teamBGoals`: Goals scored by Team B in the match
-
-### Complete CSV Template
-Use the file `sample_match_stats.csv` as a reference. It includes all the essential stat fields:
+### Compact CSV Template (Recommended)
+Use the compact stats format for all new uploads. Only 10 stat fields are required for performance calculation; other legacy columns are optional.
 
 **Header Structure:**
 ```csv
-id,name,teamName,phoneNumber,date,totalPassingActions,totalPassingAccuracy,totalShot,shotAccuracy,totalGoal,totalAssist,totalKeyPass,totalDribbleAttempt,totalSuccessfulDribble,totalUnsuccessfulDribble,dribbleSuccessPercent,totalDefensiveActions,totalTackles,totalInterceptions,blockedShotDefensive,steal,totalClearance,totalSave,totalCatch,totalPunch,totalMiscontrol,totalOwnGoals,teamAGoals,teamBGoals,matchId
+Name,Team Name,phoneNumber,Date,goals,assists,totalPasses,passingAccuracy,keyPasses,totalShots,shotAccuracy,tackles,interceptions,saves
 ```
 
-### Sample Data Rows
+### Sample Data Rows (Compact)
 ```csv
-A711,Dhruv,Team White,8810663584,"Aug 24, 2025",53,0.72,10,0.2,0,3,5,5,1,4,0.2,12,4,2,0,1,0,0,0,0,1,0,11,23,4
-B407,Maulik,Team Black,7204888969,"Aug 24, 2025",24,0.75,1,1,1,1,2,0,0,0,,10,1,3,0,3,0,3,0,0,1,0,11,23,4
-A861,Manav,Team White,7701969691,"Aug 24, 2025",63,0.86,14,0.79,6,4,8,6,2,4,0.33,31,6,7,4,7,0,0,0,0,1,0,11,23,4
+A2,teamA,8810663584,"Oct 10, 2025",2,2,64,0.81,7,5,0.29,4,4,2
+A3,teamA,7701969691,"Oct 10, 2025",3,0,40,0.62,2,5,0.88,5,3,2
 ```
 
 ### Response Format
@@ -92,7 +57,7 @@ A861,Manav,Team White,7701969691,"Aug 24, 2025",63,0.86,14,0.79,6,4,8,6,2,4,0.33
   "errors": [
     {
       "row": 4,
-      "errors": ["User not found with email: unknown@example.com"],
+      "errors": ["User not found with phoneNumber: 0000000000"],
       "data": { ... }
     }
   ],
@@ -109,9 +74,7 @@ A861,Manav,Team White,7701969691,"Aug 24, 2025",63,0.86,14,0.79,6,4,8,6,2,4,0.33
 ## Behavior
 
 ### User Resolution
-- The system will try to find users by `phoneNumber` first, then by `email`
-- At least one identification method must be provided
-- If user is not found, the row will fail with an error
+- Users are resolved strictly by `phoneNumber` (mandatory). If not found, the row fails.
 
 ### Match Participant Creation
 - If a match participant record doesn't exist, it will be created automatically
@@ -120,7 +83,8 @@ A861,Manav,Team White,7701969691,"Aug 24, 2025",63,0.86,14,0.79,6,4,8,6,2,4,0.33
 
 ### Stats Creation
 - If stats already exist for a player in a match, the row will be skipped with a warning
-- All stat fields are optional and will be set to null if not provided
+- Compact stats are stored in existing columns (`goals`→`totalGoal`, `assists`→`totalAssist`, etc.)
+- Legacy columns are ignored for XP and can be omitted from uploads
 - Database transaction ensures atomicity - if any part fails, the entire row is rolled back
 - Unique constraint prevents duplicate stats for the same player in the same match
 
@@ -145,18 +109,16 @@ A861,Manav,Team White,7701969691,"Aug 24, 2025",63,0.86,14,0.79,6,4,8,6,2,4,0.33
 
 ```bash
 curl -X POST \
-  http://localhost:3000/match-participant-stats/upload-csv \
+  http://localhost:3000/match-participant-stats/upload-csv/4 \
   -H 'Authorization: Bearer YOUR_JWT_TOKEN' \
-  -F 'file=@sample_match_stats.csv'
+  -F 'file=@Stats_latest.csv'
 ```
 
 ## Notes
-- **Complete Template**: Use `sample_match_stats.csv` for the essential stat fields template
-- **Minimal Template**: You can also use a subset of fields - only include columns you need
+- Use the compact template above for all new uploads
 - Large CSV files are processed sequentially to avoid database overload
 - Consider breaking very large files (>1000 rows) into smaller chunks
 - All operations are logged for debugging purposes
 - Database transactions ensure data consistency
 - Unique constraints prevent duplicate stats for the same player/match combination
-- The `id` and `name` fields in the CSV are for reference only and are not stored in the database
-- The `date` field is for reference only and is not stored in the database 
+- The `Name` and `Date` fields in the CSV are for reference only and are not stored in the database
