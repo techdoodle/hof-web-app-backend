@@ -249,19 +249,11 @@ export class CsvUploadService {
     dto: CsvRowDto,
     manager: any,
   ): Promise<User | null> {
-    if (dto.phoneNumber) {
-      return await manager.findOne(User, {
-        where: { phoneNumber: dto.phoneNumber },
-      });
-    }
-
-    if (dto.email) {
-      return await manager.findOne(User, {
-        where: { email: dto.email },
-      });
-    }
-
-    return null;
+    // phoneNumber is mandatory now; lookup by phone only
+    if (!dto.phoneNumber) return null;
+    return await manager.findOne(User, {
+      where: { phoneNumber: dto.phoneNumber },
+    });
   }
 
   private mapDtoToStatsEntity(
@@ -280,12 +272,12 @@ export class CsvUploadService {
       totalPassingActions: dto.totalPassingActions,
       totalCompletePassingActions: dto.totalCompletePassingActions,
       totalIncompletePassingActions: dto.totalIncompletePassingActions,
-      totalPassingAccuracy: dto.totalPassingAccuracy,
+      totalPassingAccuracy: dto.passingAccuracy ?? dto.totalPassingAccuracy,
       totalOpenPlayPassingActions: dto.totalOpenPlayPassingActions,
       totalOpenPlayCompletePassingActions: dto.totalOpenPlayCompletePassingActions,
       totalOpenPlayIncompletePassingActions: dto.totalOpenPlayIncompletePassingActions,
       openPlayPassingAccuracy: dto.openPlayPassingAccuracy,
-      totalPass: dto.totalPass,
+      totalPass: dto.totalPasses ?? dto.totalPass,
       totalCompletePass: dto.totalCompletePass,
       totalIncompletePass: dto.totalIncompletePass,
       totalThroughBall: dto.totalThroughBall,
@@ -307,17 +299,17 @@ export class CsvUploadService {
       openPlayIncompleteCross: dto.openPlayIncompleteCross,
 
       // Shooting stats
-      totalShot: dto.totalShot,
+      totalShot: dto.totalShots ?? dto.totalShot,
       totalOnTargetShot: dto.totalOnTargetShot,
       totalOffTargetShot: dto.totalOffTargetShot,
       totalBlockedShotTaken: dto.totalBlockedShotTaken,
       totalOtherShot: dto.totalOtherShot,
-      shotAccuracy: dto.shotAccuracy,
+      shotAccuracy: dto.shotAccuracy ?? dto.shotAccuracy,
 
       // Attack stats
-      totalGoal: dto.totalGoal,
-      totalAssist: dto.totalAssist,
-      totalKeyPass: dto.totalKeyPass,
+      totalGoal: dto.goals ?? dto.totalGoal,
+      totalAssist: dto.assists ?? dto.totalAssist,
+      totalKeyPass: dto.keyPasses ?? dto.totalKeyPass,
       totalDribbleAttempt: dto.totalDribbleAttempt,
       totalSuccessfulDribble: dto.totalSuccessfulDribble,
       totalUnsuccessfulDribble: dto.totalUnsuccessfulDribble,
@@ -335,12 +327,12 @@ export class CsvUploadService {
       blockedShotDefensive: dto.blockedShotDefensive,
       steal: dto.steal,
       interceptionSameTeam: dto.interceptionSameTeam,
-      totalTackles: dto.totalTackles,
-      totalInterceptions: dto.totalInterceptions,
+      totalTackles: dto.tackles ?? dto.totalTackles,
+      totalInterceptions: dto.interceptions ?? dto.totalInterceptions,
       deflectionTurnover: dto.deflectionTurnover,
       deflectionOob: dto.deflectionOob,
       totalClearance: dto.totalClearance,
-      totalSave: dto.totalSave,
+      totalSave: dto.saves ?? dto.totalSave,
       totalCatch: dto.totalCatch,
       totalPunch: dto.totalPunch,
       totalMiscontrol: dto.totalMiscontrol,

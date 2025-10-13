@@ -26,7 +26,7 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Backend for Hall of Fame Web App. CSV uploads now use a compact stats format and XP is calculated uniformly across all players based on compact stats only.
 
 ## Project setup
 
@@ -59,6 +59,21 @@ $ npm run test:e2e
 # test coverage
 $ npm run test:cov
 ```
+
+## CSV Upload (Compact)
+
+- Endpoint: `POST /match-participant-stats/upload-csv/:matchId`
+- Required columns: `phoneNumber`, `teamName`
+- Compact stats columns used for XP: `goals, assists, totalPasses, passingAccuracy, keyPasses, totalShots, shotAccuracy, tackles, interceptions, saves`
+- See `CSV_UPLOAD_README.md` for templates and details.
+
+## XP Calculation (Position-based, Compact-only)
+
+- Uses only compact stats for uniformity across players
+- ATTACK (incl. midfield): 50% G+A, 20% shooting, 20% playmaking, 10% defensive actions
+- DEFENDER: 50% defensive actions, 30% build-up (passing), 20% impact (G+A)
+- GOALKEEPER: 60% shot-stopping (saves), 30% distribution (passing), 10% assists
+- See `SPIDER_CHART_ENDPOINT_README.md` for calculation details.
 
 ## Deployment
 
