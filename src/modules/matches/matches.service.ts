@@ -45,10 +45,10 @@ export class MatchesService {
     await this.matchRepository.remove(match);
   }
 
-  async findByMatchType(matchType: MatchType): Promise<Match[]> {
+  async findByMatchType(matchTypeId: number): Promise<Match[]> {
     return await this.matchRepository.find({
-      where: { matchType },
-      relations: ['footballChief', 'city', 'venue'],
+      where: { matchTypeRef: { id: matchTypeId } as any },
+      relations: ['footballChief', 'city', 'venue', 'matchTypeRef'],
       order: { startTime: 'DESC' },
     });
   }

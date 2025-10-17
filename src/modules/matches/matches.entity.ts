@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 import { User } from '../user/user.entity';
 import { City } from '../cities/cities.entity';
 import { Venue } from '../venue/venue.entity';
+import { MatchType as MatchTypeEntity } from '../match-types/match-types.entity';
 import { MatchType } from '../../common/enums/match-type.enum';
 
 @Entity('matches')
@@ -12,13 +13,18 @@ export class Match {
   @Column({ name: 'match_stats_id', type: 'varchar', length: 255, unique: true, nullable: true })
   matchStatsId: string;
 
-  @Column({
-    name: 'match_type',
-    type: 'enum',
-    enum: MatchType,
-    nullable: false
-  })
+  @Column({ name: 'match_type', type: 'enum', enum: MatchType, default: MatchType.NON_RECORDED })
   matchType: MatchType;
+
+  @ManyToOne(() => MatchTypeEntity, { nullable: false })
+  @JoinColumn({ name: 'match_type_id' })
+  matchTypeRef: MatchTypeEntity;
+
+  @Column({ name: 'player_capacity', type: 'integer', nullable: true })
+  playerCapacity: number;
+
+  @Column({ name: 'buffer_capacity', type: 'integer', default: 0 })
+  bufferCapacity: number;
 
   @Column({
     name: 'start_time',

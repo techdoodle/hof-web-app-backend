@@ -9,6 +9,9 @@ export class CreateMatchDto {
     @IsEnum(MatchType)
     matchType: MatchType;
 
+    @IsNumber()
+    matchTypeId: number;
+
     @IsDateString()
     startTime: string;
 
@@ -55,6 +58,10 @@ export class UpdateMatchDto {
     @IsEnum(MatchType)
     @IsOptional()
     matchType?: MatchType;
+
+    @IsNumber()
+    @IsOptional()
+    matchTypeId?: number;
 
     @IsDateString()
     @IsOptional()

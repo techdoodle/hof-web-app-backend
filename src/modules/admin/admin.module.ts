@@ -9,6 +9,7 @@ import { MatchParticipantStats } from '../match-participant-stats/match-particip
 import { FootballTeam } from '../football-teams/football-teams.entity';
 import { City } from '../cities/cities.entity';
 import { Venue } from '../venue/venue.entity';
+import { MatchType } from '../match-types/match-types.entity';
 import { CsvUploadService } from '../match-participant-stats/csv-upload.service';
 
 @Module({
@@ -21,6 +22,7 @@ import { CsvUploadService } from '../match-participant-stats/csv-upload.service'
             FootballTeam,
             City,
             Venue,
+            MatchType,
         ]),
     ],
     controllers: [AdminController],

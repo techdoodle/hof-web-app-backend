@@ -190,4 +190,19 @@ export class AdminController {
     async deleteVenue(@Param('id', ParseIntPipe) id: number) {
         return this.adminService.deleteVenue(id);
     }
+
+    // Match Types
+    @Get('match_types')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getMatchTypes(@Query() query: any) {
+        console.log('inside getMatchTypes', query);
+        return this.adminService.getMatchTypes(query);
+    }
+
+    @Get('match_types/:id')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getMatchType(@Param('id', ParseIntPipe) id: number) {
+        console.log('inside getMatchType', id);
+        return this.adminService.getMatchType(id);
+    }
 }

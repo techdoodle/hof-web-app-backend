@@ -37,7 +37,109 @@ graph TD
 
 ## User Flows
 
-### 1. Match Booking Flow
+### 1. Complete Booking Flow with Database States
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as API Server
+    participant M as Matches Table
+    participant P as Pending_Bookings
+    participant B as Bookings
+    participant R as Razorpay
+
+    Note over M,B: Initial State - Match with 10 slots
+    Note over M: matches(id=1):<br/>available_slots: 10<br/>pending_slots: 0<br/>confirmed_slots: 0
+
+    U->>API: Request 3 slots booking
+    API->>M: Lock match row
+    
+    Note over M: CHECK available_slots(10) >= requested(3)
+
+    API->>B: Create booking record
+    Note over B: bookings(new):<br/>id: book_1<br/>match_id: 1<br/>slots: 3<br/>status: PENDING
+
+    API->>P: Create pending booking
+    Note over P: pending_bookings(new):<br/>booking_id: book_1<br/>slots: 3<br/>expires_at: now+5min
+
+    API->>M: Update slot counts
+    Note over M: matches(id=1):<br/>available_slots: 10<br/>pending_slots: 3<br/>confirmed_slots: 0
+
+    API->>R: Create payment intent
+    R-->>U: Show payment page
+
+    Note over U,R: Payment Window (5 minutes)
+
+    alt Payment Success
+        U->>R: Complete payment
+        R->>API: Payment webhook
+        API->>P: Update pending status
+        Note over P: pending_bookings(book_1):<br/>status: CONFIRMED
+
+        API->>B: Update booking status
+        Note over B: bookings(book_1):<br/>status: CONFIRMED
+
+        API->>M: Update slot counts
+        Note over M: matches(id=1):<br/>available_slots: 7<br/>pending_slots: 0<br/>confirmed_slots: 3
+
+    else Payment Timeout
+        Note over P: After 5 minutes
+        API->>P: Cleanup job finds expired
+        API->>B: Mark expired
+        Note over B: bookings(book_1):<br/>status: EXPIRED
+
+        API->>M: Release slots
+        Note over M: matches(id=1):<br/>available_slots: 10<br/>pending_slots: 0<br/>confirmed_slots: 0
+    end
+
+    Note over M,B: Concurrent Booking Possible
+    
+    U->>API: Another user books 2 slots
+    Note over M: matches(id=1):<br/>available_slots: 7<br/>pending_slots: 2<br/>confirmed_slots: 3
+```
+
+### 2. Cancellation Flow with Database States
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as API Server
+    participant B as Bookings
+    participant M as Matches
+    participant R as Razorpay
+    participant N as Notifications
+
+    Note over M: Initial State:<br/>available_slots: 7<br/>pending_slots: 0<br/>confirmed_slots: 3
+
+    U->>API: Request cancel 2 slots
+    API->>B: Verify booking status
+    
+    Note over B: bookings(book_1):<br/>status: CONFIRMED<br/>slots: 3
+
+    API->>API: Calculate refund amount
+    
+    alt >6 hours to match
+        API->>R: Process 100% refund
+        Note over B: refund_amount: full
+    else >3 hours to match
+        API->>R: Process 50% refund
+        Note over B: refund_amount: half
+    else <3 hours to match
+        API->>U: No refund possible
+        Note over B: refund_amount: 0
+    end
+
+    API->>B: Update booking
+    Note over B: bookings(book_1):<br/>slots: 1<br/>status: PARTIALLY_CANCELLED
+
+    API->>M: Update slot counts
+    Note over M: matches(id=1):<br/>available_slots: 9<br/>pending_slots: 0<br/>confirmed_slots: 1
+
+    API->>N: Notify waitlist
+    N-->>U: Send notifications
+```
+
+### 3. Match Booking Flow
 
 ```mermaid
 graph TD

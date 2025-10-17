@@ -52,9 +52,9 @@ export class MatchesController {
     return await this.matchesService.searchMatches(query.trim(), limitNum);
   }
 
-  @Get('type/:matchType')
-  async findByMatchType(@Param('matchType') matchType: MatchType): Promise<Match[]> {
-    return await this.matchesService.findByMatchType(matchType);
+  @Get('type/:matchTypeId')
+  async findByMatchType(@Param('matchType', ParseIntPipe) matchTypeId: number): Promise<Match[]> {
+    return await this.matchesService.findByMatchType(matchTypeId);
   }
 
   @Get('football-chief/:footballChiefId')

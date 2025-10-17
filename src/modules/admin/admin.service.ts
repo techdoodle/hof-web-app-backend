@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, FindOptionsOrder } from 'typeorm';
 import { User } from '../user/user.entity';
 import { Match } from '../matches/matches.entity';
 import { MatchParticipant } from '../match-participants/match-participants.entity';
@@ -8,6 +8,7 @@ import { MatchParticipantStats } from '../match-participant-stats/match-particip
 import { FootballTeam } from '../football-teams/football-teams.entity';
 import { City } from '../cities/cities.entity';
 import { Venue } from '../venue/venue.entity';
+import { MatchType } from '../match-types/match-types.entity';
 import { CsvUploadService } from '../match-participant-stats/csv-upload.service';
 import * as csv from 'csv-parser';
 import { Readable } from 'stream';
@@ -31,6 +32,8 @@ export class AdminService {
         private readonly cityRepository: Repository<City>,
         @InjectRepository(Venue)
         private readonly venueRepository: Repository<Venue>,
+        @InjectRepository(MatchType)
+        private readonly matchTypeRepository: Repository<MatchType>,
         private readonly csvUploadService: CsvUploadService,
     ) { }
 
@@ -132,7 +135,8 @@ export class AdminService {
         const queryBuilder = this.matchRepository.createQueryBuilder('match')
             .leftJoinAndSelect('match.venue', 'venue')
             .leftJoinAndSelect('venue.city', 'city')
-            .leftJoinAndSelect('match.footballChief', 'footballChief');
+            .leftJoinAndSelect('match.footballChief', 'footballChief')
+            .leftJoinAndSelect('match.matchTypeRef', 'matchTypeRef');
 
         if (filters.search) {
             queryBuilder.where('match.name ILIKE :search', { search: `%${filters.search}%` });
@@ -186,7 +190,8 @@ export class AdminService {
             // Map matchId to id for frontend compatibility
             const mappedMatches = matches.map(match => ({
                 ...match,
-                id: match.matchId // Add id field while keeping matchId
+                id: match.matchId, // Add id field while keeping matchId
+                matchTypeId: match.matchTypeRef?.id
             }));
 
             return {
@@ -214,13 +219,19 @@ export class AdminService {
             }
         }
 
+        const matchType = await this.matchTypeRepository.findOne({ where: { id: Number(createMatchDto.matchTypeId) } });
+        if (!matchType) {
+            throw new NotFoundException(`Match type with ID ${createMatchDto.matchTypeId} not found`);
+        }
+
         const match = this.matchRepository.create({
             ...createMatchDto,
-            footballChief: { id: createMatchDto.footballChief } as any,
-            venue: createMatchDto.venue ? { id: createMatchDto.venue } as any : null,
-            city: cityId ? { id: cityId } as any : null
-        });
-        const savedMatch = await this.matchRepository.save(match);
+            footballChief: { id: createMatchDto.footballChief },
+            venue: createMatchDto.venue ? { id: createMatchDto.venue } : null,
+            city: cityId ? { id: cityId } : null,
+            matchTypeRef: matchType
+        } as any);
+        const savedMatch = await this.matchRepository.save(match) as unknown as Match;
         return { ...savedMatch, id: savedMatch.matchId };
     }
 
@@ -249,7 +260,9 @@ export class AdminService {
                 ...updateMatchDto,
                 footballChief: updateMatchDto.footballChief ? { id: updateMatchDto.footballChief } as any : undefined,
                 venue: updateMatchDto.venue ? { id: updateMatchDto.venue } as any : undefined,
-                city: updateMatchDto.city ? { id: updateMatchDto.city } as any : undefined
+                city: updateMatchDto.city ? { id: updateMatchDto.city } as any : undefined,
+                matchType: updateMatchDto.matchType, // For recorded/non-recorded
+                match_type_id: updateMatchDto.matchTypeId // For HOF Play/Select
             };
 
             console.log('updateData prepared:', updateData);
@@ -334,14 +347,18 @@ export class AdminService {
     async getMatch(id: number) {
         const match = await this.matchRepository.findOne({
             where: { matchId: id },
-            relations: ['venue', 'venue.city', 'footballChief']
+            relations: ['venue', 'venue.city', 'footballChief', 'matchTypeRef']
         });
 
         if (!match) {
             throw new NotFoundException(`Match with ID ${id} not found`);
         }
 
-        return { ...match, id: match.matchId };
+        return {
+            ...match,
+            id: match.matchId,
+            matchTypeId: match.matchTypeRef?.id
+        };
     }
 
     async getMatchParticipants(matchId: number) {
@@ -626,5 +643,19 @@ export class AdminService {
 
         await this.venueRepository.remove(venue);
         return { message: 'Venue deleted successfully' };
+    }
+
+    // Match Types
+    async getMatchTypes(query: any) {
+        const matchTypes = await this.matchTypeRepository.find();
+        return { data: matchTypes, total: matchTypes.length };
+    }
+
+    async getMatchType(id: number) {
+        const matchType = await this.matchTypeRepository.findOne({ where: { id } });
+        if (!matchType) {
+            throw new NotFoundException(`Match type with ID ${id} not found`);
+        }
+        return matchType;
     }
 }
