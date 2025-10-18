@@ -16,6 +16,7 @@ import { MatchParticipantStatsModule } from '../match-participant-stats/match-pa
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from '../admin/admin.module';
 import { MatchTypesModule } from '../match-types/match-types.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { MatchTypesModule } from '../match-types/match-types.module';
     MatchParticipantStatsModule,
     MatchTypesModule,
     AdminModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [
