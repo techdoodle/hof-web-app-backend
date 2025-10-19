@@ -1,89 +1,224 @@
-import { Injectable } from '@nestjs/common';
-import * as webPush from 'web-push';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { v4 as uuidv4 } from 'uuid';
-import type { PushSubscription } from './types';
-import { PushSubscriptionEntity } from './notification.entity';
+import { Repository, Connection } from 'typeorm';
+import { EmailService } from './services/email.service';
+import {
+  NotificationType,
+  NotificationPayload,
+  EmailTemplate
+} from './interfaces/notification.interface';
+import { Notification } from './entities/notification.entity';
+import { TransactionManager } from '../../common/utils/transaction.util';
 
 @Injectable()
 export class NotificationService {
-  private vapidDetails: { publicKey: string; privateKey: string };
+  private readonly logger = new Logger(NotificationService.name);
+  private readonly transactionManager: TransactionManager;
 
   constructor(
-    private configService: ConfigService,
-    @InjectRepository(PushSubscriptionEntity)
-    private subscriptionRepo: Repository<PushSubscriptionEntity>,
+    @InjectRepository(Notification)
+    private notificationRepository: Repository<Notification>,
+    private readonly emailService: EmailService,
+    private readonly connection: Connection
   ) {
-    const publicKey = this.configService.get('VAPID_PUBLIC_KEY');
-    const privateKey = this.configService.get('VAPID_PRIVATE_KEY');
-
-    if (!publicKey || !privateKey) {
-      throw new Error('VAPID keys are not configured in environment variables');
-    }
-
-    this.vapidDetails = {
-      publicKey,
-      privateKey,
-    };
-
-    webPush.setVapidDetails(
-      'mailto:' + this.configService.get('VAPID_CONTACT_EMAIL'),
-      this.vapidDetails.publicKey,
-      this.vapidDetails.privateKey,
-    );
+    this.transactionManager = new TransactionManager(connection);
   }
 
-  async saveSubscription(subscription: PushSubscription, userId: number) {
-    const existingSub = await this.subscriptionRepo.findOne({
-      where: {
-        endpoint: subscription.endpoint,
-        user_id: userId
-      }
-    });
-
-    if (existingSub) {
-      return existingSub;
-    }
-
-    const newSub = this.subscriptionRepo.create({
-      id: uuidv4(),
-      endpoint: subscription.endpoint,
-      expiration_time: subscription.expiration_time,
-      keys: subscription.keys,
-      user_id: userId
-    });
-
-    return this.subscriptionRepo.save(newSub);
-  }
-
-  async sendPushNotification(subscription: PushSubscription, payload: any) {
+  async sendNotification(payload: NotificationPayload): Promise<boolean> {
     try {
-      await webPush.sendNotification(subscription, JSON.stringify(payload));
-      return true;
+      this.validateNotificationPayload(payload);
+
+      return await this.transactionManager.withTransaction(async (queryRunner) => {
+        // Get email template
+        const template = await this.getEmailTemplate(
+          payload.type,
+          payload.templateData
+        );
+
+        // Send email
+        const emailSent = await this.emailService.sendEmail(
+          payload.recipient,
+          template
+        );
+
+        // Store notification record
+        const notification = this.notificationRepository.create({
+          type: payload.type,
+          recipientEmail: payload.recipient.email,
+          recipientName: payload.recipient.name,
+          status: emailSent ? 'SENT' : 'FAILED',
+          metadata: {
+            ...payload.metadata,
+            templateData: payload.templateData,
+            timestamp: new Date().toISOString()
+          }
+        });
+
+        await queryRunner.manager.save(notification);
+
+        return emailSent;
+      }, 'sendNotification');
     } catch (error) {
-      if (error.statusCode === 410) {
-        await this.subscriptionRepo.delete({ endpoint: subscription.endpoint });
-      }
-      console.error('Error sending push notification:', error);
+      this.logger.error(
+        `Failed to send notification: ${error.message}`,
+        error.stack
+      );
       return false;
     }
   }
 
-  async sendNotificationToUser(userId: number, payload: any) {
-    const subscriptions = await this.subscriptionRepo.find({
-      where: { user_id: userId }
-    });
+  private validateNotificationPayload(payload: NotificationPayload): void {
+    if (!payload) {
+      throw new Error('Notification payload is required');
+    }
 
-    const results = await Promise.all(
-      subscriptions.map(sub => this.sendPushNotification(sub, payload))
-    );
+    if (!payload.type || !Object.values(NotificationType).includes(payload.type)) {
+      throw new Error(`Invalid notification type: ${payload.type}`);
+    }
 
-    return results.some(result => result === true);
+    if (!payload.recipient || !payload.recipient.email) {
+      throw new Error('Recipient email is required');
+    }
+
+    if (!payload.templateData) {
+      throw new Error('Template data is required');
+    }
   }
 
-  getVapidPublicKey(): string {
-    return this.vapidDetails.publicKey;
+  private async getEmailTemplate(
+    type: NotificationType,
+    data: Record<string, any>
+  ): Promise<EmailTemplate> {
+    const templates: Record<NotificationType, EmailTemplate> = {
+      [NotificationType.BOOKING_CONFIRMATION]: {
+        subject: 'Booking Confirmation - Hall of Fame',
+        template: 'booking-confirmation',
+        data: {
+          ...data,
+          supportEmail: process.env.SUPPORT_EMAIL
+        }
+      },
+      [NotificationType.PAYMENT_SUCCESS]: {
+        subject: 'Payment Successful - Hall of Fame',
+        template: 'payment-success',
+        data
+      },
+      [NotificationType.PAYMENT_FAILED]: {
+        subject: 'Payment Failed - Hall of Fame',
+        template: 'payment-failed',
+        data: {
+          ...data,
+          supportEmail: process.env.SUPPORT_EMAIL
+        }
+      },
+      [NotificationType.BOOKING_CANCELLED]: {
+        subject: 'Booking Cancelled - Hall of Fame',
+        template: 'booking-cancelled',
+        data
+      },
+      [NotificationType.REFUND_INITIATED]: {
+        subject: 'Refund Initiated - Hall of Fame',
+        template: 'refund-initiated',
+        data
+      },
+      [NotificationType.REFUND_COMPLETED]: {
+        subject: 'Refund Completed - Hall of Fame',
+        template: 'refund-completed',
+        data
+      },
+      [NotificationType.BOOKING_REMINDER]: {
+        subject: 'Match Reminder - Hall of Fame',
+        template: 'booking-reminder',
+        data
+      },
+      [NotificationType.WAITLIST_NOTIFICATION]: {
+        subject: 'Slots Available - Hall of Fame',
+        template: 'waitlist-notification',
+        data
+      }
+    };
+
+    const template = templates[type];
+    if (!template) {
+      throw new Error(`Template not found for notification type: ${type}`);
+    }
+
+    return template;
+  }
+
+  // Helper methods with proper validation and error handling
+  async sendBookingConfirmation(
+    email: string,
+    bookingDetails: Record<string, any>
+  ): Promise<boolean> {
+    if (!bookingDetails.bookingId || !bookingDetails.matchDetails) {
+      throw new Error('Invalid booking details');
+    }
+
+    return this.sendNotification({
+      type: NotificationType.BOOKING_CONFIRMATION,
+      recipient: { email },
+      templateData: bookingDetails
+    });
+  }
+
+  async sendPaymentConfirmation(
+    email: string,
+    paymentDetails: Record<string, any>
+  ): Promise<boolean> {
+    if (!paymentDetails.paymentId || !paymentDetails.amount) {
+      throw new Error('Invalid payment details');
+    }
+
+    return this.sendNotification({
+      type: NotificationType.PAYMENT_SUCCESS,
+      recipient: { email },
+      templateData: paymentDetails
+    });
+  }
+
+  async sendBookingCancellation(
+    email: string,
+    cancellationDetails: Record<string, any>
+  ): Promise<boolean> {
+    if (!cancellationDetails.bookingId || !cancellationDetails.reason) {
+      throw new Error('Invalid cancellation details');
+    }
+
+    return this.sendNotification({
+      type: NotificationType.BOOKING_CANCELLED,
+      recipient: { email },
+      templateData: cancellationDetails
+    });
+  }
+
+  async sendRefundNotification(
+    email: string,
+    refundDetails: Record<string, any>
+  ): Promise<boolean> {
+    if (!refundDetails.refundId || !refundDetails.amount) {
+      throw new Error('Invalid refund details');
+    }
+
+    return this.sendNotification({
+      type: NotificationType.REFUND_INITIATED,
+      recipient: { email },
+      templateData: refundDetails
+    });
+  }
+
+  async sendWaitlistNotification(
+    email: string,
+    waitlistDetails: Record<string, any>
+  ): Promise<boolean> {
+    if (!waitlistDetails.matchId || !waitlistDetails.availableSlots) {
+      throw new Error('Invalid waitlist details');
+    }
+
+    return this.sendNotification({
+      type: NotificationType.WAITLIST_NOTIFICATION,
+      recipient: { email },
+      templateData: waitlistDetails
+    });
   }
 }

@@ -23,6 +23,10 @@ import { NotificationModule } from '../notification/notification.module';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
+      envFilePath: ['.env'],
+      cache: false,
+      expandVariables: true,
+      ignoreEnvFile: false,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

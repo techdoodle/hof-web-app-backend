@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, VersionColumn } from 'typeorm';
 import { User } from '../user/user.entity';
 import { City } from '../cities/cities.entity';
 import { Venue } from '../venue/venue.entity';
@@ -69,9 +69,19 @@ export class Match {
   @JoinColumn({ name: 'venue' })
   venue: Venue;
 
+  // New columns for booking tracking
+  @VersionColumn({ name: 'version', default: 1 })
+  version: number;
+
+  @Column({ name: 'booked_slots', type: 'integer', default: 0 })
+  bookedSlots: number;
+
+  @Column({ name: 'locked_slots', type: 'jsonb', default: '{}' })
+  lockedSlots: Record<string, any>;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
-} 
+}
