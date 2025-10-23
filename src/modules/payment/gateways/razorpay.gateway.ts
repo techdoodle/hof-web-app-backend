@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Razorpay from 'razorpay';
+const Razorpay = require('razorpay');
 import { createHmac } from 'crypto';
 import {
     PaymentGateway,
@@ -12,7 +12,7 @@ import { PaymentErrorHandler } from '../utils/error-handler.util';
 
 @Injectable()
 export class RazorpayGateway implements PaymentGateway {
-    private razorpay: Razorpay;
+    private razorpay: any;
     private readonly MAX_RETRIES = 3;
     private readonly RETRY_DELAY = 1000; // 1 second
     private readonly PAISE_PER_RUPEE = 100;
@@ -76,7 +76,7 @@ export class RazorpayGateway implements PaymentGateway {
 
             const payment = await this.retryOperation(
                 () => this.razorpay.payments.fetch(payload.razorpay_payment_id)
-            );
+            ) as any;
 
             if (payment.status !== 'captured') {
                 throw new Error(`Payment not captured. Status: ${payment.status}`);
@@ -128,7 +128,7 @@ export class RazorpayGateway implements PaymentGateway {
                     amount: this.toPaise(amount),
                     notes: metadata
                 })
-            );
+            ) as any;
 
             return {
                 success: true,
@@ -147,7 +147,7 @@ export class RazorpayGateway implements PaymentGateway {
         try {
             const payment = await this.retryOperation(
                 () => this.razorpay.payments.fetch(paymentId)
-            );
+            ) as any;
 
             return {
                 success: true,

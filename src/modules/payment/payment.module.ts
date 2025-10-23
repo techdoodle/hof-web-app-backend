@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { PaymentController } from './payment.controller';
 import { PaymentService } from './payment.service';
 import { RazorpayGateway } from './gateways/razorpay.gateway';
+import { RazorpayService } from './razorpay.service';
 import { RazorpayOrder } from './entities/razorpay-order.entity';
 import { PaymentAttempt } from './entities/payment-attempt.entity';
 import { Refund } from './entities/refund.entity';
@@ -20,8 +21,9 @@ import { Refund } from './entities/refund.entity';
     controllers: [PaymentController],
     providers: [
         PaymentService,
-        RazorpayGateway
+        RazorpayGateway,
+        RazorpayService
     ],
     exports: [PaymentService]
 })
-export class PaymentModule {}
+export class PaymentModule { }

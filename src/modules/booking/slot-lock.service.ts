@@ -9,7 +9,7 @@ export class SlotLockService {
         matchId: string,
         slotNumbers: number[],
         queryRunner: QueryRunner
-    ): Promise<boolean> {
+    ): Promise<{ success: boolean; lockKey?: string }> {
         try {
             // Get current match state with lock
             const result = await queryRunner.query(
@@ -21,7 +21,7 @@ export class SlotLockService {
             );
 
             if (!result?.length) {
-                return false;
+                return { success: false };
             }
 
             const match = result[0];
@@ -44,11 +44,11 @@ export class SlotLockService {
             );
 
             if (isAnySlotLocked) {
-                return false;
+                return { success: false };
             }
 
             // Add new lock
-            const lockExpiryTime = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+            const lockExpiryTime = new Date(Date.now() + 7 * 60 * 1000); // 7 minutes
             const tempBookingId = `temp_${Date.now()}`;
             lockedSlots[tempBookingId] = {
                 slots: slotNumbers,
@@ -65,13 +65,13 @@ export class SlotLockService {
                 [JSON.stringify(lockedSlots), matchId, match.version]
             );
 
-            return true;
+            return { success: true, lockKey: tempBookingId };
         } catch (error) {
             this.logger.error(
                 `Failed to lock slots: ${error.message}`,
                 error.stack
             );
-            return false;
+            return { success: false };
         }
     }
 }

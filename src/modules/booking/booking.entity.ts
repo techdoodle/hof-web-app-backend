@@ -4,28 +4,29 @@ import { BookingStatus, RefundStatus } from '../../common/types/booking.types';
 
 @Entity('bookings')
 export class BookingEntity {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+    @PrimaryGeneratedColumn()
+    id: number;
 
-    @Column()
+    @Column({ name: 'booking_reference' })
     bookingReference: string;
 
-    @Column({ type: 'uuid', name: 'match_id' })
-    matchId: string;
+    @Column({ name: 'match_id' })
+    matchId: number;
 
-    @Column({ type: 'uuid', nullable: true })
-    userId: string;
+    @Column({ name: 'user_id', nullable: true })
+    userId: number;
 
     @Column()
     email: string;
 
-    @Column()
+    @Column({ name: 'total_slots' })
     totalSlots: number;
 
-    @Column('decimal', { precision: 10, scale: 2 })
+    @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
     amount: number;
 
     @Column({
+        name: 'refund_status',
         type: 'varchar',
         enum: RefundStatus,
         nullable: true
@@ -38,10 +39,10 @@ export class BookingEntity {
     })
     status: BookingStatus;
 
-    @CreateDateColumn()
+    @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 
-    @UpdateDateColumn()
+    @UpdateDateColumn({ name: 'updated_at' })
     updatedAt: Date;
 
     @Column({ type: 'jsonb', nullable: true })

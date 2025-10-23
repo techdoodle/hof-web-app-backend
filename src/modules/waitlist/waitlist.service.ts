@@ -197,7 +197,14 @@ export class WaitlistService {
                 matchId: entry.matchId,
                 email: entry.email,
                 totalSlots: entry.slotsRequired,
-                slotNumbers: entry.metadata.availableSlots
+                slotNumbers: entry.metadata.availableSlots,
+                players: [
+                    {
+                        firstName: entry.metadata?.name?.split(' ')[0] || '',
+                        lastName: entry.metadata?.name?.split(' ')[1] || '',
+                        phone: entry.metadata?.phone || ''
+                    }
+                ]
             });
             await queryRunner.commitTransaction();
             return booking;

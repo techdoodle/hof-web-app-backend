@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import configuration from 'src/config/configuration';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -17,9 +18,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from '../admin/admin.module';
 import { MatchTypesModule } from '../match-types/match-types.module';
 import { NotificationModule } from '../notification/notification.module';
+import { BookingModule } from '../booking/booking.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
@@ -67,6 +70,7 @@ import { NotificationModule } from '../notification/notification.module';
     MatchTypesModule,
     AdminModule,
     NotificationModule,
+    BookingModule,
   ],
   controllers: [AppController],
   providers: [

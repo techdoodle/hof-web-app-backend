@@ -36,6 +36,11 @@ export interface CreateBookingDto {
     email: string;
     totalSlots: number;
     slotNumbers: number[];
+    players: Array<{
+        firstName?: string;
+        lastName?: string;
+        phone: string;
+    }>;
     metadata?: Record<string, any>;
 }
 

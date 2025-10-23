@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn, JoinColumn } from 'typeorm';
 import { BookingEntity } from './booking.entity';
 
 export enum BookingSlotStatus {
@@ -18,22 +18,25 @@ export enum RefundStatus {
 
 @Entity('booking_slots')
 export class BookingSlotEntity {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+    @PrimaryGeneratedColumn()
+    id: number;
 
-    @Column({ type: 'uuid', name: 'booking_id' })
-    bookingId: string;
+    @Column({ name: 'booking_id' })
+    bookingId: number;
 
-    @Column()
+    @Column({ name: 'slot_number' })
     slotNumber: number;
 
-    @Column({ nullable: true })
+    @Column({ name: 'player_id', nullable: true })
+    playerId: number;
+
+    @Column({ name: 'player_name', nullable: true })
     playerName: string;
 
-    @Column({ nullable: true })
+    @Column({ name: 'player_email', nullable: true })
     playerEmail: string;
 
-    @Column({ nullable: true })
+    @Column({ name: 'player_phone', nullable: true })
     playerPhone: string;
 
     @Column({
@@ -44,6 +47,7 @@ export class BookingSlotEntity {
     status: BookingSlotStatus;
 
     @Column({
+        name: 'refund_status',
         type: 'varchar',
         enum: RefundStatus,
         nullable: true
@@ -51,6 +55,7 @@ export class BookingSlotEntity {
     refundStatus: RefundStatus;
 
     @Column({
+        name: 'refund_amount',
         type: 'decimal',
         precision: 10,
         scale: 2,
@@ -58,21 +63,22 @@ export class BookingSlotEntity {
     })
     refundAmount: number;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ name: 'cancelled_at', type: 'timestamp', nullable: true })
     cancelledAt: Date;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ name: 'refunded_at', type: 'timestamp', nullable: true })
     refundedAt: Date;
 
-    @CreateDateColumn()
+    @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 
-    @UpdateDateColumn()
+    @UpdateDateColumn({ name: 'updated_at' })
     updatedAt: Date;
 
     @Column({ type: 'jsonb', nullable: true })
     metadata: Record<string, any>;
 
     @ManyToOne(() => BookingEntity, booking => booking.slots)
+    @JoinColumn({ name: 'booking_id' })
     booking: BookingEntity;
 }

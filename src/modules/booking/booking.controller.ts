@@ -1,5 +1,6 @@
-import { Controller, Post, Get, Body, Param, Delete, Query, HttpStatus, HttpCode } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Delete, Query, HttpStatus, HttpCode, UseGuards, Request } from '@nestjs/common';
 import { BookingService } from './booking.service';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import {
     CreateBookingDto,
     CancelBookingDto,
@@ -13,16 +14,21 @@ export class BookingController {
 
     @Post()
     @HttpCode(HttpStatus.CREATED)
-    createBooking(@Body() dto: CreateBookingDto) {
-        return this.bookingService.createBooking(dto);
+    @UseGuards(JwtAuthGuard)
+    createBooking(@Body() dto: CreateBookingDto, @Request() req) {
+        // Extract user info from JWT token
+        const tokenUser = req.user;
+        return this.bookingService.createBooking(dto, tokenUser);
     }
 
     @Get(':bookingId')
+    @UseGuards(JwtAuthGuard)
     getBooking(@Param('bookingId') bookingId: string) {
         return this.bookingService.getBookingById(bookingId);
     }
 
     @Get()
+    @UseGuards(JwtAuthGuard)
     getBookings(
         @Query('userId') userId?: string,
         @Query('email') email?: string,
@@ -33,6 +39,7 @@ export class BookingController {
 
     @Post(':bookingId/payment')
     @HttpCode(HttpStatus.OK)
+    @UseGuards(JwtAuthGuard)
     initiatePayment(
         @Param('bookingId') bookingId: string,
         @Body() dto: InitiatePaymentDto
@@ -42,6 +49,7 @@ export class BookingController {
 
     @Post(':bookingId/payment/callback')
     @HttpCode(HttpStatus.OK)
+    @UseGuards(JwtAuthGuard)
     handlePaymentCallback(
         @Param('bookingId') bookingId: string,
         @Body() dto: PaymentCallbackDto
@@ -51,6 +59,7 @@ export class BookingController {
 
     @Delete(':bookingId/slots')
     @HttpCode(HttpStatus.OK)
+    @UseGuards(JwtAuthGuard)
     cancelBookingSlots(
         @Param('bookingId') bookingId: string,
         @Body() dto: CancelBookingDto

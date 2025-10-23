@@ -13,4 +13,4 @@ import { FirebaseStorageService } from './firebase-storage.service';
   providers: [UserService, ImageProcessingService, FirebaseConfig, FirebaseStorageService],
   exports: [UserService],
 })
-export class UserModule {}
+export class UserModule { }
