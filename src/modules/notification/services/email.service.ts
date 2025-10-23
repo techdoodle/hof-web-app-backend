@@ -126,7 +126,7 @@ export class EmailService implements OnModuleInit {
 
                 const mailOptions: SendMailOptions = {
                     from: config?.from?.address ? {
-                        name: config.from.name || 'Hall of Fame',
+                        name: config.from.name || 'Humans of Football',
                         address: config.from.address
                     } : fromEmail,
                     to: recipient.name ? {
@@ -186,7 +186,7 @@ export class EmailService implements OnModuleInit {
 
             const enrichedData = {
                 ...data,
-                appName: 'Hall of Fame',
+                appName: 'Humans of Football',
                 year: new Date().getFullYear(),
                 supportEmail: this.configService.get('EMAIL_FROM'),
                 timestamp: new Date().toISOString()

@@ -21,7 +21,7 @@ export class BookingSlotEntity {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ type: 'uuid' })
+    @Column({ type: 'uuid', name: 'booking_id' })
     bookingId: string;
 
     @Column()

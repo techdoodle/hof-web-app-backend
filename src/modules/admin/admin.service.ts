@@ -224,8 +224,24 @@ export class AdminService {
             throw new NotFoundException(`Match type with ID ${createMatchDto.matchTypeId} not found`);
         }
 
+        // Handle pricing validation and defaults
+        let slotPrice = createMatchDto.slotPrice;
+        let offerPrice = createMatchDto.offerPrice;
+
+        // Set offer_price equal to slot_price if not provided or null
+        if (slotPrice !== undefined && (offerPrice === undefined || offerPrice === null)) {
+            offerPrice = slotPrice;
+        }
+
+        // Validate pricing if both are provided
+        if (slotPrice !== undefined && offerPrice !== undefined) {
+            this.validatePricing(slotPrice, offerPrice);
+        }
+
         const match = this.matchRepository.create({
             ...createMatchDto,
+            slotPrice,
+            offerPrice,
             footballChief: { id: createMatchDto.footballChief },
             venue: createMatchDto.venue ? { id: createMatchDto.venue } : null,
             city: cityId ? { id: cityId } : null,
@@ -252,6 +268,21 @@ export class AdminService {
                 console.log("venuedebugging", venue);
                 if (venue && venue.city) {
                     updateMatchDto.city = venue.city.id;
+                }
+            }
+
+            // Handle pricing updates
+            if (updateMatchDto.slotPrice !== undefined || updateMatchDto.offerPrice !== undefined) {
+                const slotPrice = updateMatchDto.slotPrice !== undefined ? updateMatchDto.slotPrice : match.slotPrice;
+                let offerPrice = updateMatchDto.offerPrice !== undefined ? updateMatchDto.offerPrice : match.offerPrice;
+
+                // Set offer_price equal to slot_price if offer_price is null
+                if (slotPrice !== undefined && (offerPrice === null || offerPrice === undefined)) {
+                    offerPrice = slotPrice;
+                }
+
+                if (slotPrice !== undefined && offerPrice !== undefined) {
+                    this.validatePricing(slotPrice, offerPrice);
                 }
             }
 
@@ -657,5 +688,17 @@ export class AdminService {
             throw new NotFoundException(`Match type with ID ${id} not found`);
         }
         return matchType;
+    }
+
+    private validatePricing(slotPrice: number, offerPrice: number): void {
+        // Both prices must be >= 0
+        if (slotPrice < 0 || offerPrice < 0) {
+            throw new Error('Slot price and offer price must be greater than or equal to 0');
+        }
+
+        // Offer price must be <= slot price
+        if (offerPrice > slotPrice) {
+            throw new Error('Offer price must be less than or equal to slot price');
+        }
     }
 }

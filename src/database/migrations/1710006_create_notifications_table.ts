@@ -8,9 +8,10 @@ export class CreateNotificationsTable1710006 implements MigrationInterface {
                 columns: [
                     {
                         name: 'id',
-                        type: 'uuid',
+                        type: 'integer',
                         isPrimary: true,
-                        default: 'uuid_generate_v4()',
+                        isGenerated: true,
+                        generationStrategy: 'increment',
                     },
                     {
                         name: 'type',

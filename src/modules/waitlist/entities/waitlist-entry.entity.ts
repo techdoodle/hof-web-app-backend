@@ -11,7 +11,7 @@ export class WaitlistEntry {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ type: 'uuid' })
+    @Column({ type: 'uuid', name: 'match_id' })
     matchId: string;
 
     @Column({ type: 'uuid', nullable: true })

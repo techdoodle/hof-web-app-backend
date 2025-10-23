@@ -91,7 +91,7 @@ export class NotificationService {
   ): Promise<EmailTemplate> {
     const templates: Record<NotificationType, EmailTemplate> = {
       [NotificationType.BOOKING_CONFIRMATION]: {
-        subject: 'Booking Confirmation - Hall of Fame',
+        subject: 'Booking Confirmation - Humans of Football',
         template: 'booking-confirmation',
         data: {
           ...data,
@@ -99,12 +99,12 @@ export class NotificationService {
         }
       },
       [NotificationType.PAYMENT_SUCCESS]: {
-        subject: 'Payment Successful - Hall of Fame',
+        subject: 'Payment Successful - Humans of Football',
         template: 'payment-success',
         data
       },
       [NotificationType.PAYMENT_FAILED]: {
-        subject: 'Payment Failed - Hall of Fame',
+        subject: 'Payment Failed - Humans of Football',
         template: 'payment-failed',
         data: {
           ...data,
@@ -112,27 +112,27 @@ export class NotificationService {
         }
       },
       [NotificationType.BOOKING_CANCELLED]: {
-        subject: 'Booking Cancelled - Hall of Fame',
+        subject: 'Booking Cancelled - Humans of Football',
         template: 'booking-cancelled',
         data
       },
       [NotificationType.REFUND_INITIATED]: {
-        subject: 'Refund Initiated - Hall of Fame',
+        subject: 'Refund Initiated - Humans of Football',
         template: 'refund-initiated',
         data
       },
       [NotificationType.REFUND_COMPLETED]: {
-        subject: 'Refund Completed - Hall of Fame',
+        subject: 'Refund Completed - Humans of Football',
         template: 'refund-completed',
         data
       },
       [NotificationType.BOOKING_REMINDER]: {
-        subject: 'Match Reminder - Hall of Fame',
+        subject: 'Match Reminder - Humans of Football',
         template: 'booking-reminder',
         data
       },
       [NotificationType.WAITLIST_NOTIFICATION]: {
-        subject: 'Slots Available - Hall of Fame',
+        subject: 'Slots Available - Humans of Football',
         template: 'waitlist-notification',
         data
       }

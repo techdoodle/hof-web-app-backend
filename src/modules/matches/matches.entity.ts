@@ -79,6 +79,12 @@ export class Match {
   @Column({ name: 'locked_slots', type: 'jsonb', default: '{}' })
   lockedSlots: Record<string, any>;
 
+  @Column({ name: 'slot_price', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  slotPrice: number;
+
+  @Column({ name: 'offer_price', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  offerPrice: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 

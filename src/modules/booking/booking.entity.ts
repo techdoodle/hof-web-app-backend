@@ -10,7 +10,7 @@ export class BookingEntity {
     @Column()
     bookingReference: string;
 
-    @Column({ type: 'uuid' })
+    @Column({ type: 'uuid', name: 'match_id' })
     matchId: string;
 
     @Column({ type: 'uuid', nullable: true })

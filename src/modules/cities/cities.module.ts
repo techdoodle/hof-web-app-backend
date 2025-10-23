@@ -10,4 +10,4 @@ import { City } from './cities.entity';
   providers: [CitiesService],
   exports: [CitiesService],
 })
-export class CitiesModule {} 
+export class CitiesModule { } 

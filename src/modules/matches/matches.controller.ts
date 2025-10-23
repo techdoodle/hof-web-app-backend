@@ -21,6 +21,13 @@ import { MatchType } from '../../common/enums/match-type.enum';
 export class MatchesController {
   constructor(private readonly matchesService: MatchesService) { }
 
+  @Post('nearby')
+  async findNearbyMatches(
+    @Body() location: { latitude: number; longitude: number }
+  ) {
+    return await this.matchesService.findNearbyMatches(location);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   async create(@Body() createMatchDto: any): Promise<Match> {
@@ -171,6 +178,19 @@ export class MatchesController {
   async getMatchRecap(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ matchRecap: string | null }> {
     const match = await this.matchesService.findOne(matchId);
     return { matchRecap: match.matchRecap || null };
+  }
+
+  @Get(':matchId/booking-info')
+  async getBookingInfo(@Param('matchId', ParseIntPipe) matchId: number) {
+    return this.matchesService.getCriticalBookingInfo(matchId);
+  }
+
+  @Post(':matchId/calculate-price')
+  async calculatePrice(
+    @Param('matchId', ParseIntPipe) matchId: number,
+    @Body() body: { numSlots: number }
+  ) {
+    return this.matchesService.calculateBookingPrice(matchId, body.numSlots);
   }
 
   @Delete(':matchId')

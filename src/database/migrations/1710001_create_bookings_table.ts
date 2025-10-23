@@ -8,9 +8,10 @@ export class CreateBookingsTable1710001 implements MigrationInterface {
                 columns: [
                     {
                         name: 'id',
-                        type: 'uuid',
+                        type: 'integer',
                         isPrimary: true,
-                        default: 'uuid_generate_v4()',
+                        isGenerated: true,
+                        generationStrategy: 'increment',
                     },
                     {
                         name: 'booking_reference',
@@ -20,11 +21,11 @@ export class CreateBookingsTable1710001 implements MigrationInterface {
                     },
                     {
                         name: 'match_id',
-                        type: 'uuid',
+                        type: 'integer',
                     },
                     {
                         name: 'user_id',
-                        type: 'uuid',
+                        type: 'integer',
                         isNullable: true,
                     },
                     {
@@ -78,7 +79,7 @@ export class CreateBookingsTable1710001 implements MigrationInterface {
                     {
                         columnNames: ['match_id'],
                         referencedTableName: 'matches',
-                        referencedColumnNames: ['id'],
+                        referencedColumnNames: ['match_id'],
                     },
                     {
                         columnNames: ['user_id'],

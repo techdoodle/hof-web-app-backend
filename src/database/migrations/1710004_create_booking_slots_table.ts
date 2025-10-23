@@ -8,13 +8,14 @@ export class CreateBookingSlotsTable1710004 implements MigrationInterface {
                 columns: [
                     {
                         name: 'id',
-                        type: 'uuid',
+                        type: 'integer',
                         isPrimary: true,
-                        default: 'uuid_generate_v4()',
+                        isGenerated: true,
+                        generationStrategy: 'increment',
                     },
                     {
                         name: 'booking_id',
-                        type: 'uuid',
+                        type: 'integer',
                     },
                     {
                         name: 'slot_number',
