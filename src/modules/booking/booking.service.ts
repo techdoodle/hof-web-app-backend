@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Connection, In } from 'typeorm';
 import { BookingEntity } from './booking.entity';
@@ -20,6 +20,7 @@ import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/interfaces/notification.interface';
 import { generateBookingReference } from 'src/common/utils/reference.util';
 import { User } from '../user/user.entity';
+import { SlotAvailabilityMonitorService } from '../waitlist/slot-availability-monitor.service';
 
 @Injectable()
 export class BookingService {
@@ -37,6 +38,8 @@ export class BookingService {
         private paymentService: PaymentService,
         private bookingUserService: BookingUserService,
         private notificationService: NotificationService,
+        @Inject(forwardRef(() => SlotAvailabilityMonitorService))
+        private slotAvailabilityMonitor: SlotAvailabilityMonitorService,
     ) { }
 
     async createBooking(dto: CreateBookingDto, tokenUser?: any): Promise<BookingEntity> {
@@ -194,21 +197,96 @@ export class BookingService {
     }
 
     async getBookings(filters: { userId?: string; email?: string; status?: string }) {
-        const query = this.bookingRepository.createQueryBuilder('booking');
+        // Use raw query to get booking data with match and venue details
+        let whereClause = '';
+        const params: any[] = [];
+        let paramIndex = 1;
 
         if (filters.userId) {
-            query.andWhere('booking.userId = :userId', { userId: filters.userId });
+            whereClause += ` AND b.user_id = $${paramIndex}`;
+            params.push(filters.userId);
+            paramIndex++;
         }
 
         if (filters.email) {
-            query.andWhere('booking.email = :email', { email: filters.email });
+            whereClause += ` AND b.email = $${paramIndex}`;
+            params.push(filters.email);
+            paramIndex++;
         }
 
-        if (filters.status) {
-            query.andWhere('booking.status = :status', { status: filters.status });
+        // Handle status filtering
+        if (filters.status === 'all') {
+            // No status filter
+        } else if (filters.status === 'PAYMENT_FAILED') {
+            whereClause += ` AND b.status = $${paramIndex}`;
+            params.push('PAYMENT_FAILED');
+            paramIndex++;
+        } else {
+            // Default: only confirmed bookings
+            whereClause += ` AND b.status = $${paramIndex}`;
+            params.push('CONFIRMED');
+            paramIndex++;
         }
 
-        return query.getMany();
+        const query = `
+            SELECT 
+                b.*,
+                m.start_time,
+                m.end_time,
+                v.name as venue_name,
+                v.address as venue_address
+            FROM bookings b
+            LEFT JOIN matches m ON b.match_id = m.match_id
+            LEFT JOIN venues v ON m.venue = v.id
+            WHERE 1=1 ${whereClause}
+            ORDER BY b.created_at DESC
+        `;
+
+        const bookings = await this.connection.query(query, params);
+
+        // Debug: Log the first booking to see what fields are available
+        if (bookings.length > 0) {
+            console.log('🔍 First booking data:', {
+                id: bookings[0].id,
+                metadata: bookings[0].metadata,
+                venue_name: bookings[0].venue_name,
+                venue_address: bookings[0].venue_address,
+                availableFields: Object.keys(bookings[0])
+            });
+        }
+
+        // Get booking slots for each booking
+        const bookingIds = bookings.map(b => b.id);
+        let slots: any[] = [];
+        if (bookingIds.length > 0) {
+            const slotsQuery = `
+                SELECT * FROM booking_slots 
+                WHERE booking_id = ANY($1)
+                ORDER BY slot_number
+            `;
+            slots = await this.connection.query(slotsQuery, [bookingIds]);
+        }
+
+        // Group slots by booking_id
+        const slotsByBooking = slots.reduce((acc, slot) => {
+            if (!acc[slot.booking_id]) {
+                acc[slot.booking_id] = [];
+            }
+            acc[slot.booking_id].push(slot);
+            return acc;
+        }, {});
+
+        // Transform the data to include match details and slots
+        return bookings.map(booking => ({
+            ...booking,
+            slots: slotsByBooking[booking.id] || [],
+            matchDetails: {
+                venueName: booking.venue_name || 'TBD',
+                venueAddress: booking.venue_address || 'TBD',
+                startTime: booking.start_time,
+                endTime: booking.end_time,
+            }
+        }));
     }
 
     async initiatePayment(dto: InitiatePaymentDto & { bookingId: string }) {
@@ -581,6 +659,10 @@ export class BookingService {
             }
 
             await queryRunner.commitTransaction();
+
+            // Check for available slots and notify waitlist users
+            await this.slotAvailabilityMonitor.checkAndNotifyAvailableSlots(booking.matchId);
+
         } catch (error) {
             await queryRunner.rollbackTransaction();
             throw error;
@@ -805,7 +887,6 @@ export class BookingService {
                     venueAddress: match?.venue_address || 'TBD',
                     startTime: match?.start_time,
                     endTime: match?.end_time,
-                    date: match?.match_date
                 },
                 footballChief: {
                     name: `${match?.fc_first_name || ''} ${match?.fc_last_name || ''}`.trim() || 'Football Chief',

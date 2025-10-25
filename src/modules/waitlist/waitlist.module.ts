@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WaitlistController } from './waitlist.controller';
 import { WaitlistService } from './waitlist.service';
@@ -12,7 +12,7 @@ import { BookingModule } from '../booking/booking.module';
         TypeOrmModule.forFeature([WaitlistEntry]),
         NotificationModule,
         PaymentModule,
-        BookingModule
+        forwardRef(() => BookingModule)
     ],
     controllers: [WaitlistController],
     providers: [WaitlistService],

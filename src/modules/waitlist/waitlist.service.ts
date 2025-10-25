@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Connection, LessThan } from 'typeorm';
 import { WaitlistEntry, WaitlistStatus } from './entities/waitlist-entry.entity';
@@ -16,14 +16,16 @@ export class WaitlistService {
         private waitlistRepository: Repository<WaitlistEntry>,
         private notificationService: NotificationService,
         private paymentService: PaymentService,
+        @Inject(forwardRef(() => BookingService))
         private bookingService: BookingService,
         private connection: Connection
     ) { }
 
-    async joinWaitlist(matchId: string, email: string, slotsRequired: number, metadata?: any) {
+    async joinWaitlist(matchId: string, userId: string, email: string, slotsRequired: number, metadata?: any) {
         const existing = await this.waitlistRepository.findOne({
             where: {
                 matchId: Number(matchId),
+                userId: Number(userId),
                 email,
                 status: WaitlistStatus.ACTIVE
             }
@@ -35,6 +37,7 @@ export class WaitlistService {
 
         const entry = this.waitlistRepository.create({
             matchId: Number(matchId),
+            userId: Number(userId),
             email,
             slotsRequired,
             metadata,
@@ -66,7 +69,7 @@ export class WaitlistService {
                 venueAddress: match?.venue_address || 'TBD',
                 startTime: match?.start_time,
                 endTime: match?.end_time,
-                date: match?.match_date,
+                date: match?.start_time,
                 footballChief: {
                     name: `${match?.fc_first_name || ''} ${match?.fc_last_name || ''}`.trim() || 'Football Chief',
                     phone: match?.fc_phone || 'N/A'
@@ -81,20 +84,23 @@ export class WaitlistService {
         await queryRunner.startTransaction();
 
         try {
-            // Get all active waitlist entries for this match
+            // Get ALL active waitlist entries for this match (no ordering, everyone gets notified)
             const entries = await this.waitlistRepository.find({
                 where: {
                     matchId: Number(matchId),
-                    status: WaitlistStatus.ACTIVE,
-                    slotsRequired: LessThan(availableSlots.length + 1)
+                    status: WaitlistStatus.ACTIVE
                 }
+                // No ordering - everyone gets notified simultaneously
             });
 
+            // Notify ALL waitlist entries about available slots
             for (const entry of entries) {
                 try {
-                    const allocatedSlots = availableSlots.slice(0, entry.slotsRequired);
-                    const amount = entry.slotsRequired * slotPrice;
+                    // Calculate how many slots this user can potentially get
+                    const maxSlotsToAllocate = Math.min(entry.slotsRequired, availableSlots.length);
+                    const amount = maxSlotsToAllocate * slotPrice;
 
+                    // Send notification to ALL waitlist users
                     await this.notificationService.sendNotification({
                         type: NotificationType.WAITLIST_NOTIFICATION,
                         recipient: {
@@ -103,25 +109,30 @@ export class WaitlistService {
                         },
                         templateData: {
                             matchId,
-                            availableSlots: allocatedSlots,
-                            slotsRequired: entry.slotsRequired,
+                            availableSlots: availableSlots, // All available slots
+                            totalAvailableSlots: availableSlots.length,
+                            maxSlotsUserCanGet: maxSlotsToAllocate,
+                            slotsRequested: entry.slotsRequired,
+                            isPartialAllocation: maxSlotsToAllocate < entry.slotsRequired,
+                            remainingSlotsNeeded: entry.slotsRequired - maxSlotsToAllocate,
                             amount,
-                            bookingLink: `${process.env.FRONTEND_URL}/waitlist/confirm?id=${entry.id}&slots=${allocatedSlots.join(',')}`,
-                            validityMinutes: 15
+                            bookingLink: `${process.env.FRONTEND_URL}/waitlist/confirm?id=${entry.id}&slots=${availableSlots.join(',')}`,
+                            // No time limit - competitive allocation
+                            isCompetitiveAllocation: true
                         }
                     });
 
+                    // Update entry status to NOTIFIED (but don't allocate slots yet)
                     entry.status = WaitlistStatus.NOTIFIED;
                     entry.lastNotifiedAt = new Date();
                     entry.metadata = {
                         ...entry.metadata,
-                        amount,
-                        availableSlots: allocatedSlots
+                        availableSlots: availableSlots, // Store all available slots
+                        notes: 'Competitive allocation notification sent'
                     };
                     await queryRunner.manager.save(entry);
 
-                    availableSlots = availableSlots.slice(entry.slotsRequired);
-                    if (availableSlots.length === 0) break;
+                    this.logger.log(`📧 Notified waitlist entry ${entry.id}: ${availableSlots.length} slots available, user can get up to ${maxSlotsToAllocate}`);
 
                 } catch (error) {
                     this.logger.error(
@@ -211,7 +222,7 @@ export class WaitlistService {
             }
 
             if (!entry.metadata?.availableSlots?.length) {
-                throw new BadRequestException('No slots allocated for this entry');
+                throw new BadRequestException('No slots available for this entry');
             }
 
             const verificationResponse = await this.paymentService.verifyPayment({
@@ -224,10 +235,16 @@ export class WaitlistService {
                 throw new BadRequestException('Payment verification failed');
             }
 
+            // Calculate how many slots are actually being booked
+            const slotsAllocated = entry.metadata.availableSlots.length;
+            const slotsRequested = entry.slotsRequired;
+            const isPartialAllocation = slotsAllocated < slotsRequested;
+
+            // Use the same booking flow as regular bookings - this will handle slot locking
             const booking = await this.bookingService.createBooking({
                 matchId: entry.matchId.toString(),
                 email: entry.email,
-                totalSlots: entry.slotsRequired,
+                totalSlots: slotsAllocated, // Use actual slots allocated, not total requested
                 slotNumbers: entry.metadata.availableSlots,
                 players: [
                     {
@@ -237,6 +254,33 @@ export class WaitlistService {
                     }
                 ]
             });
+
+            // Update waitlist entry based on allocation
+            if (isPartialAllocation) {
+                // Partial allocation - user still needs more slots
+                entry.slotsRequired = slotsRequested - slotsAllocated; // Update remaining slots needed
+                entry.status = WaitlistStatus.ACTIVE; // Keep on waitlist for remaining slots
+                entry.metadata = {
+                    ...entry.metadata,
+                    confirmedSlots: slotsAllocated,
+                    remainingSlotsNeeded: slotsRequested - slotsAllocated,
+                    lastConfirmedAt: new Date(),
+                    notes: 'Partial allocation: User got ' + slotsAllocated + '/' + slotsRequested + ' slots, remaining: ' + entry.slotsRequired
+                };
+                this.logger.log(`📝 Partial allocation: User got ${slotsAllocated}/${slotsRequested} slots, remaining: ${entry.slotsRequired}`);
+            } else {
+                // Full allocation - user got all requested slots
+                entry.status = WaitlistStatus.CONFIRMED;
+                entry.metadata = {
+                    ...entry.metadata,
+                    confirmedSlots: slotsAllocated,
+                    fullyConfirmedAt: new Date(),
+                    notes: 'Full allocation: User got all ' + slotsAllocated + ' requested slots'
+                };
+                this.logger.log(`✅ Full allocation: User got all ${slotsAllocated} requested slots`);
+            }
+
+            await queryRunner.manager.save(entry);
             await queryRunner.commitTransaction();
             return booking;
 

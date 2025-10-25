@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Slots Available - Humans of Football</title>
+</head>
+
+<body>
+    <div
+        style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #2c3e50; margin: 0;">⚽ Humans of Football</h1>
+            <p style="color: #27ae60; margin: 5px 0; font-weight: bold;">🎉 Slots Available!</p>
+        </div>
+
+        <!-- Main Content -->
+        <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h2 style="color: #27ae60; margin-top: 0;">⚡ Slots Available for Booking</h2>
+
+            <p>Dear {{recipient.name}},</p>
+
+            <p>Great news! <strong>{{totalAvailableSlots}} slot(s)</strong> have become available for the match you're
+                waitlisted for!</p>
+
+            {{#if isCompetitiveAllocation}}
+            <!-- Competitive Allocation Notice -->
+            <div
+                style="background-color: #fff3cd; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #f39c12;">
+                <h3 style="margin-top: 0; color: #f39c12;">🏃‍♂️ First Come, First Served</h3>
+                <p style="margin: 0;">All waitlisted users have been notified simultaneously. <strong>Whoever books
+                        first gets the slot(s)!</strong></p>
+                <p style="margin: 10px 0 0 0;">You can book up to <strong>{{maxSlotsUserCanGet}} slot(s)</strong> from
+                    the {{totalAvailableSlots}} available.</p>
+            </div>
+            {{/if}}
+
+            {{#if isPartialAllocation}}
+            <!-- Partial Allocation Notice -->
+            <div
+                style="background-color: #fff3cd; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #f39c12;">
+                <h3 style="margin-top: 0; color: #f39c12;">⚠️ Partial Availability</h3>
+                <p style="margin: 0;">You requested <strong>{{slotsRequested}} slots</strong>, but only
+                    <strong>{{totalAvailableSlots}} slots</strong> are currently available.
+                </p>
+                <p style="margin: 10px 0 0 0;">You can book up to {{maxSlotsUserCanGet}} of these slots now, and we'll
+                    notify you again if more slots become available.</p>
+            </div>
+            {{/if}}
+
+            <!-- Available Slots Details -->
+            <div style="background-color: #d4edda; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #155724;">Available Slots</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #2c3e50;">Total Available:</td>
+                        <td style="padding: 8px 0; color: #27ae60; font-weight: bold;">{{totalAvailableSlots}} slot(s)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #2c3e50;">You Can Book:</td>
+                        <td style="padding: 8px 0; color: #27ae60; font-weight: bold;">Up to {{maxSlotsUserCanGet}}
+                            slot(s)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #2c3e50;">Price per Slot:</td>
+                        <td style="padding: 8px 0; color: #27ae60; font-weight: bold;">₹{{amount}} (for
+                            {{maxSlotsUserCanGet}} slots)</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Action Button -->
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{{bookingLink}}"
+                    style="background-color: #27ae60; color: white; padding: 15px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                    🏃‍♂️ Book Now - Up to {{maxSlotsUserCanGet}} Slot(s)
+                </a>
+            </div>
+
+            <!-- Important Notice -->
+            <div
+                style="background-color: #f8d7da; padding: 20px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #dc3545;">
+                <h3 style="margin-top: 0; color: #dc3545;">🏃‍♂️ Competitive Booking</h3>
+                <ul style="margin: 0; padding-left: 20px; color: #721c24;">
+                    <li><strong>First come, first served!</strong> All waitlisted users have been notified</li>
+                    <li>Whoever books first gets the slot(s) - no time limit</li>
+                    <li>Regular users can also book these slots directly from the app</li>
+                    {{#if isPartialAllocation}}
+                    <li>You can book up to {{maxSlotsUserCanGet}} slots now and wait for more slots later</li>
+                    {{else}}
+                    <li>This booking will complete your waitlist request</li>
+                    {{/if}}
+                </ul>
+            </div>
+
+            <!-- Footer -->
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="color: #6c757d; margin: 0; font-size: 14px;">
+                    If you have any questions, please contact us at {{supportEmail}}
+                </p>
+                <p style="color: #6c757d; margin: 5px 0 0 0; font-size: 12px;">
+                    This is an automated notification. Please do not reply to this email.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

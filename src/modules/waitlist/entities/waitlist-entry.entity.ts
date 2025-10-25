@@ -3,6 +3,7 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
 export enum WaitlistStatus {
     ACTIVE = 'ACTIVE',
     NOTIFIED = 'NOTIFIED',
+    CONFIRMED = 'CONFIRMED',
     CANCELLED = 'CANCELLED'
 }
 
@@ -42,6 +43,10 @@ export class WaitlistEntry {
         availableSlots?: number[];
         paymentOrderId?: string;
         orderCreatedAt?: string;
+        confirmedSlots?: number;
+        remainingSlotsNeeded?: number;
+        lastConfirmedAt?: Date;
+        fullyConfirmedAt?: Date;
     };
 
     @CreateDateColumn({ name: 'created_at' })

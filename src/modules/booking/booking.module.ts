@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BookingController } from './booking.controller';
 import { BookingService } from './booking.service';
@@ -19,13 +19,17 @@ import { NotificationService } from '../notification/notification.service';
 import { Notification } from '../notification/entities/notification.entity';
 import { EmailService } from '../notification/services/email.service';
 import { User } from '../user/user.entity';
+import { SlotAvailabilityMonitorService } from '../waitlist/slot-availability-monitor.service';
+import { WaitlistModule } from '../waitlist/waitlist.module';
+import { Match } from '../matches/matches.entity';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([BookingEntity, BookingSlotEntity, RefundEntity, RazorpayOrder, PaymentAttempt, Refund, Notification, User])
+        TypeOrmModule.forFeature([BookingEntity, BookingSlotEntity, RefundEntity, RazorpayOrder, PaymentAttempt, Refund, Notification, User, Match]),
+        forwardRef(() => WaitlistModule)
     ],
     controllers: [BookingController],
-    providers: [BookingService, SlotLockService, RefundService, RazorpayService, PaymentService, RazorpayGateway, BookingUserService, BookingCleanupService, NotificationService, EmailService],
+    providers: [BookingService, SlotLockService, RefundService, RazorpayService, PaymentService, RazorpayGateway, BookingUserService, BookingCleanupService, NotificationService, EmailService, SlotAvailabilityMonitorService],
     exports: [BookingService]
 })
 export class BookingModule { }

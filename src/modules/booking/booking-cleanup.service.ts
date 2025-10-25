@@ -5,6 +5,7 @@ import { Repository, Connection } from 'typeorm';
 import { BookingEntity } from './booking.entity';
 import { BookingStatus } from '../../common/types/booking.types';
 import { BookingSlotEntity, BookingSlotStatus } from './booking-slot.entity';
+import { SlotAvailabilityMonitorService } from '../waitlist/slot-availability-monitor.service';
 
 @Injectable()
 export class BookingCleanupService {
@@ -16,6 +17,7 @@ export class BookingCleanupService {
         @InjectRepository(BookingSlotEntity)
         private bookingSlotRepository: Repository<BookingSlotEntity>,
         private connection: Connection,
+        private slotAvailabilityMonitor: SlotAvailabilityMonitorService,
     ) { }
 
     /**
@@ -127,6 +129,10 @@ export class BookingCleanupService {
 
             await queryRunner.commitTransaction();
             this.logger.log(`✅ Cleaned up expired booking ${booking.id}`);
+
+            // Check for available slots and notify waitlist users
+            await this.slotAvailabilityMonitor.checkAndNotifyAvailableSlots(booking.matchId);
+
         } catch (error) {
             await queryRunner.rollbackTransaction();
             this.logger.error(`Failed to cleanup booking ${booking.id}`, error.stack);

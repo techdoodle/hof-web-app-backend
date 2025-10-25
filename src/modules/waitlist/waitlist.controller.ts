@@ -1,4 +1,4 @@
-import { Controller, Post, Delete, Get, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Delete, Get, Body, Query, UseGuards, Param, Request } from '@nestjs/common';
 import { WaitlistService } from './waitlist.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -9,10 +9,13 @@ export class WaitlistController {
     @Post('join')
     @UseGuards(JwtAuthGuard)
     async joinWaitlist(
-        @Body() body: { matchId: string; email: string; slotsRequired: number; metadata?: any }
+        @Body() body: { matchId: string; email: string; slotsRequired: number; metadata?: any },
+        @Request() req: any
     ) {
+        const user = req.user; // Extract user from JWT token
         return this.waitlistService.joinWaitlist(
             body.matchId,
+            user.id.toString(), // Pass user ID from token
             body.email,
             body.slotsRequired,
             body.metadata
@@ -34,5 +37,25 @@ export class WaitlistController {
         return {
             count: await this.waitlistService.getActiveWaitlistCount(matchId)
         };
+    }
+
+    @Post(':waitlistId/initiate-booking')
+    @UseGuards(JwtAuthGuard)
+    async initiateWaitlistBooking(@Param('waitlistId') waitlistId: string) {
+        return this.waitlistService.initiateWaitlistBooking(waitlistId);
+    }
+
+    @Post(':waitlistId/confirm-booking')
+    @UseGuards(JwtAuthGuard)
+    async confirmWaitlistBooking(
+        @Param('waitlistId') waitlistId: string,
+        @Body() body: { paymentOrderId: string; paymentId: string; signature: string }
+    ) {
+        return this.waitlistService.confirmWaitlistBooking(
+            waitlistId,
+            body.paymentOrderId,
+            body.paymentId,
+            body.signature
+        );
     }
 }
