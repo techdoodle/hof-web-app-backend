@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Waitlist Confirmation - Humans of Football</title>
+</head>
+
+<body>
+    <div
+        style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #2c3e50; margin: 0;">⚽ Humans of Football</h1>
+            <p style="color: #7f8c8d; margin: 5px 0;">You've been added to the waitlist!</p>
+        </div>
+
+        <!-- Main Content -->
+        <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h2 style="color: #f39c12; margin-top: 0;">⏳ Waitlist Confirmation</h2>
+
+            <p>Dear {{recipient.name}},</p>
+
+            <p>You have been successfully added to the waitlist for the football match. We'll notify you as soon as
+                slots become available!</p>
+
+            <!-- Waitlist Details -->
+            <div style="background-color: #fff3cd; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #2c3e50;">Waitlist Details</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Waitlist ID:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{waitlistId}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Slots Required:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{slotsRequired}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Status:</td>
+                        <td style="padding: 8px 0; color: #f39c12; font-weight: bold;">On Waitlist</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Match Details -->
+            <div style="background-color: #e8f4fd; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #2c3e50;">Match Details</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Venue:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{matchDetails.venueName}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Address:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{matchDetails.venueAddress}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Date:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{matchDetails.date}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Time:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{matchDetails.startTime}} -
+                            {{matchDetails.endTime}}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Football Chief Details -->
+            <div style="background-color: #f0f8ff; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #2c3e50;">Football Chief Contact</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Name:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{footballChief.name}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Phone:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">
+                            <a href="tel:{{footballChief.phone}}"
+                                style="color: #007bff; text-decoration: none;">{{footballChief.phone}}</a>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- What Happens Next -->
+            <div style="background-color: #e8f5e8; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #27ae60;">What Happens Next?</h3>
+                <ul style="color: #2c3e50; line-height: 1.6;">
+                    <li>We'll monitor the match for any cancellations</li>
+                    <li>When slots become available, you'll receive an email notification</li>
+                    <li>You'll have a limited time to confirm your booking</li>
+                    <li>If you don't respond in time, the next person on the waitlist will be notified</li>
+                </ul>
+            </div>
+
+            <!-- Important Notes -->
+            <div style="background-color: #fff3cd; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #f39c12;">Important Notes</h3>
+                <ul style="color: #2c3e50; line-height: 1.6;">
+                    <li>Keep an eye on your email for waitlist notifications</li>
+                    <li>You can cancel your waitlist entry anytime</li>
+                    <li>No payment is required until slots are confirmed</li>
+                    <li>Contact the Football Chief if you have any questions</li>
+                </ul>
+            </div>
+
+            <!-- Contact Info -->
+            <div style="background-color: #f0f8ff; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #3498db;">Need Help?</h3>
+                <p style="color: #2c3e50; margin: 0;">If you have any questions about the waitlist or need to make
+                    changes, please contact our support team.</p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 30px; color: #7f8c8d; font-size: 12px;">
+            <p>This is an automated email. Please do not reply to this message.</p>
+            <p>© 2024 Humans of Football. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+
+</html>

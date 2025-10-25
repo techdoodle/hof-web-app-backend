@@ -15,7 +15,21 @@ export class AuthService {
         private jwtService: JwtService,
         private userService: UserService,
     ) {
-        this.key = Buffer.from(String(this.configService.get<string>('encryption.key')), 'hex');
+        // Use direct environment variable since ConfigService is not working properly
+        const encryptionKey = process.env.OTP_ENCRYPTION_KEY;
+        console.log('Using direct env variable:', encryptionKey);
+        console.log('Key length:', encryptionKey ? encryptionKey.length : 'undefined');
+
+        if (!encryptionKey) {
+            throw new Error('OTP_ENCRYPTION_KEY environment variable is not set');
+        }
+
+        if (encryptionKey.length !== 64) {
+            throw new Error(`OTP_ENCRYPTION_KEY must be 64 characters long, got ${encryptionKey.length}`);
+        }
+
+        this.key = Buffer.from(encryptionKey, 'hex');
+        console.log('Key buffer length:', this.key.length);
     }
 
     async sendOtp(mobile: string): Promise<object> {
@@ -25,10 +39,27 @@ export class AuthService {
         // Prepare SMS message
         const message = `Dear Customer, Your OTP for login is ${otp} and do not share it with anyone. Thank you, HUMANS OF FOOTBALL.`;
 
-        // Prepare API parameters
+        // Prepare API parameters - try different ways to access config
+        const username = this.configService.get<string>('digimiles.username') ||
+            this.configService.get<string>('app.digimiles.username');
+        const password = this.configService.get<string>('digimiles.password') ||
+            this.configService.get<string>('app.digimiles.password');
+
+        // Debug: Check what ConfigService is returning
+        console.log('ConfigService debug:');
+        console.log('- digimiles.username:', username);
+        console.log('- digimiles.password:', password);
+        console.log('- All digimiles config:', this.configService.get('digimiles'));
+        console.log('- All app config:', this.configService.get('app'));
+        console.log('- Direct env check:', process.env.DIGIMILES_USERNAME);
+
+        console.log('SMS Credentials:', { username, password });
+        console.log('SMS Message:', message);
+        console.log('Mobile:', mobile);
+
         const params = {
-            username: this.configService.get<string>('digimiles.username'),
-            password: this.configService.get<string>('digimiles.password'),
+            username,
+            password,
             type: '0',
             dlr: '1',
             destination: String(mobile),
@@ -43,16 +74,29 @@ export class AuthService {
         // await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', { params });
         // Send SMS via API with timeout and error handling
         try {
-            await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', {
+            console.log('Sending SMS to:', mobile);
+            console.log('SMS API URL:', 'https://rslri.connectbind.com:8443/bulksms/bulksms');
+            console.log('SMS Parameters:', params);
+
+            const response = await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', {
                 params,
                 timeout: 10000, // 10 second timeout
                 headers: {
                     'User-Agent': 'HOF-Backend/1.0'
                 }
             });
+
+            console.log('SMS API Response:', response.data);
             console.log('SMS sent successfully');
         } catch (error) {
             console.error('SMS sending failed:', error.message);
+            console.error('SMS Error Details:', {
+                code: error.code,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data
+            });
+
             // For development: log OTP, for production: might want to throw error
             const isDevelopment = this.configService.get<string>('NODE_ENV') === 'development';
             if (isDevelopment) {

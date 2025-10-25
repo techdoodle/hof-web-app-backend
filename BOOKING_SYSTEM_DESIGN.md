@@ -12,11 +12,12 @@
 
 The Match Booking System is designed to handle concurrent bookings for sports matches with the following key features:
 - Multiple game types with different pricing
-- Group booking support
-- Waitlist management
+- Group booking support with individual player details
+- Waitlist management (non-sequential)
 - Real-time slot availability updates
 - Payment integration with Razorpay
 - Cancellation and refund handling
+- User creation for additional slot players
 
 ### Architecture Diagram
 
@@ -722,11 +723,20 @@ interface CouponService {
 ### 1. Match Configuration
 
 Matches are configured with:
-- Base capacity (e.g., 14 players for 7v7)
-- Waitlist capacity (configurable)
+- **Player Capacity**: Base slots (e.g., 14 for 7v7)
+- **Buffer Capacity**: Waitlist slots (e.g., 4 additional)
+- **Total Capacity**: Player Capacity + Buffer Capacity
 - Game type (Regular, Limited Stats, Full Stats)
 - Booking window
 - Pricing
+
+### Slot Management Logic
+
+1. **Regular Slots**: `playerCapacity - bookedSlots - lockedSlots`
+2. **Waitlist Slots**: `bufferCapacity` (only when regular slots are full)
+3. **Booking Types**: 
+   - Regular: Direct booking to confirmed slots
+   - Waitlist: Booking to buffer slots (no charge until confirmed)
 
 ```mermaid
 classDiagram

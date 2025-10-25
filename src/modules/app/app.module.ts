@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import configuration from 'src/config/configuration';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -17,12 +18,19 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from '../admin/admin.module';
 import { MatchTypesModule } from '../match-types/match-types.module';
 import { NotificationModule } from '../notification/notification.module';
+import { BookingModule } from '../booking/booking.module';
+import { WaitlistModule } from '../waitlist/waitlist.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
+      envFilePath: ['.env'],
+      cache: false,
+      expandVariables: true,
+      ignoreEnvFile: false,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -63,6 +71,8 @@ import { NotificationModule } from '../notification/notification.module';
     MatchTypesModule,
     AdminModule,
     NotificationModule,
+    BookingModule,
+    WaitlistModule,
   ],
   controllers: [AppController],
   providers: [
@@ -71,7 +81,6 @@ import { NotificationModule } from '../notification/notification.module';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-
   ],
 })
 export class AppModule { }
