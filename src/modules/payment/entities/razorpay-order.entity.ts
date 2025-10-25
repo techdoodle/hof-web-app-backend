@@ -7,8 +7,8 @@ export class RazorpayOrder {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ name: 'booking_id', type: 'uuid' })
-    bookingId: string;
+    @Column({ name: 'booking_id', type: 'int' })
+    bookingId: number;
 
     @Column({ name: 'razorpay_order_id', unique: true })
     razorpayOrderId: string;

@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class AddPricingColumnsToMatches1710008 implements MigrationInterface {
-    name = 'AddPricingColumnsToMatches1710008'
+export class AddPricingColumnsToMatches1761375190000 implements MigrationInterface {
+    name = 'AddPricingColumnsToMatches1761375190000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Add slot_price column

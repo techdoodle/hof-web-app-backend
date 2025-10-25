@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class UpdateNotificationTypeConstraint1710011 implements MigrationInterface {
+export class UpdateNotificationTypeConstraint1761375193000 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Drop the existing constraint if it exists
         await queryRunner.query(`

@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddPlayerIdToBookingSlots1710009 implements MigrationInterface {
+export class AddPlayerIdToBookingSlots1761375191000 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Add player_id column to booking_slots table
         await queryRunner.query(`

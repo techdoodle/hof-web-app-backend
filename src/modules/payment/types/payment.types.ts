@@ -21,7 +21,7 @@ export enum RefundStatus {
 }
 
 export interface CreateOrderDto {
-    bookingId: string;
+    bookingId: string | number;
     amount: number;
     currency: string;
     notes?: Record<string, any>;

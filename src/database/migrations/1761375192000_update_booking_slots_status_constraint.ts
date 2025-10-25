@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class UpdateBookingSlotsStatusConstraint1710010 implements MigrationInterface {
+export class UpdateBookingSlotsStatusConstraint1761375192000 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Drop the existing constraint
         await queryRunner.query(`

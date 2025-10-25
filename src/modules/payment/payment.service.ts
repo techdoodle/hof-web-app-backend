@@ -51,7 +51,7 @@ export class PaymentService {
 
             // Store order in our database
             const order = this.orderRepository.create({
-                bookingId: dto.bookingId,
+                bookingId: typeof dto.bookingId === 'string' ? parseInt(dto.bookingId) : dto.bookingId,
                 razorpayOrderId: gatewayResponse.data?.orderId,
                 amount: gatewayResponse.data?.amount,
                 currency: gatewayResponse.data?.currency,

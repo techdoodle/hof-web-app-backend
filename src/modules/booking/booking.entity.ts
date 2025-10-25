@@ -1,6 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { BookingSlotEntity } from './booking-slot.entity';
-import { BookingStatus, RefundStatus } from '../../common/types/booking.types';
+import { BookingStatus, PaymentStatus, RefundStatus } from '../../common/types/booking.types';
 
 @Entity('bookings')
 export class BookingEntity {
@@ -38,6 +38,13 @@ export class BookingEntity {
         enum: BookingStatus
     })
     status: BookingStatus;
+
+    @Column({
+        name: 'payment_status',
+        type: 'varchar',
+        enum: PaymentStatus
+    })
+    paymentStatus: PaymentStatus;
 
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;

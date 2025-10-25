@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddBookingTrackingToMatches1710005 implements MigrationInterface {
+export class AddBookingTrackingToMatches1761375188000 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Add new columns with nullable/default values for safe production deployment
         await queryRunner.query(`

@@ -1,6 +1,6 @@
 import { MigrationInterface, QueryRunner, Table } from 'typeorm';
 
-export class CreatePaymentTables1710002 implements MigrationInterface {
+export class CreatePaymentTables1761375185000 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
         // Create razorpay_orders table
         await queryRunner.createTable(

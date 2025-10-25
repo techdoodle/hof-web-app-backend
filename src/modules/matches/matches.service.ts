@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Like } from 'typeorm';
+import { Repository, Between, Like, Connection } from 'typeorm';
 import { Match } from './matches.entity';
 import { MatchType } from '../../common/enums/match-type.enum';
 import { BookingSlotEntity, BookingSlotStatus } from '../booking/booking-slot.entity';
@@ -15,6 +15,7 @@ export class MatchesService {
     private readonly bookingSlotRepository: Repository<BookingSlotEntity>,
     @InjectRepository(WaitlistEntry)
     private readonly waitlistRepository: Repository<WaitlistEntry>,
+    private readonly connection: Connection,
   ) { }
 
   async create(createMatchDto: Partial<Match>): Promise<Match> {
@@ -199,6 +200,28 @@ export class MatchesService {
     if (offerPrice > slotPrice) {
       throw new Error('Offer price must be less than or equal to slot price');
     }
+  }
+
+  async checkSlotAvailability(matchId: number, slots: number): Promise<{ availableSlots: number }> {
+    const match = await this.matchRepository.findOne({ where: { matchId } });
+    if (!match) {
+      throw new HttpException('Match not found', HttpStatus.NOT_FOUND);
+    }
+
+    // Get currently active slots
+    const activeSlots = await this.connection.query(`
+      SELECT bs.slot_number 
+      FROM booking_slots bs 
+      JOIN bookings b ON bs.booking_id = b.id 
+      WHERE b.match_id = $1 AND bs.status = $2
+    `, [matchId, 'ACTIVE']);
+
+    const bookedSlotNumbers = activeSlots.map(row => row.slot_number);
+    const totalCapacity = match.playerCapacity || 0;
+    const allSlots = Array.from({ length: totalCapacity }, (_, i) => i + 1);
+    const availableSlots = allSlots.filter(slot => !bookedSlotNumbers.includes(slot));
+
+    return { availableSlots: availableSlots.length };
   }
 
   async findNearbyMatches(location: { latitude: number; longitude: number }) {

@@ -41,6 +41,8 @@ export class WaitlistEntry {
         notes?: string;
         amount?: number;
         availableSlots?: number[];
+        maxSlotsToAllocate?: number;
+        slotPrice?: number;
         paymentOrderId?: string;
         orderCreatedAt?: string;
         confirmedSlots?: number;

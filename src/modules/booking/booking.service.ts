@@ -6,6 +6,7 @@ import { BookingSlotEntity, BookingSlotStatus } from './booking-slot.entity';
 import { SlotLockService } from './slot-lock.service';
 import {
     BookingStatus,
+    PaymentStatus,
     CreateBookingDto,
     CancelBookingDto,
     InitiatePaymentDto,
@@ -84,6 +85,7 @@ export class BookingService {
                 totalSlots: dto.totalSlots,
                 amount: dto.metadata?.amount || 0, // Amount in rupees from frontend
                 status: BookingStatus.INITIATED,
+                paymentStatus: PaymentStatus.INITIATED,
                 metadata: {
                     ...dto.metadata,
                     lockKey: lockResult.lockKey
@@ -117,7 +119,8 @@ export class BookingService {
 
                 const user = await this.bookingUserService.findOrCreateUserByPhone(phoneToUse, {
                     firstName: player.firstName,
-                    lastName: player.lastName
+                    lastName: player.lastName,
+                    email: i === 0 ? dto.email : undefined // Only pass email for the primary user
                 });
                 playerUsers.push(user);
             }
@@ -146,6 +149,15 @@ export class BookingService {
 
             await queryRunner.manager.save(bookingSlots);
             await queryRunner.commitTransaction();
+
+            // Handle email updates outside the transaction to avoid timeouts
+            for (let i = 0; i < playerUsers.length; i++) {
+                const user = playerUsers[i];
+                if ((user as any).needsEmailUpdate && i === 0) {
+                    // Only update email for the primary user
+                    await this.bookingUserService.updateUserEmail(user.id, (user as any).needsEmailUpdate);
+                }
+            }
 
             return savedBooking;
         } catch (error) {
@@ -999,12 +1011,18 @@ export class BookingService {
                 [cancelledSlotsCount, booking.matchId]
             );
 
+            // Validate payment ID before initiating refund
+            const razorpayPaymentId = booking.metadata?.razorpayPaymentId || booking.metadata?.paymentId;
+            if (!razorpayPaymentId) {
+                throw new BadRequestException('Payment ID not found. Cannot process refund.');
+            }
+
             // Initiate refund
             await this.refundService.initiateRefund({
                 bookingId: dto.bookingId,
                 amount: refundAmount,
                 reason: dto.reason || 'Booking cancelled',
-                razorpayPaymentId: booking.metadata?.razorpayPaymentId || booking.metadata?.paymentId,
+                razorpayPaymentId: razorpayPaymentId,
                 slots: slotNumbers,
                 metadata: {
                     cancelledAt: new Date(),

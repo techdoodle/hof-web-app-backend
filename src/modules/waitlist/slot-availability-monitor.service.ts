@@ -58,6 +58,7 @@ export class SlotAvailabilityMonitorService {
 
             // If there are available slots, notify waitlist users
             if (availableSlots.length > 0) {
+                console.log(`🔔 Calling waitlist notification for match ${matchId} with ${availableSlots.length} slots`);
                 await this.waitlistService.notifySlotAvailability(
                     matchId.toString(),
                     availableSlots,

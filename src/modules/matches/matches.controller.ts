@@ -21,6 +21,14 @@ import { MatchType } from '../../common/enums/match-type.enum';
 export class MatchesController {
   constructor(private readonly matchesService: MatchesService) { }
 
+  @Get(':id/availability')
+  async checkSlotAvailability(
+    @Param('id', ParseIntPipe) matchId: number,
+    @Query('slots', ParseIntPipe) slots: number
+  ) {
+    return await this.matchesService.checkSlotAvailability(matchId, slots);
+  }
+
   @Post('nearby')
   async findNearbyMatches(
     @Body() location: { latitude: number; longitude: number }

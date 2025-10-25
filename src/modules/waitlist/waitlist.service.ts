@@ -79,6 +79,8 @@ export class WaitlistService {
     }
 
     async notifySlotAvailability(matchId: string, availableSlots: number[], slotPrice: number) {
+        console.log(`🔔 Notifying waitlist for match ${matchId}, available slots: ${availableSlots.length}`);
+
         const queryRunner = this.connection.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
@@ -93,12 +95,18 @@ export class WaitlistService {
                 // No ordering - everyone gets notified simultaneously
             });
 
+            console.log(`🔔 Found ${entries.length} waitlist entries for match ${matchId}`);
+
             // Notify ALL waitlist entries about available slots
             for (const entry of entries) {
                 try {
+                    console.log(`📧 Sending notification to waitlist entry ${entry.id} (${entry.email})`);
+
                     // Calculate how many slots this user can potentially get
                     const maxSlotsToAllocate = Math.min(entry.slotsRequired, availableSlots.length);
                     const amount = maxSlotsToAllocate * slotPrice;
+
+                    console.log(`📧 Notification details: slots=${maxSlotsToAllocate}, amount=${amount}`);
 
                     // Send notification to ALL waitlist users
                     await this.notificationService.sendNotification({
@@ -128,6 +136,9 @@ export class WaitlistService {
                     entry.metadata = {
                         ...entry.metadata,
                         availableSlots: availableSlots, // Store all available slots
+                        amount: amount, // Store the calculated amount
+                        maxSlotsToAllocate: maxSlotsToAllocate,
+                        slotPrice: slotPrice,
                         notes: 'Competitive allocation notification sent'
                     };
                     await queryRunner.manager.save(entry);
@@ -163,17 +174,42 @@ export class WaitlistService {
             throw new BadRequestException('Invalid waitlist entry or already processed');
         }
 
+        console.log(`🔍 Waitlist entry ${waitlistId} metadata:`, entry.metadata);
+
         if (!entry.metadata?.availableSlots?.length) {
             throw new BadRequestException('No slots allocated for this entry');
         }
 
-        if (!entry.metadata.amount) {
-            throw new BadRequestException('Amount not found for waitlist entry');
+        // Calculate amount if not stored in metadata (fallback for old entries)
+        let amount = entry.metadata?.amount;
+        if (!amount) {
+            // Fallback: calculate amount from available slots and match price
+            const match = await this.connection.query(
+                'SELECT slot_price, offer_price FROM matches WHERE match_id = $1',
+                [entry.matchId]
+            );
+
+            if (match?.length) {
+                const slotPrice = match[0].offer_price || match[0].slot_price || 0;
+                const maxSlots = Math.min(entry.slotsRequired, entry.metadata?.availableSlots?.length || 0);
+                amount = maxSlots * slotPrice;
+
+                // Update the entry with calculated amount
+                entry.metadata = {
+                    ...entry.metadata,
+                    amount: amount,
+                    slotPrice: slotPrice,
+                    maxSlotsToAllocate: maxSlots
+                };
+                await this.waitlistRepository.save(entry);
+            } else {
+                throw new BadRequestException('Amount not found for waitlist entry and unable to calculate from match data');
+            }
         }
 
         const orderResponse = await this.paymentService.createOrder({
-            bookingId: '',
-            amount: entry.metadata.amount,
+            bookingId: entry.id.toString(), // Use waitlist entry ID as booking ID (integer)
+            amount: amount,
             currency: 'INR',
             receipt: `waitlist_${entry.id}`,
             notes: {

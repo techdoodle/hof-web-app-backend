@@ -1,10 +1,19 @@
 import { MigrationInterface, QueryRunner, Table } from 'typeorm';
 
-export class CreateBookingsTable1710001 implements MigrationInterface {
+export class CreateWaitlistTable1761375186000 implements MigrationInterface {
     public async up(queryRunner: QueryRunner): Promise<void> {
+        // Create enum type for waitlist status
+        await queryRunner.query(`
+            CREATE TYPE waitlist_status_enum AS ENUM (
+                'ACTIVE',
+                'NOTIFIED',
+                'CANCELLED'
+            )
+        `);
+
         await queryRunner.createTable(
             new Table({
-                name: 'bookings',
+                name: 'waitlist_entries',
                 columns: [
                     {
                         name: 'id',
@@ -12,12 +21,6 @@ export class CreateBookingsTable1710001 implements MigrationInterface {
                         isPrimary: true,
                         isGenerated: true,
                         generationStrategy: 'increment',
-                    },
-                    {
-                        name: 'booking_reference',
-                        type: 'varchar',
-                        length: '50',
-                        isUnique: true,
                     },
                     {
                         name: 'match_id',
@@ -34,29 +37,22 @@ export class CreateBookingsTable1710001 implements MigrationInterface {
                         length: '255',
                     },
                     {
-                        name: 'total_slots',
+                        name: 'slots_required',
                         type: 'integer',
                     },
                     {
-                        name: 'total_amount',
-                        type: 'decimal',
-                        precision: 10,
-                        scale: 2,
-                    },
-                    {
                         name: 'status',
-                        type: 'varchar',
-                        length: '20',
+                        type: 'waitlist_status_enum',
+                        default: "'ACTIVE'",
                     },
                     {
-                        name: 'payment_status',
-                        type: 'varchar',
-                        length: '20',
+                        name: 'last_notified_at',
+                        type: 'timestamp',
+                        isNullable: true,
                     },
                     {
-                        name: 'refund_status',
-                        type: 'varchar',
-                        length: '20',
+                        name: 'metadata',
+                        type: 'jsonb',
                         isNullable: true,
                     },
                     {
@@ -68,31 +64,39 @@ export class CreateBookingsTable1710001 implements MigrationInterface {
                         name: 'updated_at',
                         type: 'timestamp',
                         default: 'CURRENT_TIMESTAMP',
-                    },
-                    {
-                        name: 'metadata',
-                        type: 'jsonb',
-                        isNullable: true,
-                    },
+                    }
                 ],
                 foreignKeys: [
                     {
                         columnNames: ['match_id'],
                         referencedTableName: 'matches',
                         referencedColumnNames: ['match_id'],
+                        onDelete: 'CASCADE'
                     },
                     {
                         columnNames: ['user_id'],
                         referencedTableName: 'users',
                         referencedColumnNames: ['id'],
-                    },
+                        onDelete: 'SET NULL'
+                    }
                 ],
+                indices: [
+                    {
+                        name: 'idx_waitlist_match_status',
+                        columnNames: ['match_id', 'status']
+                    },
+                    {
+                        name: 'idx_waitlist_email_match',
+                        columnNames: ['email', 'match_id']
+                    }
+                ]
             }),
             true
         );
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.dropTable('bookings');
+        await queryRunner.dropTable('waitlist_entries');
+        await queryRunner.query('DROP TYPE IF EXISTS waitlist_status_enum');
     }
 }

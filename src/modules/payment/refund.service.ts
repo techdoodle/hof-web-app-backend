@@ -44,6 +44,8 @@ export class RefundService {
 
         // Initiate actual refund with Razorpay
         try {
+            this.logger.log(`Initiating refund for payment ${params.razorpayPaymentId}, amount: ${params.amount}`);
+
             const razorpayRefund = await this.razorpayService.createRefund({
                 paymentId: params.razorpayPaymentId,
                 amount: params.amount * 100, // Convert to paise
@@ -71,10 +73,11 @@ export class RefundService {
             refund.metadata = {
                 ...refund.metadata,
                 error: error.message,
+                errorDetails: error.response?.data || error.stack,
                 failedAt: new Date()
             };
             await queryRunner.manager.save(refund);
-            this.logger.error(`Refund initiation failed: ${error.message}`);
+            this.logger.error(`Refund initiation failed for payment ${params.razorpayPaymentId}: ${error.message}`, error.stack);
             throw error;
         }
 
