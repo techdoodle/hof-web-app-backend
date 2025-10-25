@@ -318,6 +318,43 @@ export class WaitlistService {
         });
     }
 
+    async getWaitlistEntry(waitlistId: string) {
+        const entry = await this.waitlistRepository.findOne({
+            where: { id: Number(waitlistId) }
+        });
+
+        if (!entry) {
+            throw new BadRequestException('Waitlist entry not found');
+        }
+
+        // Get match details
+        const matchDetails = await this.connection.query(
+            `SELECT m.*, v.name as venue_name, v.address as venue_address, 
+                    fc.first_name as fc_first_name, fc.last_name as fc_last_name, fc.phone_number as fc_phone
+             FROM matches m 
+             LEFT JOIN venues v ON m.venue = v.id
+             LEFT JOIN users fc ON m.football_chief = fc.id
+             WHERE m.match_id = $1`,
+            [entry.matchId]
+        );
+
+        const match = matchDetails[0];
+
+        return {
+            ...entry,
+            matchDetails: {
+                venueName: match?.venue_name || 'TBD',
+                venueAddress: match?.venue_address || 'TBD',
+                startTime: match?.start_time,
+                endTime: match?.end_time,
+                footballChief: {
+                    name: `${match?.fc_first_name || ''} ${match?.fc_last_name || ''}`.trim() || 'Football Chief',
+                    phone: match?.fc_phone || 'N/A'
+                }
+            }
+        };
+    }
+
     private async sendWaitlistConfirmationEmail(entry: WaitlistEntry) {
         try {
             // Get match details for the email

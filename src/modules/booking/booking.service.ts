@@ -221,11 +221,20 @@ export class BookingService {
             whereClause += ` AND b.status = $${paramIndex}`;
             params.push('PAYMENT_FAILED');
             paramIndex++;
-        } else {
-            // Default: only confirmed bookings
+        } else if (filters.status === 'CANCELLED') {
             whereClause += ` AND b.status = $${paramIndex}`;
+            params.push('CANCELLED');
+            params.push('PARTIALLY_CANCELLED');
+            paramIndex += 2;
+        } else if (filters.status === 'WAITLISTED') {
+            // For waitlisted bookings, fetch from waitlist_entries table
+            return await this.getWaitlistedBookings(filters);
+        } else {
+            // Default: confirmed and partially cancelled bookings (active bookings)
+            whereClause += ` AND (b.status = $${paramIndex} OR b.status = $${paramIndex + 1})`;
             params.push('CONFIRMED');
-            paramIndex++;
+            params.push('PARTIALLY_CANCELLED');
+            paramIndex += 2;
         }
 
         const query = `
@@ -287,6 +296,155 @@ export class BookingService {
                 endTime: booking.end_time,
             }
         }));
+    }
+
+    private async getWaitlistedBookings(filters: { userId?: string; email?: string; status?: string }) {
+        // Build where clause for waitlist entries
+        let whereClause = '';
+        const params: any[] = [];
+        let paramIndex = 1;
+
+        if (filters.userId) {
+            whereClause += ` AND we.user_id = $${paramIndex}`;
+            params.push(filters.userId);
+            paramIndex++;
+        }
+
+        if (filters.email) {
+            whereClause += ` AND we.email = $${paramIndex}`;
+            params.push(filters.email);
+            paramIndex++;
+        }
+
+        // Only get active waitlist entries
+        whereClause += ` AND we.status = $${paramIndex}`;
+        params.push('ACTIVE');
+        paramIndex++;
+
+        const query = `
+            SELECT 
+                we.id as waitlist_id,
+                we.match_id,
+                we.user_id,
+                we.email,
+                we.slots_required,
+                we.status as waitlist_status,
+                we.created_at,
+                we.updated_at,
+                we.metadata,
+                m.start_time,
+                m.end_time,
+                v.name as venue_name,
+                v.address as venue_address
+            FROM waitlist_entries we
+            LEFT JOIN matches m ON we.match_id = m.match_id
+            LEFT JOIN venues v ON m.venue = v.id
+            WHERE 1=1 ${whereClause}
+            ORDER BY we.created_at DESC
+        `;
+
+        const waitlistEntries = await this.connection.query(query, params);
+
+        // Transform waitlist entries to look like bookings for consistency
+        return waitlistEntries.map(entry => ({
+            id: entry.waitlist_id,
+            bookingReference: `WAIT-${entry.waitlist_id}`,
+            matchId: entry.match_id,
+            userId: entry.user_id,
+            email: entry.email,
+            totalSlots: entry.slots_required,
+            amount: 0, // Waitlist entries are free
+            status: 'WAITLISTED',
+            createdAt: entry.created_at,
+            updatedAt: entry.updated_at,
+            metadata: entry.metadata,
+            slots: [], // No slots for waitlist entries
+            matchDetails: {
+                venueName: entry.venue_name || 'TBD',
+                venueAddress: entry.venue_address || 'TBD',
+                startTime: entry.start_time,
+                endTime: entry.end_time,
+            }
+        }));
+    }
+
+    async cancelBooking(bookingId: string) {
+        const booking = await this.getBookingById(bookingId);
+
+        if (booking.status === BookingStatus.CANCELLED) {
+            throw new BadRequestException('Booking is already cancelled');
+        }
+
+        const queryRunner = this.connection.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            // Update booking status to cancelled
+            booking.status = BookingStatus.CANCELLED;
+            await queryRunner.manager.save(booking);
+
+            // Update all booking slots to cancelled
+            await queryRunner.manager.update(
+                BookingSlotEntity,
+                { bookingId: booking.id },
+                { status: BookingSlotStatus.CANCELLED }
+            );
+
+            // Decrement booked_slots in matches table
+            await queryRunner.query(
+                `UPDATE matches 
+                 SET booked_slots = booked_slots - $1
+                 WHERE match_id = $2`,
+                [booking.totalSlots, booking.matchId]
+            );
+
+            // Release locked slots if any
+            if (booking.metadata?.lockKey) {
+                const result = await queryRunner.query(
+                    `SELECT locked_slots, version FROM matches WHERE match_id = $1 FOR UPDATE`,
+                    [booking.matchId]
+                );
+
+                if (result?.length) {
+                    const match = result[0];
+                    const lockedSlots = match.locked_slots || {};
+                    delete lockedSlots[booking.metadata.lockKey];
+
+                    await queryRunner.query(
+                        `UPDATE matches 
+                         SET locked_slots = $1,
+                             version = version + 1
+                         WHERE match_id = $2 AND version = $3`,
+                        [JSON.stringify(lockedSlots), booking.matchId, match.version]
+                    );
+                }
+            }
+
+            // Initiate refund for full cancellation
+            await this.refundService.initiateRefund({
+                bookingId: bookingId,
+                amount: booking.amount,
+                reason: 'Booking cancelled',
+                razorpayPaymentId: booking.metadata?.razorpayPaymentId || booking.metadata?.paymentId,
+                metadata: {
+                    cancelledAt: new Date(),
+                    originalAmount: booking.amount,
+                    cancellationType: 'FULL'
+                }
+            }, queryRunner);
+
+            // Check for available slots and notify waitlist users
+            await this.slotAvailabilityMonitor.checkAndNotifyAvailableSlots(booking.matchId);
+
+            await queryRunner.commitTransaction();
+            return booking;
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
     }
 
     async initiatePayment(dto: InitiatePaymentDto & { bookingId: string }) {
@@ -832,18 +990,32 @@ export class BookingService {
             booking.refundStatus = RefundStatus.PENDING;
             await queryRunner.manager.save(booking);
 
+            // Decrement booked_slots in matches table for cancelled slots
+            const cancelledSlotsCount = slotNumbers.length || booking.totalSlots;
+            await queryRunner.query(
+                `UPDATE matches 
+                 SET booked_slots = booked_slots - $1
+                 WHERE match_id = $2`,
+                [cancelledSlotsCount, booking.matchId]
+            );
+
             // Initiate refund
             await this.refundService.initiateRefund({
                 bookingId: dto.bookingId,
                 amount: refundAmount,
                 reason: dto.reason || 'Booking cancelled',
+                razorpayPaymentId: booking.metadata?.razorpayPaymentId || booking.metadata?.paymentId,
                 slots: slotNumbers,
                 metadata: {
                     cancelledAt: new Date(),
                     cancelledSlots: slotNumbers,
-                    originalAmount: booking.amount
+                    originalAmount: booking.amount,
+                    cancellationType: 'PARTIAL'
                 }
             }, queryRunner);
+
+            // Check for available slots and notify waitlist users
+            await this.slotAvailabilityMonitor.checkAndNotifyAvailableSlots(booking.matchId);
 
             await queryRunner.commitTransaction();
             return booking;

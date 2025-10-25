@@ -6,8 +6,14 @@ export class RefundEntity {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ type: 'uuid' })
-    bookingId: string;
+    @Column({ name: 'booking_id', type: 'integer' })
+    bookingId: number;
+
+    @Column({ name: 'razorpay_payment_id', length: 100 })
+    razorpayPaymentId: string;
+
+    @Column({ name: 'razorpay_refund_id', length: 100, nullable: true })
+    razorpayRefundId?: string;
 
     @Column('decimal', { precision: 10, scale: 2 })
     amount: number;
@@ -24,9 +30,9 @@ export class RefundEntity {
     @Column({ type: 'jsonb', nullable: true })
     metadata: Record<string, any>;
 
-    @CreateDateColumn()
+    @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 
-    @UpdateDateColumn()
+    @UpdateDateColumn({ name: 'updated_at' })
     updatedAt: Date;
 }

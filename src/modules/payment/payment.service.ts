@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { RazorpayOrder } from './entities/razorpay-order.entity';
 import { PaymentAttempt } from './entities/payment-attempt.entity';
-import { Refund } from './entities/refund.entity';
+import { RefundEntity } from './refund.entity';
 import { RazorpayGateway } from './gateways/razorpay.gateway';
 import {
     PaymentStatus,
@@ -22,8 +22,8 @@ export class PaymentService {
         private readonly orderRepository: Repository<RazorpayOrder>,
         @InjectRepository(PaymentAttempt)
         private readonly paymentAttemptRepository: Repository<PaymentAttempt>,
-        @InjectRepository(Refund)
-        private readonly refundRepository: Repository<Refund>,
+        @InjectRepository(RefundEntity)
+        private readonly refundRepository: Repository<RefundEntity>,
         private readonly paymentGateway: RazorpayGateway,
         private readonly connection: Connection
     ) { }
@@ -260,7 +260,7 @@ export class PaymentService {
 
             // Create refund record
             const refund = this.refundRepository.create({
-                bookingId,
+                bookingId: Number(bookingId),
                 razorpayPaymentId: paymentAttempt.razorpayPaymentId,
                 razorpayRefundId: refundResponse.data.refundId,
                 amount,

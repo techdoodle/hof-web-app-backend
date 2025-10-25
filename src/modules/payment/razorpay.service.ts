@@ -60,17 +60,26 @@ export class RazorpayService {
         }
     }
 
-    async createRefund(paymentId: string, amount: number, notes?: string) {
+    async createRefund(params: { paymentId: string; amount: number; notes?: Record<string, any> }) {
         try {
-            const refund = await this.razorpay.payments.refund(paymentId, {
-                amount: amount * 100,
-                notes: {
-                    reason: notes || 'Booking cancellation refund'
+            const refund = await this.razorpay.payments.refund(params.paymentId, {
+                amount: params.amount, // Amount should already be in paise
+                notes: params.notes || {
+                    reason: 'Booking cancellation refund'
                 }
             });
             return refund;
         } catch (error) {
             throw new Error(`Failed to create refund: ${error.message}`);
+        }
+    }
+
+    async getRefundDetails(refundId: string) {
+        try {
+            const refund = await this.razorpay.refunds.fetch(refundId);
+            return refund;
+        } catch (error) {
+            throw new Error(`Failed to fetch refund details: ${error.message}`);
         }
     }
 }

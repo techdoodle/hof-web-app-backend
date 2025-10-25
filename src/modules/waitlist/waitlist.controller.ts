@@ -58,4 +58,10 @@ export class WaitlistController {
             body.signature
         );
     }
+
+    @Get(':waitlistId')
+    @UseGuards(JwtAuthGuard)
+    async getWaitlistEntry(@Param('waitlistId') waitlistId: string) {
+        return this.waitlistService.getWaitlistEntry(waitlistId);
+    }
 }

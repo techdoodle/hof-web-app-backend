@@ -83,4 +83,11 @@ export class BookingController {
     ) {
         return this.bookingService.cancelBookingSlots({ ...dto, bookingId });
     }
+
+    @Delete(':bookingId')
+    @HttpCode(HttpStatus.OK)
+    @UseGuards(JwtAuthGuard)
+    cancelBooking(@Param('bookingId') bookingId: string) {
+        return this.bookingService.cancelBooking(bookingId);
+    }
 }
