@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Connection, In } from 'typeorm';
 import { BookingEntity } from './booking.entity';
@@ -23,6 +23,8 @@ import { User } from '../user/user.entity';
 
 @Injectable()
 export class BookingService {
+    private readonly logger = new Logger(BookingService.name);
+
     constructor(
         @InjectRepository(BookingEntity)
         private bookingRepository: Repository<BookingEntity>,
@@ -77,7 +79,7 @@ export class BookingService {
                 email: dto.email,
                 bookingReference: generateBookingReference(),
                 totalSlots: dto.totalSlots,
-                amount: dto.metadata?.amount || 0, // Set amount from metadata
+                amount: dto.metadata?.amount || 0, // Amount in rupees from frontend
                 status: BookingStatus.INITIATED,
                 metadata: {
                     ...dto.metadata,
@@ -87,13 +89,13 @@ export class BookingService {
 
             const savedBooking = await queryRunner.manager.save(booking);
 
-            // Update matches table to confirm the locked slots
+            // Don't update booked_slots yet - only when payment succeeds
+            // Just increment version for the lock
             await queryRunner.query(
                 `UPDATE matches 
-                 SET booked_slots = booked_slots + $1,
-                     version = version + 1
-                 WHERE match_id = $2`,
-                [dto.totalSlots, dto.matchId]
+                 SET version = version + 1
+                 WHERE match_id = $1`,
+                [dto.matchId]
             );
 
             // Create or find users for each player
@@ -135,7 +137,7 @@ export class BookingService {
                     playerName: `${playerUser.firstName} ${playerUser.lastName}`, // Use user's name from database
                     playerEmail: dto.email, // Use main booking email
                     playerPhone: phoneToUse,
-                    status: BookingSlotStatus.ACTIVE,
+                    status: BookingSlotStatus.PENDING_PAYMENT, // Pending payment until confirmed
                 });
             });
 
@@ -212,11 +214,16 @@ export class BookingService {
     async initiatePayment(dto: InitiatePaymentDto & { bookingId: string }) {
         const booking = await this.getBookingById(dto.bookingId);
 
-        if (booking.status !== BookingStatus.INITIATED) {
-            throw new BadRequestException('Invalid booking status for payment');
+        if (booking.status !== BookingStatus.INITIATED && booking.status !== BookingStatus.PAYMENT_FAILED) {
+            throw new BadRequestException('Invalid booking status for payment. Only INITIATED or PAYMENT_FAILED bookings can initiate payment.');
         }
 
         try {
+            // If this is a retry (PAYMENT_FAILED), we need to re-lock the slots
+            if (booking.status === BookingStatus.PAYMENT_FAILED) {
+                await this.relockSlotsForRetry(booking);
+            }
+
             // Create Razorpay order using PaymentService (saves to database)
             const order = await this.paymentService.createOrder({
                 bookingId: dto.bookingId,
@@ -275,7 +282,45 @@ export class BookingService {
 
             if (!isValidSignature) {
                 booking.status = BookingStatus.PAYMENT_FAILED;
+                console.log('Payment failed for booking:', booking);
+                // Keep original amount in rupees (no conversion needed for failed payments)
                 await queryRunner.manager.save(booking);
+
+                // Release locked slots when payment signature fails
+                const result = await queryRunner.query(
+                    `SELECT locked_slots, version FROM matches WHERE match_id = $1 FOR UPDATE`,
+                    [booking.matchId]
+                );
+
+                if (result?.length) {
+                    const match = result[0];
+                    const lockedSlots = match.locked_slots || {};
+
+                    // Remove this booking's lock using the stored lock key
+                    const lockKey = booking.metadata?.lockKey;
+                    if (lockKey && lockedSlots[lockKey]) {
+                        delete lockedSlots[lockKey];
+                    } else {
+                        // Fallback: try to find and remove any lock that matches this booking's slots
+                        const bookingSlots = booking.slots?.map(slot => slot.slotNumber) || [];
+                        Object.keys(lockedSlots).forEach(key => {
+                            const lockData = lockedSlots[key];
+                            if (lockData.slots && lockData.slots.some(slot => bookingSlots.includes(slot))) {
+                                delete lockedSlots[key];
+                            }
+                        });
+                    }
+
+                    // Update match with removed lock
+                    await queryRunner.query(
+                        `UPDATE matches 
+                         SET locked_slots = $1,
+                             version = version + 1
+                         WHERE match_id = $2 AND version = $3`,
+                        [JSON.stringify(lockedSlots), booking.matchId, match.version]
+                    );
+                }
+
                 await queryRunner.commitTransaction();
                 throw new BadRequestException('Invalid payment signature');
             }
@@ -285,7 +330,7 @@ export class BookingService {
 
             // Update booking with payment details
             booking.status = BookingStatus.CONFIRMED;
-            booking.amount = paymentDetails.amount; // Set the amount from payment details
+            booking.amount = paymentDetails.amount / 100; // Convert from paise to rupees
             booking.metadata = {
                 ...booking.metadata,
                 razorpayPaymentId: dto.razorpay_payment_id,
@@ -296,6 +341,21 @@ export class BookingService {
             };
 
             await queryRunner.manager.save(booking);
+
+            // Update booking slots status from PENDING_PAYMENT to ACTIVE
+            await queryRunner.manager.update(
+                BookingSlotEntity,
+                { bookingId: booking.id },
+                { status: BookingSlotStatus.ACTIVE }
+            );
+
+            // Increment booked_slots when payment succeeds
+            await queryRunner.query(
+                `UPDATE matches 
+                 SET booked_slots = booked_slots + $1
+                 WHERE match_id = $2`,
+                [booking.totalSlots, booking.matchId]
+            );
 
             // Remove lock from matches table and update booked_slots
             const result = await queryRunner.query(
@@ -344,6 +404,295 @@ export class BookingService {
             booking.status = BookingStatus.PAYMENT_FAILED;
             await this.bookingRepository.save(booking);
             throw new BadRequestException(`Payment verification failed: ${error.message}`);
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    /**
+     * Handle Razorpay webhook for payment events
+     */
+    async handlePaymentWebhook(webhookData: any) {
+        try {
+            this.logger.log('🔔 Received Razorpay webhook:', webhookData);
+
+            // Verify webhook signature (implement based on Razorpay webhook verification)
+            const isValidWebhook = await this.verifyWebhookSignature(webhookData);
+            if (!isValidWebhook) {
+                this.logger.warn('❌ Invalid webhook signature');
+                throw new BadRequestException('Invalid webhook signature');
+            }
+
+            const { event, payload } = webhookData;
+
+            switch (event) {
+                case 'payment.captured':
+                    await this.handlePaymentCaptured(payload);
+                    break;
+                case 'payment.failed':
+                    await this.handlePaymentFailed(payload);
+                    break;
+                default:
+                    this.logger.log(`ℹ️ Unhandled webhook event: ${event}`);
+            }
+
+            return { status: 'success' };
+        } catch (error) {
+            this.logger.error('❌ Webhook processing failed:', error.stack);
+            throw error;
+        }
+    }
+
+    /**
+     * Handle payment captured webhook
+     */
+    private async handlePaymentCaptured(payload: any) {
+        const { payment } = payload;
+        const orderId = payment.order_id;
+
+        // Find booking by Razorpay order ID
+        const booking = await this.bookingRepository.findOne({
+            where: {
+                metadata: {
+                    razorpayOrderId: orderId
+                }
+            }
+        });
+
+        if (!booking) {
+            this.logger.warn(`❌ No booking found for order: ${orderId}`);
+            return;
+        }
+
+        if (booking.status !== BookingStatus.PAYMENT_PENDING) {
+            this.logger.warn(`❌ Booking ${booking.id} is not in PAYMENT_PENDING status`);
+            return;
+        }
+
+        // Process the payment callback
+        await this.handlePaymentCallback(booking.id.toString(), {
+            razorpay_payment_id: payment.id,
+            razorpay_order_id: orderId,
+            razorpay_signature: '' // Not needed for webhook
+        });
+
+        this.logger.log(`✅ Payment captured for booking ${booking.id}`);
+    }
+
+    /**
+     * Handle payment failed webhook
+     */
+    private async handlePaymentFailed(payload: any) {
+        const { payment } = payload;
+        const orderId = payment.order_id;
+
+        // Find booking by Razorpay order ID
+        const booking = await this.bookingRepository.findOne({
+            where: {
+                metadata: {
+                    razorpayOrderId: orderId
+                }
+            }
+        });
+
+        if (!booking) {
+            this.logger.warn(`❌ No booking found for failed payment order: ${orderId}`);
+            return;
+        }
+
+        // Update booking status to failed
+        booking.status = BookingStatus.PAYMENT_FAILED;
+        await this.bookingRepository.save(booking);
+
+        // Release locked slots
+        await this.releaseLockedSlots(booking);
+
+        this.logger.log(`❌ Payment failed for booking ${booking.id}`);
+    }
+
+    /**
+     * Verify Razorpay webhook signature
+     */
+    private async verifyWebhookSignature(webhookData: any): Promise<boolean> {
+        try {
+            const crypto = require('crypto');
+            const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+            if (!webhookSecret) {
+                this.logger.warn('❌ RAZORPAY_WEBHOOK_SECRET not configured');
+                return false;
+            }
+
+            // Extract signature from headers (you'll need to modify the controller to pass headers)
+            const signature = webhookData.signature || '';
+            const payload = JSON.stringify(webhookData);
+
+            // Create expected signature
+            const expectedSignature = crypto
+                .createHmac('sha256', webhookSecret)
+                .update(payload)
+                .digest('hex');
+
+            const isValid = signature === expectedSignature;
+
+            if (!isValid) {
+                this.logger.warn('❌ Invalid webhook signature');
+            }
+
+            return isValid;
+        } catch (error) {
+            this.logger.error('❌ Webhook signature verification failed:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Release locked slots for a booking
+     */
+    private async releaseLockedSlots(booking: BookingEntity) {
+        const queryRunner = this.connection.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            const result = await queryRunner.query(
+                `SELECT locked_slots, version FROM matches WHERE match_id = $1 FOR UPDATE`,
+                [booking.matchId]
+            );
+
+            if (result?.length) {
+                const match = result[0];
+                const lockedSlots = match.locked_slots || {};
+
+                // Remove this booking's lock
+                const lockKey = booking.metadata?.lockKey;
+                if (lockKey && lockedSlots[lockKey]) {
+                    delete lockedSlots[lockKey];
+                }
+
+                // Update match with removed lock
+                await queryRunner.query(
+                    `UPDATE matches 
+                     SET locked_slots = $1,
+                         version = version + 1
+                     WHERE match_id = $2 AND version = $3`,
+                    [JSON.stringify(lockedSlots), booking.matchId, match.version]
+                );
+            }
+
+            await queryRunner.commitTransaction();
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    /**
+     * Re-lock slots for a retry payment attempt
+     */
+    private async relockSlotsForRetry(booking: BookingEntity) {
+        const queryRunner = this.connection.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            // Get the booking slots to re-lock
+            const bookingSlots = await queryRunner.query(
+                `SELECT slot_number FROM booking_slots WHERE booking_id = $1`,
+                [booking.id]
+            );
+
+            if (!bookingSlots.length) {
+                throw new BadRequestException('No slots found for this booking');
+            }
+
+            const slotNumbers = bookingSlots.map(row => row.slot_number);
+
+            // Try to re-lock the slots
+            const lockResult = await this.slotLockService.tryLockSlots(
+                booking.matchId.toString(),
+                slotNumbers,
+                queryRunner
+            );
+
+            if (!lockResult.success) {
+                throw new ConflictException('Slots are no longer available for retry');
+            }
+
+            // Update booking metadata with new lock key
+            booking.metadata = {
+                ...booking.metadata,
+                lockKey: lockResult.lockKey
+            };
+
+            await queryRunner.manager.save(booking);
+            await queryRunner.commitTransaction();
+
+            this.logger.log(`🔒 Re-locked slots for retry booking ${booking.id}`);
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    async cancelPayment(bookingId: string) {
+        const booking = await this.getBookingById(bookingId);
+
+        if (booking.status !== BookingStatus.PAYMENT_PENDING) {
+            throw new BadRequestException('Booking is not in payment pending status');
+        }
+
+        const queryRunner = this.connection.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            // Update booking status to failed
+            booking.status = BookingStatus.PAYMENT_FAILED;
+            await queryRunner.manager.save(booking);
+
+            // Update booking slots status from PENDING_PAYMENT to CANCELLED
+            await queryRunner.manager.update(
+                BookingSlotEntity,
+                { bookingId: booking.id },
+                { status: BookingSlotStatus.CANCELLED }
+            );
+
+            // Release locked slots
+            const result = await queryRunner.query(
+                `SELECT locked_slots, version FROM matches WHERE match_id = $1 FOR UPDATE`,
+                [booking.matchId]
+            );
+
+            if (result?.length) {
+                const match = result[0];
+                const lockedSlots = match.locked_slots || {};
+
+                // Remove this booking's lock using the stored lock key
+                const lockKey = booking.metadata?.lockKey;
+                if (lockKey && lockedSlots[lockKey]) {
+                    delete lockedSlots[lockKey];
+                }
+
+                // Update match with removed lock
+                await queryRunner.query(
+                    `UPDATE matches 
+                     SET locked_slots = $1,
+                         version = version + 1
+                     WHERE match_id = $2 AND version = $3`,
+                    [JSON.stringify(lockedSlots), booking.matchId, match.version]
+                );
+            }
+
+            await queryRunner.commitTransaction();
+            return booking;
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
         } finally {
             await queryRunner.release();
         }
@@ -474,15 +823,28 @@ export class BookingService {
                 templateData: {
                     bookingReference: booking.bookingReference,
                     totalSlots: booking.totalSlots,
-                    amount: booking.amount / 100.0, // Convert paise to rupees
+                    amount: booking.amount, // Convert paise to rupees
                     matchId: booking.matchId,
                     bookingId: booking.id,
                     matchDetails: {
                         venueName: match?.venue_name || 'TBD',
                         venueAddress: match?.venue_address || 'TBD',
-                        startTime: match?.start_time,
-                        endTime: match?.end_time,
-                        date: match?.match_date
+                        startTime: match?.start_time ? new Date(match.start_time).toLocaleString('en-IN', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                        }) : 'TBD',
+                        endTime: match?.end_time ? new Date(match.end_time).toLocaleString('en-IN', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                        }) : 'TBD',
                     },
                     footballChief: {
                         name: `${match?.fc_first_name || ''} ${match?.fc_last_name || ''}`.trim() || 'Football Chief',

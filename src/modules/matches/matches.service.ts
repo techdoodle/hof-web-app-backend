@@ -266,9 +266,14 @@ export class MatchesService {
   async getCriticalBookingInfo(matchId: number): Promise<any> {
     const match = await this.findOne(matchId);
 
-    // Extract locked slots count from JSONB field
-    const lockedSlotsCount = typeof match.lockedSlots === 'object' && match.lockedSlots !== null
-      ? Object.keys(match.lockedSlots).length
+    // Get locked slots count directly from database to ensure accuracy
+    const lockedSlotsResult = await this.matchRepository.query(`
+      SELECT locked_slots FROM matches WHERE match_id = $1
+    `, [matchId]);
+
+    const lockedSlots = lockedSlotsResult[0]?.locked_slots || {};
+    const lockedSlotsCount = typeof lockedSlots === 'object' && lockedSlots !== null
+      ? Object.keys(lockedSlots).length
       : 0;
 
     // Query confirmed booked slots using raw SQL to avoid relationship issues
@@ -297,6 +302,19 @@ export class MatchesService {
     const totalCapacity = match.playerCapacity + match.bufferCapacity;
     const usedSlots = confirmedBookedSlots + lockedSlotsCount + waitlistedSlotsCount;
     const availableWaitlistSlots = Math.max(0, totalCapacity - usedSlots);
+
+    // Debug logging
+    console.log(`🔍 Match ${matchId} slot calculation:`, {
+      playerCapacity: match.playerCapacity,
+      bufferCapacity: match.bufferCapacity,
+      confirmedBookedSlots,
+      lockedSlotsCount,
+      waitlistedSlotsCount,
+      availableRegularSlots,
+      availableWaitlistSlots,
+      totalCapacity,
+      usedSlots
+    });
 
     return {
       playerCapacity: match.playerCapacity,

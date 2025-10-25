@@ -23,7 +23,7 @@ export class WaitlistService {
     async joinWaitlist(matchId: string, email: string, slotsRequired: number, metadata?: any) {
         const existing = await this.waitlistRepository.findOne({
             where: {
-                matchId,
+                matchId: Number(matchId),
                 email,
                 status: WaitlistStatus.ACTIVE
             }
@@ -34,14 +34,45 @@ export class WaitlistService {
         }
 
         const entry = this.waitlistRepository.create({
-            matchId,
+            matchId: Number(matchId),
             email,
             slotsRequired,
             metadata,
             status: WaitlistStatus.ACTIVE
         });
 
-        return this.waitlistRepository.save(entry);
+        const savedEntry = await this.waitlistRepository.save(entry);
+
+        // Send waitlist confirmation email
+        await this.sendWaitlistConfirmationEmail(savedEntry);
+
+        // Return waitlist entry with match details for confirmation page
+        const matchDetails = await this.connection.query(
+            `SELECT m.*, v.name as venue_name, v.address as venue_address, 
+                    fc.first_name as fc_first_name, fc.last_name as fc_last_name, fc.phone_number as fc_phone
+             FROM matches m 
+             LEFT JOIN venues v ON m.venue = v.id
+             LEFT JOIN users fc ON m.football_chief = fc.id
+             WHERE m.match_id = $1`,
+            [savedEntry.matchId]
+        );
+
+        const match = matchDetails[0];
+
+        return {
+            waitlistEntry: savedEntry,
+            matchDetails: {
+                venueName: match?.venue_name || 'TBD',
+                venueAddress: match?.venue_address || 'TBD',
+                startTime: match?.start_time,
+                endTime: match?.end_time,
+                date: match?.match_date,
+                footballChief: {
+                    name: `${match?.fc_first_name || ''} ${match?.fc_last_name || ''}`.trim() || 'Football Chief',
+                    phone: match?.fc_phone || 'N/A'
+                }
+            }
+        };
     }
 
     async notifySlotAvailability(matchId: string, availableSlots: number[], slotPrice: number) {
@@ -53,7 +84,7 @@ export class WaitlistService {
             // Get all active waitlist entries for this match
             const entries = await this.waitlistRepository.find({
                 where: {
-                    matchId,
+                    matchId: Number(matchId),
                     status: WaitlistStatus.ACTIVE,
                     slotsRequired: LessThan(availableSlots.length + 1)
                 }
@@ -112,7 +143,7 @@ export class WaitlistService {
     async initiateWaitlistBooking(waitlistId: string) {
         const entry = await this.waitlistRepository.findOne({
             where: {
-                id: waitlistId,
+                id: Number(waitlistId),
                 status: WaitlistStatus.NOTIFIED
             }
         });
@@ -168,7 +199,7 @@ export class WaitlistService {
 
         try {
             const entry = await this.waitlistRepository.findOne({
-                where: { id: waitlistId, status: WaitlistStatus.NOTIFIED }
+                where: { id: Number(waitlistId), status: WaitlistStatus.NOTIFIED }
             });
 
             if (!entry) {
@@ -194,7 +225,7 @@ export class WaitlistService {
             }
 
             const booking = await this.bookingService.createBooking({
-                matchId: entry.matchId,
+                matchId: entry.matchId.toString(),
                 email: entry.email,
                 totalSlots: entry.slotsRequired,
                 slotNumbers: entry.metadata.availableSlots,
@@ -220,7 +251,7 @@ export class WaitlistService {
     async cancelWaitlistEntry(matchId: string, email: string) {
         const entry = await this.waitlistRepository.findOne({
             where: {
-                matchId,
+                matchId: Number(matchId),
                 email,
                 status: WaitlistStatus.ACTIVE
             }
@@ -237,9 +268,75 @@ export class WaitlistService {
     async getActiveWaitlistCount(matchId: string): Promise<number> {
         return this.waitlistRepository.count({
             where: {
-                matchId,
+                matchId: Number(matchId),
                 status: WaitlistStatus.ACTIVE
             }
         });
+    }
+
+    private async sendWaitlistConfirmationEmail(entry: WaitlistEntry) {
+        try {
+            // Get match details for the email
+            const matchDetails = await this.connection.query(
+                `SELECT m.*, v.name as venue_name, v.address as venue_address, 
+                        fc.first_name as fc_first_name, fc.last_name as fc_last_name, fc.phone_number as fc_phone
+                 FROM matches m 
+                 LEFT JOIN venues v ON m.venue = v.id
+                 LEFT JOIN users fc ON m.football_chief = fc.id
+                 WHERE m.match_id = $1`,
+                [entry.matchId]
+            );
+
+            const match = matchDetails[0];
+
+            console.log('📧 Sending waitlist confirmation email to:', entry.email);
+            console.log('📧 Match details:', match);
+
+            // Send email notification
+            await this.notificationService.sendNotification({
+                type: NotificationType.WAITLIST_CONFIRMATION,
+                recipient: {
+                    email: entry.email,
+                    name: entry.metadata?.name || 'User'
+                },
+                templateData: {
+                    waitlistId: entry.id,
+                    email: entry.email,
+                    slotsRequired: entry.slotsRequired,
+                    matchId: entry.matchId,
+                    matchDetails: {
+                        venueName: match?.venue_name || 'TBD',
+                        venueAddress: match?.venue_address || 'TBD',
+                        startTime: match?.start_time ? new Date(match.start_time).toLocaleString('en-IN', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                        }) : 'TBD',
+                        endTime: match?.end_time ? new Date(match.end_time).toLocaleString('en-IN', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                        }) : 'TBD',
+                        date: match?.match_date
+                    },
+                    footballChief: {
+                        name: `${match?.fc_first_name || ''} ${match?.fc_last_name || ''}`.trim() || 'Football Chief',
+                        phone: match?.fc_phone || 'N/A'
+                    }
+                }
+            });
+
+            console.log(`✅ Waitlist confirmation sent: ${entry.email} - ${entry.slotsRequired} slots for match ${entry.matchId}`);
+
+        } catch (error) {
+            // Log error but don't fail the waitlist entry
+            console.error('Failed to send waitlist confirmation email:', error);
+        }
     }
 }

@@ -131,6 +131,11 @@ export class NotificationService {
         template: 'booking-reminder',
         data
       },
+      [NotificationType.WAITLIST_CONFIRMATION]: {
+        subject: 'Waitlist Confirmation - Humans of Football',
+        template: 'waitlist-confirmation',
+        data
+      },
       [NotificationType.WAITLIST_NOTIFICATION]: {
         subject: 'Slots Available - Humans of Football',
         template: 'waitlist-notification',

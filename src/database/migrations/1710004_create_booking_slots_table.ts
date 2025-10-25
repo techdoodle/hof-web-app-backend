@@ -116,6 +116,7 @@ export class CreateBookingSlotsTable1710004 implements MigrationInterface {
             ADD CONSTRAINT valid_slot_status CHECK (
                 status IN (
                     'ACTIVE',
+                    'PENDING_PAYMENT',
                     'CANCELLED',
                     'CANCELLED_REFUND_PENDING',
                     'CANCELLED_REFUNDED',

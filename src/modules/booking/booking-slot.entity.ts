@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, Up
 import { BookingEntity } from './booking.entity';
 
 export enum BookingSlotStatus {
+    PENDING_PAYMENT = 'PENDING_PAYMENT',
     ACTIVE = 'ACTIVE',
     CANCELLED = 'CANCELLED',
     CANCELLED_REFUND_PENDING = 'CANCELLED_REFUND_PENDING',

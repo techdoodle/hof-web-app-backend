@@ -1,6 +1,7 @@
-import { Controller, Post, Get, Body, Param, Delete, Query, HttpStatus, HttpCode, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Delete, Query, HttpStatus, HttpCode, UseGuards, Request, Headers, Req } from '@nestjs/common';
 import { BookingService } from './booking.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
 import {
     CreateBookingDto,
     CancelBookingDto,
@@ -47,6 +48,13 @@ export class BookingController {
         return this.bookingService.initiatePayment({ ...dto, bookingId });
     }
 
+    @Post(':bookingId/cancel-payment')
+    @HttpCode(HttpStatus.OK)
+    @UseGuards(JwtAuthGuard)
+    cancelPayment(@Param('bookingId') bookingId: string) {
+        return this.bookingService.cancelPayment(bookingId);
+    }
+
     @Post(':bookingId/payment/callback')
     @HttpCode(HttpStatus.OK)
     @UseGuards(JwtAuthGuard)
@@ -55,6 +63,15 @@ export class BookingController {
         @Body() dto: PaymentCallbackDto
     ) {
         return this.bookingService.handlePaymentCallback(bookingId, dto);
+    }
+
+    @Post('webhook/payment')
+    @Public()
+    @HttpCode(HttpStatus.OK)
+    handlePaymentWebhook(@Body() webhookData: any, @Headers() headers: any) {
+        // Add signature from headers to webhook data
+        webhookData.signature = headers['x-razorpay-signature'];
+        return this.bookingService.handlePaymentWebhook(webhookData);
     }
 
     @Delete(':bookingId/slots')

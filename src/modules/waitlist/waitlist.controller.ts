@@ -1,11 +1,13 @@
-import { Controller, Post, Delete, Get, Body, Query } from '@nestjs/common';
+import { Controller, Post, Delete, Get, Body, Query, UseGuards } from '@nestjs/common';
 import { WaitlistService } from './waitlist.service';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('waitlist')
 export class WaitlistController {
-    constructor(private readonly waitlistService: WaitlistService) {}
+    constructor(private readonly waitlistService: WaitlistService) { }
 
     @Post('join')
+    @UseGuards(JwtAuthGuard)
     async joinWaitlist(
         @Body() body: { matchId: string; email: string; slotsRequired: number; metadata?: any }
     ) {
@@ -18,6 +20,7 @@ export class WaitlistController {
     }
 
     @Delete('cancel')
+    @UseGuards(JwtAuthGuard)
     async cancelWaitlist(
         @Query('matchId') matchId: string,
         @Query('email') email: string
@@ -26,6 +29,7 @@ export class WaitlistController {
     }
 
     @Get('count')
+    @UseGuards(JwtAuthGuard)
     async getWaitlistCount(@Query('matchId') matchId: string) {
         return {
             count: await this.waitlistService.getActiveWaitlistCount(matchId)

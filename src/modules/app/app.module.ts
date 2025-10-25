@@ -19,6 +19,7 @@ import { AdminModule } from '../admin/admin.module';
 import { MatchTypesModule } from '../match-types/match-types.module';
 import { NotificationModule } from '../notification/notification.module';
 import { BookingModule } from '../booking/booking.module';
+import { WaitlistModule } from '../waitlist/waitlist.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { BookingModule } from '../booking/booking.module';
     AdminModule,
     NotificationModule,
     BookingModule,
+    WaitlistModule,
   ],
   controllers: [AppController],
   providers: [
@@ -79,7 +81,6 @@ import { BookingModule } from '../booking/booking.module';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-
   ],
 })
 export class AppModule { }

@@ -8,19 +8,19 @@ export enum WaitlistStatus {
 
 @Entity('waitlist_entries')
 export class WaitlistEntry {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+    @PrimaryGeneratedColumn()
+    id: number;
 
-    @Column({ type: 'uuid', name: 'match_id' })
-    matchId: string;
+    @Column({ name: 'match_id' })
+    matchId: number;
 
-    @Column({ type: 'uuid', nullable: true })
-    userId: string;
+    @Column({ name: 'user_id', nullable: true })
+    userId: number;
 
     @Column()
     email: string;
 
-    @Column()
+    @Column({ name: 'slots_required' })
     slotsRequired: number;
 
     @Column({
@@ -30,7 +30,7 @@ export class WaitlistEntry {
     })
     status: WaitlistStatus;
 
-    @Column({ type: 'timestamp', nullable: true })
+    @Column({ name: 'last_notified_at', type: 'timestamp', nullable: true })
     lastNotifiedAt: Date;
 
     @Column({ type: 'jsonb', nullable: true })
@@ -44,9 +44,9 @@ export class WaitlistEntry {
         orderCreatedAt?: string;
     };
 
-    @CreateDateColumn()
+    @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 
-    @UpdateDateColumn()
+    @UpdateDateColumn({ name: 'updated_at' })
     updatedAt: Date;
 }
