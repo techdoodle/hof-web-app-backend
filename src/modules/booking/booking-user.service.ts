@@ -21,33 +21,14 @@ export class BookingUserService {
         });
 
         if (!user) {
-            // If no user found by phone, check if user exists by email
-            if (userData?.email) {
-                user = await this.userRepository.findOne({
-                    where: { email: userData.email }
-                });
-            }
-
-            if (!user) {
-                // Create new user if not found by phone or email
-                user = this.userRepository.create({
-                    phoneNumber: phone,
-                    firstName: userData?.firstName || '',
-                    lastName: userData?.lastName || '',
-                    email: userData?.email || null,
-                } as User);
-                user = await this.userRepository.save(user);
-            } else {
-                // User exists by email but not by phone, update phone number
-                user.phoneNumber = phone;
-                if (userData?.firstName && !user.firstName) {
-                    user.firstName = userData.firstName;
-                }
-                if (userData?.lastName && !user.lastName) {
-                    user.lastName = userData.lastName;
-                }
-                user = await this.userRepository.save(user);
-            }
+            // Create new user if not found by phone
+            user = this.userRepository.create({
+                phoneNumber: phone,
+                firstName: userData?.firstName || '',
+                lastName: userData?.lastName || '',
+                email: userData?.email || null,
+            } as User);
+            user = await this.userRepository.save(user);
         } else {
             // If user exists by phone, update email if provided and user doesn't have one
             if (userData?.email && !user.email) {
