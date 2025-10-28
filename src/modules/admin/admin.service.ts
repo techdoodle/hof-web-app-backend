@@ -238,8 +238,19 @@ export class AdminService {
             this.validatePricing(slotPrice, offerPrice);
         }
 
+        // Extract matchStatsId to exclude it from match creation
+        // Also filter out any empty strings or null values that might be sent by the frontend
+        const { matchStatsId, ...matchData } = createMatchDto;
+        
+        // Filter out empty strings and null values
+        Object.keys(matchData).forEach(key => {
+            if (matchData[key] === '' || matchData[key] === null) {
+                delete matchData[key];
+            }
+        });
+        
         const match = this.matchRepository.create({
-            ...createMatchDto,
+            ...matchData,
             slotPrice,
             offerPrice,
             footballChief: { id: createMatchDto.footballChief },
@@ -357,6 +368,7 @@ export class AdminService {
                 id: participant.matchParticipantId,
                 teamName: participant.teamName,
                 paidStatsOptIn: participant.paidStatsOptIn,
+                playernationVideoUrl: participant.playernationVideoUrl, // Add video URL field
                 // Reference IDs for React Admin
                 matchId: participant.match?.matchId,  // Just the ID for ReferenceField
                 user: participant.user?.id,         // Just the ID for ReferenceField
@@ -701,4 +713,34 @@ export class AdminService {
             throw new Error('Offer price must be less than or equal to slot price');
         }
     }
+
+    async updateParticipantVideoUrl(participantId: number, matchId: number, videoUrl: string | null): Promise<void> {
+        console.log(`Updating participant ${participantId} for match ${matchId} with video URL:`, videoUrl);
+        
+        const participant = await this.matchParticipantRepository.findOne({
+            where: {
+                matchParticipantId: participantId,
+                match: { matchId: matchId }
+            }
+        });
+
+        if (!participant) {
+            console.log('Participant not found:', { participantId, matchId });
+            throw new NotFoundException('Match participant not found');
+        }
+
+        console.log('Found participant:', participant);
+
+        const updateData: Partial<MatchParticipant> = {};
+        if (videoUrl === null) {
+            updateData.playernationVideoUrl = undefined;
+        } else {
+            updateData.playernationVideoUrl = videoUrl;
+        }
+        
+        console.log('Update data:', updateData);
+        await this.matchParticipantRepository.update(participantId, updateData);
+        console.log('Video URL updated successfully');
+    }
+
 }

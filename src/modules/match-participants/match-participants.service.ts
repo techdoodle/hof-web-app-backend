@@ -27,11 +27,17 @@ export class MatchParticipantsService {
       throw new ConflictException('User is already a participant in this match');
     }
 
-    // Validate that we don't exceed 2 teams
+    // Validate that we don't exceed 2 assigned teams (excluding 'Unassigned')
     const existingParticipants = await this.findByMatch(createMatchParticipantDto.match.matchId);
-    const existingTeamNames = new Set(existingParticipants.map(p => p.teamName));
+    const existingAssignedTeams = new Set(
+      existingParticipants
+        .map(p => p.teamName)
+        .filter(name => name && name.trim().toLowerCase() !== 'unassigned')
+    );
 
-    if (createMatchParticipantDto.teamName && !existingTeamNames.has(createMatchParticipantDto.teamName) && existingTeamNames.size >= 2) {
+    const incomingTeam = (createMatchParticipantDto.teamName || 'Unassigned').trim();
+    const isIncomingAssigned = incomingTeam.toLowerCase() !== 'unassigned';
+    if (isIncomingAssigned && !existingAssignedTeams.has(incomingTeam) && existingAssignedTeams.size >= 2) {
       throw new ConflictException('Cannot add more than 2 teams to a match');
     }
 
@@ -69,11 +75,17 @@ export class MatchParticipantsService {
   }
 
   async findByMatch(matchId: number): Promise<MatchParticipant[]> {
-    return await this.matchParticipantRepository.find({
-      where: { match: { matchId } },
-      relations: ['match', 'user'],
-      order: { teamName: 'ASC', createdAt: 'ASC' },
-    });
+    const participants = await this.matchParticipantRepository
+      .createQueryBuilder('participant')
+      .leftJoinAndSelect('participant.match', 'match')
+      .leftJoinAndSelect('participant.user', 'user')
+      .where('match.matchId = :matchId', { matchId })
+      .orderBy('participant.teamName', 'ASC')
+      .addOrderBy('participant.createdAt', 'ASC')
+      .getMany();
+    
+    console.log('Raw participants from DB:', participants);
+    return participants;
   }
 
   async findByUser(userId: number): Promise<MatchParticipant[]> {
@@ -137,15 +149,34 @@ export class MatchParticipantsService {
 
   async updateTeamName(matchParticipantId: number, teamName: string): Promise<MatchParticipant> {
     const participant = await this.findOne(matchParticipantId);
+    const match = participant.match;
 
-    // Check if the new team name is different from current
+    // Validate that team name matches one of the match's team names or is 'Unassigned'
+    const validTeamNames = [match.teamAName, match.teamBName, 'Unassigned'];
+    const normalizedTeamName = teamName?.trim();
+    const isValidTeamName = validTeamNames.some(validName => 
+      validName && validName.toLowerCase() === normalizedTeamName?.toLowerCase()
+    );
+
+    if (!isValidTeamName) {
+      throw new ConflictException(
+        `Invalid team name. Must be one of: ${match.teamAName}, ${match.teamBName}, or Unassigned`
+      );
+    }
+
+    // Check if the new team name is different from current and validate max 2 assigned teams
     if (participant.teamName !== teamName) {
-      // Get all participants in this match
       const matchParticipants = await this.findByMatch(participant.match.matchId);
-      const existingTeamNames = new Set(matchParticipants.map(p => p.teamName));
-
-      // If this is a new team name and we already have 2 teams, prevent the change
-      if (!existingTeamNames.has(teamName) && existingTeamNames.size >= 2) {
+      // Exclude the current participant from the count since we're updating their team
+      const otherParticipants = matchParticipants.filter(p => p.matchParticipantId !== matchParticipantId);
+      const existingAssignedTeams = new Set(
+        otherParticipants
+          .map(p => p.teamName)
+          .filter(name => name && name.trim().toLowerCase() !== 'unassigned')
+      );
+      const incomingTeam = (teamName || 'Unassigned').trim();
+      const isIncomingAssigned = incomingTeam.toLowerCase() !== 'unassigned';
+      if (isIncomingAssigned && !existingAssignedTeams.has(incomingTeam) && existingAssignedTeams.size >= 2) {
         throw new ConflictException('Cannot add more than 2 teams to a match');
       }
     }

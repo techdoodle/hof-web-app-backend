@@ -7,11 +7,20 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { UserFilterDto, CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { AdminService } from './admin.service';
 import { CreateMatchDto, UpdateMatchDto, MatchFilterDto } from './dto/match.dto';
+import { PlayerNationSubmitDto } from './dto/playernation-submit.dto';
+import { SaveMappingsDto } from './dto/playernation-mapping.dto';
+import { PlayerNationService } from './services/playernation.service';
+import { FirebaseStorageService } from '../user/firebase-storage.service';
+import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminController {
-    constructor(private readonly adminService: AdminService) { }
+    constructor(
+        private readonly adminService: AdminService,
+        private readonly playerNationService: PlayerNationService,
+        private readonly firebaseStorageService: FirebaseStorageService,
+    ) { }
 
     // User Management - Admin and Super Admin only
     @Get('users')
@@ -204,5 +213,151 @@ export class AdminController {
     async getMatchType(@Param('id', ParseIntPipe) id: number) {
         console.log('inside getMatchType', id);
         return this.adminService.getMatchType(id);
+    }
+
+    // PlayerNation Integration - Football Chief, Academy Admin, Admin, Super Admin
+    @Post('playernation/submit/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async submitToPlayerNation(
+        @Param('matchId', ParseIntPipe) matchId: number,
+        @Body() payload: PlayerNationSubmitDto
+    ) {
+        console.log('=== PLAYERNATION SUBMIT ===', { 
+            matchId, 
+            teamAPlayerCount: payload.players?.teamA?.length || 0,
+            teamBPlayerCount: payload.players?.teamB?.length || 0,
+            totalPlayerCount: (payload.players?.teamA?.length || 0) + (payload.players?.teamB?.length || 0)
+        });
+        
+        try {
+            const result = await this.playerNationService.submitMatch(matchId, payload);
+            console.log('PlayerNation submit success:', result);
+            return result;
+        } catch (error) {
+            console.error('PlayerNation submit error:', error.message);
+            throw error;
+        }
+    }
+
+    @Get('playernation/status/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getPlayerNationStatus(@Param('matchId', ParseIntPipe) matchId: number) {
+        return this.playerNationService.getMatchStatus(matchId);
+    }
+
+    @Post('playernation/poll-now/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async pollNow(@Param('matchId', ParseIntPipe) matchId: number) {
+        await this.playerNationService.pollMatchStats(matchId);
+        return { message: 'Poll initiated successfully' };
+    }
+
+    @Get('playernation/unmapped/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getUnmappedPlayers(@Param('matchId', ParseIntPipe) matchId: number): Promise<PlayerNationPlayerMapping[]> {
+        return this.playerNationService.getUnmappedPlayers(matchId);
+    }
+
+    @Post('playernation/save-mappings/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async saveMappings(
+        @Param('matchId', ParseIntPipe) matchId: number,
+        @Body() mappings: SaveMappingsDto['mappings']
+    ) {
+        await this.playerNationService.saveMappings(matchId, mappings);
+        return { message: 'Mappings saved successfully' };
+    }
+
+    @Post('playernation/signed-url')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getSignedUploadUrl(@Body() body: { fileName: string; contentType: string }) {
+        const { uploadUrl, downloadUrl } = await this.firebaseStorageService.generateSignedUploadUrl(
+            body.fileName,
+            body.contentType
+        );
+        
+        return {
+            uploadUrl,
+            downloadUrl,
+            fileName: body.fileName,
+            contentType: body.contentType
+        };
+    }
+
+    @Post('playernation/upload-video')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async uploadVideo(@Body() body: { fileName: string; contentType: string; base64Data: string; participantId: number; matchId: number }) {
+        try {
+            // Convert base64 to buffer
+            const buffer = Buffer.from(body.base64Data, 'base64');
+            
+            // Upload to Firebase Storage
+            const downloadUrl = await this.firebaseStorageService.uploadPlayerNationVideo(
+                body.fileName,
+                buffer,
+                body.contentType
+            );
+            
+            // Save video URL to database
+            await this.adminService.updateParticipantVideoUrl(body.participantId, body.matchId, downloadUrl);
+            
+            return {
+                downloadUrl,
+                fileName: body.fileName,
+                contentType: body.contentType
+            };
+        } catch (error) {
+            console.error('Video upload error:', error);
+            throw new Error('Failed to upload video');
+        }
+    }
+
+    @Post('playernation/clear-video')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async clearVideo(@Body() body: { participantId: number; matchId: number }) {
+        try {
+            await this.adminService.updateParticipantVideoUrl(body.participantId, body.matchId, null);
+            return { message: 'Video cleared successfully' };
+        } catch (error) {
+            console.error('Clear video error:', error);
+            throw new Error('Failed to clear video');
+        }
+    }
+
+    @Get('test')
+    async testEndpoint() {
+        return { message: 'Test endpoint working' };
+    }
+
+    @Get('public-test')
+    @UseGuards() // No guards for this endpoint
+    async publicTestEndpoint() {
+        return { 
+            message: 'Public test endpoint working',
+            timestamp: new Date().toISOString(),
+            playerNationServiceAvailable: !!this.playerNationService
+        };
+    }
+
+    @Get('playernation/test')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async testPlayerNation() {
+        console.log('=== PLAYERNATION TEST ENDPOINT CALLED ===');
+        console.log('PlayerNationService available:', !!this.playerNationService);
+        
+        try {
+            const token = await this.playerNationService.getValidToken();
+            return { 
+                message: 'PlayerNation service working', 
+                tokenLength: token ? token.length : 0,
+                hasToken: !!token
+            };
+        } catch (error) {
+            console.error('PlayerNation test error:', error);
+            return { 
+                message: 'PlayerNation service error', 
+                error: error.message 
+            };
+        }
     }
 }

@@ -20,7 +20,8 @@ export class MatchParticipant {
     name: 'team_name',
     type: 'varchar',
     length: 100,
-    nullable: false
+    nullable: false,
+    default: 'Unassigned'
   })
   teamName: string;
 
@@ -29,6 +30,9 @@ export class MatchParticipant {
 
   @Column({ name: 'player_highlights', nullable: true, default: null })
   playerHighlights?: string;
+
+  @Column({ name: 'playernation_video_url', type: 'text', nullable: true })
+  playernationVideoUrl?: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;

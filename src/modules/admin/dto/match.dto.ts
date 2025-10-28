@@ -56,6 +56,14 @@ export class CreateMatchDto {
     @IsNumber()
     @Min(-1)
     offerPrice?: number;
+
+  @IsString()
+  @IsOptional()
+  teamAName?: string;
+
+  @IsString()
+  @IsOptional()
+  teamBName?: string;
 }
 
 export class UpdateMatchDto {
@@ -120,6 +128,14 @@ export class UpdateMatchDto {
     @IsOptional()
     @Min(0)
     offerPrice?: number;
+
+  @IsString()
+  @IsOptional()
+  teamAName?: string;
+
+  @IsString()
+  @IsOptional()
+  teamBName?: string;
 }
 
 export class MatchFilterDto {

@@ -11,6 +11,12 @@ export class FirebaseConfig {
   }
 
   private initializeFirebase() {
+    // Check if Firebase app already exists
+    if (admin.apps.length > 0) {
+      this.app = admin.app();
+      return;
+    }
+
     const firebaseConfig = {
       type: this.configService.get<string>('FIREBASE_TYPE') || '',
       project_id: this.configService.get<string>('FIREBASE_PROJECT_ID') || '',

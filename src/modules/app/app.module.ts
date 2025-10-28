@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import configuration from 'src/config/configuration';
+import playernationConfig from 'src/config/playernation.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from '../auth/auth.module';
@@ -26,7 +27,7 @@ import { WaitlistModule } from '../waitlist/waitlist.module';
     ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [configuration],
+      load: [configuration, playernationConfig],
       envFilePath: ['.env'],
       cache: false,
       expandVariables: true,

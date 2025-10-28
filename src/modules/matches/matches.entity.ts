@@ -85,6 +85,29 @@ export class Match {
   @Column({ name: 'offer_price', type: 'decimal', precision: 10, scale: 2, default: 0 })
   offerPrice: number;
 
+  // Optional team names; default to Home/Away when not provided
+  @Column({ name: 'team_a_name', type: 'varchar', length: 100, nullable: true, default: 'Home' })
+  teamAName: string;
+
+  @Column({ name: 'team_b_name', type: 'varchar', length: 100, nullable: true, default: 'Away' })
+  teamBName: string;
+
+  // PlayerNation integration columns
+  @Column({ name: 'playernation_status', type: 'varchar', length: 50, nullable: true })
+  playernationStatus?: string;
+
+  @Column({ name: 'playernation_next_poll_at', type: 'timestamp with time zone', nullable: true })
+  playernationNextPollAt?: Date;
+
+  @Column({ name: 'playernation_poll_attempts', type: 'integer', default: 0 })
+  playernationPollAttempts: number;
+
+  @Column({ name: 'playernation_payload', type: 'jsonb', nullable: true })
+  playernationPayload?: any;
+
+  @Column({ name: 'playernation_last_response', type: 'jsonb', nullable: true })
+  playernationLastResponse?: any;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
