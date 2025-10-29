@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Connection, LessThan } from 'typeorm';
+import { Repository, Connection, LessThan, In } from 'typeorm';
 import { WaitlistEntry, WaitlistStatus } from './entities/waitlist-entry.entity';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/interfaces/notification.interface';
@@ -90,7 +90,7 @@ export class WaitlistService {
             const entries = await this.waitlistRepository.find({
                 where: {
                     matchId: Number(matchId),
-                    status: WaitlistStatus.ACTIVE
+                    status: In([WaitlistStatus.ACTIVE, WaitlistStatus.NOTIFIED])
                 }
                 // No ordering - everyone gets notified simultaneously
             });
@@ -276,20 +276,47 @@ export class WaitlistService {
             const slotsRequested = entry.slotsRequired;
             const isPartialAllocation = slotsAllocated < slotsRequested;
 
+            // Get user details from waitlist entry
+            const user = await this.connection.query(
+                'SELECT * FROM users WHERE id = $1',
+                [entry.userId]
+            );
+
+            if (!user.length) {
+                throw new BadRequestException('User not found for waitlist entry');
+            }
+
+            const userData = user[0];
+
+            // Calculate amount for the booking
+            const bookingAmount = entry.metadata?.amount || 0;
+
             // Use the same booking flow as regular bookings - this will handle slot locking
             const booking = await this.bookingService.createBooking({
                 matchId: entry.matchId.toString(),
+                userId: entry.userId.toString(),
                 email: entry.email,
                 totalSlots: slotsAllocated, // Use actual slots allocated, not total requested
                 slotNumbers: entry.metadata.availableSlots,
-                players: [
-                    {
-                        firstName: entry.metadata?.name?.split(' ')[0] || '',
-                        lastName: entry.metadata?.name?.split(' ')[1] || '',
-                        phone: entry.metadata?.phone || ''
-                    }
-                ]
-            });
+                players: Array.from({ length: slotsAllocated }, () => ({
+                    firstName: userData.first_name || entry.metadata?.name?.split(' ')[0] || '',
+                    lastName: userData.last_name || entry.metadata?.name?.split(' ')[1] || '',
+                    phone: userData.phone_number || entry.metadata?.phone || ''
+                })),
+                metadata: {
+                    ...entry.metadata,
+                    amount: bookingAmount,
+                    bookingType: 'waitlist_confirmed'
+                }
+            }, userData); // Pass userData as tokenUser
+
+            // Update the booking with the correct amount after creation
+            if (bookingAmount > 0) {
+                await queryRunner.query(
+                    `UPDATE bookings SET total_amount = $1 WHERE id = $2`,
+                    [bookingAmount, booking.id]
+                );
+            }
 
             // Update waitlist entry based on allocation
             if (isPartialAllocation) {

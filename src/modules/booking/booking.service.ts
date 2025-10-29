@@ -53,6 +53,7 @@ export class BookingService {
             throw new BadRequestException('Slot count mismatch');
         }
 
+
         const queryRunner = this.connection.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
@@ -124,14 +125,17 @@ export class BookingService {
                 });
                 playerUsers.push(user);
             }
-
+            console.log("playerUsers", playerUsers);
+            console.log("dto.players", dto.players);
+            console.log("availableSlots", availableSlots);
+            console.log("dto.totalSlots", dto.totalSlots);
             // Create booking slots with assigned slot numbers and player IDs
             const bookingSlots = availableSlots.slice(0, dto.totalSlots).map((slotNumber, index) => {
-                const player = dto.players[index];
-                const playerUser = playerUsers[index];
+                const player = dto.players[index] || dto.players[0] || { firstName: '', lastName: '', phone: '' };
+                const playerUser = playerUsers[index] || playerUsers[0];
 
                 // Use phone from token user for first player, provided phone for others
-                let phoneToUse = player.phone;
+                let phoneToUse = player?.phone || '';
                 if (index === 0 && tokenUser?.phoneNumber) {
                     phoneToUse = tokenUser.phoneNumber;
                 }
@@ -195,21 +199,50 @@ export class BookingService {
         return availableSlots;
     }
 
-    async getBookingById(bookingId: string): Promise<BookingEntity> {
+    async getBookingById(bookingId: string): Promise<any> {
         const booking = await this.bookingRepository.findOne({
             where: { id: Number(bookingId) },
-            relations: ['slots']
+            relations: ['slots'],
         });
 
         if (!booking) {
             throw new NotFoundException(`Booking with ID ${bookingId} not found`);
         }
 
-        return booking;
+        // Fetch match and venue details for this booking
+        const matchRows = await this.connection.query(
+            `SELECT m.start_time, m.end_time, v.name as venue_name, v.address as venue_address
+             FROM matches m
+             LEFT JOIN venues v ON m.venue = v.id
+             WHERE m.match_id = $1`,
+            [booking.matchId]
+        );
+        const match = matchRows[0] || {};
+
+        // Normalize response for frontend consistency and add matchDetails
+        return {
+            ...booking,
+            bookingReference: (booking as any).bookingReference || (booking as any).booking_reference || `BK-${booking.id}`,
+            totalSlots: (booking as any).totalSlots ?? (booking as any).total_slots ?? booking.totalSlots,
+            amount: (booking as any).amount ?? (booking as any).total_amount ?? booking.amount,
+            createdAt: (booking as any).createdAt ?? (booking as any).created_at ?? booking.createdAt,
+            slots: (booking.slots || []).map((s: any) => ({
+                slotNumber: s.slotNumber ?? s.slot_number,
+                playerName: s.playerName ?? s.player_name,
+                status: s.status,
+            })),
+            matchDetails: {
+                venueName: match.venue_name || 'TBD',
+                venueAddress: match.venue_address || 'TBD',
+                startTime: match.start_time,
+                endTime: match.end_time,
+            },
+        };
     }
 
     async getBookings(filters: { userId?: string; email?: string; status?: string }) {
         // Use raw query to get booking data with match and venue details
+        console.log("filters", filters);
         let whereClause = '';
         const params: any[] = [];
         let paramIndex = 1;
@@ -240,6 +273,7 @@ export class BookingService {
             paramIndex += 2;
         } else if (filters.status === 'WAITLISTED') {
             // For waitlisted bookings, fetch from waitlist_entries table
+            console.log("fetching waitlisted bookings");
             return await this.getWaitlistedBookings(filters);
         } else {
             // Default: confirmed and partially cancelled bookings (active bookings)
@@ -311,6 +345,7 @@ export class BookingService {
     }
 
     private async getWaitlistedBookings(filters: { userId?: string; email?: string; status?: string }) {
+        console.log("filters", filters);
         // Build where clause for waitlist entries
         let whereClause = '';
         const params: any[] = [];
@@ -328,10 +363,13 @@ export class BookingService {
             paramIndex++;
         }
 
-        // Only get active waitlist entries
-        whereClause += ` AND we.status = $${paramIndex}`;
+        // Get active and notified waitlist entries
+        whereClause += ` AND (we.status = $${paramIndex} OR we.status = $${paramIndex + 1})`;
         params.push('ACTIVE');
-        paramIndex++;
+        params.push('NOTIFIED');
+        paramIndex += 2;
+        console.log("whereClause", whereClause);
+        console.log("params", params);
 
         const query = `
             SELECT 
@@ -360,7 +398,7 @@ export class BookingService {
         // Transform waitlist entries to look like bookings for consistency
         return waitlistEntries.map(entry => ({
             id: entry.waitlist_id,
-            bookingReference: `WAIT-${entry.waitlist_id}`,
+            bookingReference: `WAITLISTED-${entry.waitlist_id}`,
             matchId: entry.match_id,
             userId: entry.user_id,
             email: entry.email,
@@ -392,9 +430,13 @@ export class BookingService {
         await queryRunner.startTransaction();
 
         try {
-            // Update booking status to cancelled
-            booking.status = BookingStatus.CANCELLED;
-            await queryRunner.manager.save(booking);
+            // Update booking status to cancelled using query
+            await queryRunner.query(
+                `UPDATE bookings 
+                 SET status = $1
+                 WHERE id = $2`,
+                [BookingStatus.CANCELLED, bookingId]
+            );
 
             // Update all booking slots to cancelled
             await queryRunner.manager.update(
@@ -484,16 +526,20 @@ export class BookingService {
                 }
             });
 
-            // Update booking with Razorpay order details
-            booking.status = BookingStatus.PAYMENT_PENDING;
-            booking.metadata = {
-                ...booking.metadata,
+            // Update booking with Razorpay order details without persisting slots
+            const newMetadata = {
+                ...(booking as any).metadata,
                 razorpayOrderId: order?.orderId,
                 paymentAmount: dto.amount,
                 paymentCurrency: dto.currency
             };
 
-            const updatedBooking = await this.bookingRepository.save(booking);
+            await this.bookingRepository.update(Number(dto.bookingId), {
+                status: BookingStatus.PAYMENT_PENDING,
+                metadata: newMetadata as any,
+            } as any);
+
+            const updatedBooking = await this.bookingRepository.findOne({ where: { id: Number(dto.bookingId) } });
 
             return {
                 booking: updatedBooking,
@@ -529,10 +575,13 @@ export class BookingService {
             );
 
             if (!isValidSignature) {
-                booking.status = BookingStatus.PAYMENT_FAILED;
-                console.log('Payment failed for booking:', booking);
-                // Keep original amount in rupees (no conversion needed for failed payments)
-                await queryRunner.manager.save(booking);
+                console.log('Payment failed for booking:', bookingId);
+                await queryRunner.query(
+                    `UPDATE bookings 
+                     SET status = $1
+                     WHERE id = $2`,
+                    [BookingStatus.PAYMENT_FAILED, bookingId]
+                );
 
                 // Release locked slots when payment signature fails
                 const result = await queryRunner.query(
@@ -588,12 +637,18 @@ export class BookingService {
                 paymentDetails: paymentDetails
             };
 
-            await queryRunner.manager.save(booking);
+            // Update booking status and metadata using query
+            await queryRunner.query(
+                `UPDATE bookings 
+                 SET status = $1, total_amount = $2, metadata = $3
+                 WHERE id = $4`,
+                [BookingStatus.CONFIRMED, paymentDetails.amount / 100, JSON.stringify(booking.metadata), bookingId]
+            );
 
             // Update booking slots status from PENDING_PAYMENT to ACTIVE
             await queryRunner.manager.update(
                 BookingSlotEntity,
-                { bookingId: booking.id },
+                { bookingId: Number(bookingId) },
                 { status: BookingSlotStatus.ACTIVE }
             );
 
@@ -764,6 +819,8 @@ export class BookingService {
     private async verifyWebhookSignature(webhookData: any): Promise<boolean> {
         try {
             const crypto = require('crypto');
+            console.log("webhookData", webhookData);
+            console.log("webhookSecret", process.env.RAZORPAY_WEBHOOK_SECRET);
             const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
             if (!webhookSecret) {
@@ -985,9 +1042,17 @@ export class BookingService {
                     { where: { bookingId: Number(dto.bookingId), status: BookingSlotStatus.ACTIVE } }
                 );
 
-                booking.status = remainingActiveSlots > 0
+                const newStatus = remainingActiveSlots > 0
                     ? BookingStatus.PARTIALLY_CANCELLED
                     : BookingStatus.CANCELLED;
+
+                // Update booking status and refund status using query
+                await queryRunner.query(
+                    `UPDATE bookings 
+                     SET status = $1, refund_status = $2
+                     WHERE id = $3`,
+                    [newStatus, RefundStatus.PENDING, dto.bookingId]
+                );
             } else {
                 // Full cancellation
                 await queryRunner.manager.update(
@@ -995,12 +1060,15 @@ export class BookingService {
                     { bookingId: dto.bookingId },
                     { status: BookingSlotStatus.CANCELLED_REFUND_PENDING }
                 );
-                booking.status = BookingStatus.CANCELLED;
-            }
 
-            // Update booking refund status
-            booking.refundStatus = RefundStatus.PENDING;
-            await queryRunner.manager.save(booking);
+                // Update booking status and refund status using query
+                await queryRunner.query(
+                    `UPDATE bookings 
+                     SET status = $1, refund_status = $2
+                     WHERE id = $3`,
+                    [BookingStatus.CANCELLED, RefundStatus.PENDING, dto.bookingId]
+                );
+            }
 
             // Decrement booked_slots in matches table for cancelled slots
             const cancelledSlotsCount = slotNumbers.length || booking.totalSlots;

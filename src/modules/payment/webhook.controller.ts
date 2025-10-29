@@ -6,7 +6,7 @@ import { RefundStatus } from '../../common/types/booking.types';
 export class WebhookController {
     private readonly logger = new Logger(WebhookController.name);
 
-    constructor(private refundService: RefundService) {}
+    constructor(private refundService: RefundService) { }
 
     @Post('razorpay')
     @HttpCode(HttpStatus.OK)
@@ -35,11 +35,23 @@ export class WebhookController {
             return;
         }
 
-        this.logger.log(`Processing refund event: ${event} for refund: ${refund.id}`);
+        this.logger.log(`Processing refund event: ${event} for refund: ${refund.id} with payload: ${JSON.stringify(payload)}`);
+        this.logger.log("payload", payload);
+        this.logger.log("refund", refund);
+        this.logger.log("event", event);
 
         // Map Razorpay refund status to our RefundStatus enum
         let status: RefundStatus;
         switch (refund.status) {
+            case 'refund.created':
+                status = RefundStatus.PROCESSING;
+                break;
+            case 'refund.processed':
+                status = RefundStatus.COMPLETED;
+                break;
+            case 'refund.failed':
+                status = RefundStatus.FAILED;
+                break;
             case 'processed':
                 status = RefundStatus.COMPLETED;
                 break;

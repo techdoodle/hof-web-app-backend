@@ -99,6 +99,9 @@ export class RazorpayGateway implements PaymentGateway {
 
     async verifyWebhook(payload: any, signature: string): Promise<boolean> {
         try {
+            console.log("payload", payload);
+            console.log("signature", signature);
+            console.log("webhook secret", this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET'));
             const secret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET');
             if (!secret) throw new Error('RAZORPAY_WEBHOOK_SECRET configuration is missing');
 
