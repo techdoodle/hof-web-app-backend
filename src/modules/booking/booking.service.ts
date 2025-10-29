@@ -125,14 +125,17 @@ export class BookingService {
                 });
                 playerUsers.push(user);
             }
-
+            console.log("playerUsers", playerUsers);
+            console.log("dto.players", dto.players);
+            console.log("availableSlots", availableSlots);
+            console.log("dto.totalSlots", dto.totalSlots);
             // Create booking slots with assigned slot numbers and player IDs
             const bookingSlots = availableSlots.slice(0, dto.totalSlots).map((slotNumber, index) => {
-                const player = dto.players[index];
-                const playerUser = playerUsers[index];
+                const player = dto.players[index] || dto.players[0] || { firstName: '', lastName: '', phone: '' };
+                const playerUser = playerUsers[index] || playerUsers[0];
 
                 // Use phone from token user for first player, provided phone for others
-                let phoneToUse = player.phone;
+                let phoneToUse = player?.phone || '';
                 if (index === 0 && tokenUser?.phoneNumber) {
                     phoneToUse = tokenUser.phoneNumber;
                 }
