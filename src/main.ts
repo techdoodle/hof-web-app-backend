@@ -25,7 +25,6 @@ async function bootstrap() {
     'https://admin-stg-hof.netlify.app',
     'https://admin-prod-hof.netlify.app',
     'https://hof-admin.netlify.app',
-    '*',
     process.env.FRONTEND_URL, // Production frontend URL from environment
   ].filter(Boolean); // Remove undefined values
 
