@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Connection, LessThan } from 'typeorm';
+import { Repository, Connection, LessThan, In } from 'typeorm';
 import { WaitlistEntry, WaitlistStatus } from './entities/waitlist-entry.entity';
 import { NotificationService } from '../notification/notification.service';
 import { NotificationType } from '../notification/interfaces/notification.interface';
@@ -90,7 +90,7 @@ export class WaitlistService {
             const entries = await this.waitlistRepository.find({
                 where: {
                     matchId: Number(matchId),
-                    status: WaitlistStatus.ACTIVE
+                    status: In([WaitlistStatus.ACTIVE, WaitlistStatus.NOTIFIED])
                 }
                 // No ordering - everyone gets notified simultaneously
             });
