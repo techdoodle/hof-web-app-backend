@@ -295,9 +295,12 @@ export class MatchesService {
     `, [matchId]);
 
     const lockedSlots = lockedSlotsResult[0]?.locked_slots || {};
-    const lockedSlotsCount = typeof lockedSlots === 'object' && lockedSlots !== null
-      ? Object.keys(lockedSlots).length
+    const lockedSlotsCount: number = typeof lockedSlots === 'object' && lockedSlots !== null
+      ? Object.values(lockedSlots as any).reduce((count: number, item: any) => {
+        return count + (item as any).slots.length;
+      }, 0) as number
       : 0;
+    console.log("lockedSlotsCount", lockedSlotsCount);
 
     // Query confirmed booked slots using raw SQL to avoid relationship issues
     const confirmedBookedSlotsResult = await this.bookingSlotRepository.query(`
@@ -308,7 +311,6 @@ export class MatchesService {
     `, [matchId.toString(), BookingSlotStatus.ACTIVE]);
 
     const confirmedBookedSlots = parseInt(confirmedBookedSlotsResult[0]?.count || '0');
-
     // Query waitlisted slots using raw SQL
     const waitlistedSlotsResult = await this.waitlistRepository.query(`
       SELECT COALESCE(SUM(slots_required), 0) as total_slots 
@@ -317,7 +319,6 @@ export class MatchesService {
     `, [matchId.toString(), WaitlistStatus.ACTIVE]);
 
     const waitlistedSlotsCount = parseInt(waitlistedSlotsResult[0]?.total_slots || '0');
-
     // Calculate available regular slots
     const availableRegularSlots = Math.max(0, match.playerCapacity - confirmedBookedSlots - lockedSlotsCount);
 

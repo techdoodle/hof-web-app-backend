@@ -56,6 +56,7 @@ export class AuthService {
         console.log('SMS Credentials:', { username, password });
         console.log('SMS Message:', message);
         console.log('Mobile:', mobile);
+        console.log("development mode:", process.env.NODE_ENV);
 
         const params = {
             username,
@@ -78,6 +79,14 @@ export class AuthService {
             console.log('SMS API URL:', 'https://rslri.connectbind.com:8443/bulksms/bulksms');
             console.log('SMS Parameters:', params);
 
+            if (process.env.NODE_ENV === 'development') {
+                console.log('Development mode: SMS sending skipped');
+                return {
+                    ...this.encryptOtp(otp),
+                    mobile
+                }
+            }
+
             const response = await axios.get('https://rslri.connectbind.com:8443/bulksms/bulksms', {
                 params,
                 timeout: 10000, // 10 second timeout
@@ -99,7 +108,7 @@ export class AuthService {
 
             // For development: log OTP, for production: might want to throw error
             const isDevelopment = this.configService.get<string>('NODE_ENV') === 'development';
-            if (isDevelopment) {
+            if (isDevelopment || process.env.NODE_ENV === 'development') {
                 console.log(`Development mode: OTP for ${mobile} is ${otp}`);
             } else {
                 throw new Error('Failed to send SMS. Please try again later.');
