@@ -60,7 +60,7 @@ export class PlayerNationService {
     private readonly mappingRepository: Repository<PlayerNationPlayerMapping>,
   ) {}
 
-  async getValidToken(): Promise<string> {
+  async getValidToken(forceRefresh: boolean = false): Promise<string> {
     // Check for existing valid token (with 1 hour buffer)
     const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
     const existingToken = await this.tokenRepository.findOne({
@@ -70,12 +70,12 @@ export class PlayerNationService {
       order: { createdAt: 'DESC' },
     });
 
-    if (existingToken) {
+    if (!forceRefresh && existingToken) {
       console.log('Using existing valid token');
       return existingToken.accessToken;
     }
 
-    console.log('No valid token found, getting new token...');
+    console.log(forceRefresh ? 'Force refreshing PlayerNation token...' : 'No valid token found, getting new token...');
 
     // Get new token
     const phone = this.configService.get<string>('playernation.phone');
@@ -87,14 +87,14 @@ export class PlayerNationService {
 
     try {
       const baseUrl = this.configService.get('playernation.baseUrl');
-      
+      const verifyUrl = `${baseUrl}/hof/verify`;
+      const verifyHeaders = { 'Content-Type': 'application/json' } as Record<string, string>;
+
       const response = await firstValueFrom(
         this.httpService.post<PlayerNationResponse>(
-          `${baseUrl}/hof/verify`,
+          verifyUrl,
           { phone, password },
-          {
-            headers: { 'Content-Type': 'application/json' },
-          },
+          { headers: verifyHeaders },
         ),
       );
 
@@ -113,6 +113,7 @@ export class PlayerNationService {
 
       return response.data.accessToken;
     } catch (error) {
+
       this.logger.error('Failed to get PlayerNation token', error);
       throw new BadRequestException('Failed to authenticate with PlayerNation');
     }
@@ -128,7 +129,8 @@ export class PlayerNationService {
       throw new NotFoundException('Match not found');
     }
 
-    const token = await this.getValidToken();
+    // Always refresh token for each submit to avoid stale token issues
+    const token = await this.getValidToken(true);
 
     try {
       console.log('=== PLAYERNATION API CALL ===');
@@ -146,6 +148,31 @@ export class PlayerNationService {
       console.log('players.teamA sample:', payload.players?.teamA?.[0]);
       console.log('players.teamB sample:', payload.players?.teamB?.[0]);
       console.log('=== END PAYLOAD DEBUG ===');
+
+      // Persist payload to file for auditing/debugging
+      try {
+        const logsDir = path.resolve(process.cwd(), 'playernation-logs');
+        if (!fs.existsSync(logsDir)) {
+          fs.mkdirSync(logsDir, { recursive: true });
+        }
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        const fileName = `uploadGame_${matchId}_${ts}.json`;
+        const filePath = path.join(logsDir, fileName);
+        const fileContent = JSON.stringify({
+          matchId,
+          timestamp: new Date().toISOString(),
+          url: `${this.configService.get('playernation.baseUrl')}/hof/uploadGame`,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          token,
+          payload,
+        }, null, 2);
+        fs.writeFileSync(filePath, fileContent, { encoding: 'utf-8' });
+      } catch (e) {
+        this.logger.warn(`Failed to write PlayerNation payload to file: ${e?.message || e}`);
+      }
       
       // Test token validity first
       console.log('Testing token validity...');
@@ -172,18 +199,21 @@ export class PlayerNationService {
         console.log('Fresh token obtained:', finalToken.substring(0, 50) + '...');
       }
       
+      const uploadUrl = `${this.configService.get('playernation.baseUrl')}/hof/uploadGame`;
+      const requestHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${finalToken}`,
+      } as Record<string, string>;
+
       const response = await firstValueFrom(
         this.httpService.post<PlayerNationResponse>(
-          `${this.configService.get('playernation.baseUrl')}/hof/uploadGame`,
+          uploadUrl,
           payload,
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${finalToken}`,
-            },
-          },
+          { headers: requestHeaders },
         ),
       );
+
+      // (file response logging removed)
 
       if (!response.data.success || !response.data.matchId) {
         throw new BadRequestException('Failed to submit match to PlayerNation');
@@ -205,6 +235,8 @@ export class PlayerNationService {
       console.error('Error:', error.response?.data || error.message);
       console.error('Status:', error.response?.status);
       console.error('Headers:', error.response?.headers);
+
+      // (file error logging removed)
       
       this.logger.error(`Failed to submit match ${matchId} to PlayerNation`, error);
       throw new BadRequestException('Failed to submit match to PlayerNation');
@@ -220,7 +252,8 @@ export class PlayerNationService {
       throw new NotFoundException('Match or PlayerNation matchId not found');
     }
 
-    const token = await this.getValidToken();
+    // Refresh token for polling as well to avoid stale auth
+    const token = await this.getValidToken(true);
 
     try {
       const response = await firstValueFrom(

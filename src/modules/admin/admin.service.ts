@@ -142,19 +142,43 @@ export class AdminService {
             queryBuilder.where('match.name ILIKE :search', { search: `%${filters.search}%` });
         }
 
-        if (filters.venue) {
+        if (filters.venue && !Number.isNaN(Number(filters.venue))) {
             queryBuilder.andWhere('venue.id = :venueId', { venueId: filters.venue });
         }
-
-        if (filters.startDate) {
-            queryBuilder.andWhere('match.start_time >= :startDate', { startDate: filters.startDate });
+        if ((filters as any).city && !Number.isNaN(Number((filters as any).city))) {
+            queryBuilder.andWhere('city.id = :cityId', { cityId: (filters as any).city });
+        }
+        if ((filters as any).footballChief && !Number.isNaN(Number((filters as any).footballChief))) {
+            queryBuilder.andWhere('footballChief.id = :fcId', { fcId: (filters as any).footballChief });
+        }
+        if ((filters as any).matchType) {
+            queryBuilder.andWhere('match.match_type = :matchType', { matchType: (filters as any).matchType });
         }
 
-        if (filters.endDate) {
-            queryBuilder.andWhere('match.start_time <= :endDate', { endDate: filters.endDate });
+        // Backward compatible filters
+        // Accept dateFrom/dateTo (primary) and also startDate/startTime, endDate/endTime (back-compat)
+        const startLower = (filters as any).dateFrom || (filters as any).startDate || (filters as any).startTime;
+        const endUpper = (filters as any).dateTo || (filters as any).endDate || (filters as any).endTime;
+        if (startLower) {
+            queryBuilder.andWhere('match.start_time >= :startLower', { startLower });
+            console.log('[AdminService] Applied startLower filter on start_time >=', startLower);
+        }
+        if (endUpper) {
+            queryBuilder.andWhere('match.start_time <= :endUpper', { endUpper });
+            // console.log('[AdminService] Applied endUpper filter on start_time <=', endUpper);
         }
 
-        console.log('Match query filters:', filters);
+        // (logs removed)
+
+        // New generic date range filters
+        if (filters.dateFrom) {
+            queryBuilder.andWhere('match.start_time >= :dateFrom', { dateFrom: filters.dateFrom });
+        }
+        if (filters.dateTo) {
+            queryBuilder.andWhere('match.start_time <= :dateTo', { dateTo: filters.dateTo });
+        }
+
+        // console.log('Match query filters:', filters);
 
         // Handle sorting with correct property name mapping
         let sortField = 'match.start_time'; // default sort
@@ -173,12 +197,7 @@ export class AdminService {
         }
         const sortOrder = filters.order?.toUpperCase() || 'DESC';
 
-        console.log('Match query:', {
-            filters,
-            sortField,
-            sortOrder,
-            query: queryBuilder.getSql()
-        });
+        // (logs removed)
 
         try {
             const [matches, total] = await queryBuilder
@@ -187,8 +206,24 @@ export class AdminService {
                 .offset(filters.offset || 0)
                 .getManyAndCount();
 
+            // (logs removed)
+
+            // Safety net: locally filter by date window if provided
+            const df = (filters as any).dateFrom || (filters as any).startDate || (filters as any).startTime;
+            const dt = (filters as any).dateTo || (filters as any).endDate || (filters as any).endTime;
+            let finalMatches = matches;
+            if (df || dt) {
+                const fromTs = df ? new Date(df).getTime() : Number.NEGATIVE_INFINITY;
+                const toTs = dt ? new Date(dt).getTime() : Number.POSITIVE_INFINITY;
+                finalMatches = matches.filter(m => {
+                    const ts = new Date((m as any).startTime).getTime();
+                    return ts >= fromTs && ts <= toTs;
+                });
+                // (logs removed)
+            }
+
             // Map matchId to id for frontend compatibility
-            const mappedMatches = matches.map(match => ({
+            const mappedMatches = finalMatches.map(match => ({
                 ...match,
                 id: match.matchId, // Add id field while keeping matchId
                 matchTypeId: match.matchTypeRef?.id
@@ -196,7 +231,7 @@ export class AdminService {
 
             return {
                 data: mappedMatches,
-                total: total
+                total: df || dt ? mappedMatches.length : total
             };
         } catch (error) {
             console.error('Match query error:', error);
@@ -614,6 +649,24 @@ export class AdminService {
         return { data: cities, total: total };
     }
 
+    async getChiefs() {
+        // Include all roles that can manage matches (consistent with frontend permissions)
+        const roles = ['football_chief', 'academy_admin', 'admin', 'super_admin'];
+        const qb = this.userRepository.createQueryBuilder('user')
+            .where('user.role IN (:...roles)', { roles })
+            .orderBy('user.firstName', 'ASC');
+
+        const chiefs = await qb.getMany();
+        const mapped = chiefs.map(u => ({
+            id: u.id,
+            firstName: (u as any).firstName,
+            lastName: (u as any).lastName,
+            phoneNumber: (u as any).phoneNumber,
+            fullName: `${(u as any).firstName || ''} ${(u as any).lastName || ''}`.trim() || (u as any).phoneNumber,
+        }));
+        return { data: mapped, total: mapped.length };
+    }
+
     // Venue Management
     async getVenues(query: any) {
         const venues = await this.venueRepository.find({
@@ -643,24 +696,43 @@ export class AdminService {
     }
 
     async createVenue(createVenueDto: any) {
-        // Check if phone number already exists
-        const existingVenue = await this.venueRepository.findOne({
-            where: { phoneNumber: createVenueDto.phoneNumber }
-        });
+        try {
+            // Normalize inputs coming from admin UI
+            const cityId = createVenueDto.cityId || createVenueDto.city?.id || createVenueDto.city;
+            const name: string = (createVenueDto.name || '').toString().trim();
+            const phoneNumber: string = (createVenueDto.phoneNumber || '').toString().trim();
+            const address: string = (createVenueDto.address || '').toString().trim();
 
-        if (existingVenue) {
-            throw new BadRequestException('Phone number already exists');
+            if (!name) {
+                throw new BadRequestException('Venue name is required');
+            }
+            if (!phoneNumber) {
+                throw new BadRequestException('Venue phone number is required');
+            }
+            if (!cityId) {
+                throw new BadRequestException('City is required');
+            }
+
+            // Check uniqueness of phone number
+            const existingVenue = await this.venueRepository.findOne({
+                where: { phoneNumber }
+            });
+            if (existingVenue) {
+                throw new BadRequestException('Phone number already exists');
+            }
+
+            const venue = this.venueRepository.create({
+                name,
+                phoneNumber,
+                address,
+                city: { id: Number(cityId) }
+            });
+
+            return await this.venueRepository.save(venue);
+        } catch (error) {
+            if (error instanceof BadRequestException) throw error;
+            throw new BadRequestException(error?.message || 'Failed to create venue');
         }
-
-        // Create new venue without ID
-        const venue = this.venueRepository.create({
-            name: createVenueDto.name,
-            phoneNumber: createVenueDto.phoneNumber,
-            address: createVenueDto.address,
-            city: { id: createVenueDto.cityId }
-        });
-
-        return this.venueRepository.save(venue);
     }
 
     async updateVenue(id: number, updateVenueDto: any) {

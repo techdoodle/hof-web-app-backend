@@ -155,6 +155,15 @@ export class MatchFilterDto {
     @IsDateString()
     endDate?: string;
 
+    // New generic date range filters
+    @IsOptional()
+    @IsDateString()
+    dateFrom?: string;
+
+    @IsOptional()
+    @IsDateString()
+    dateTo?: string;
+
     @IsOptional()
     @IsNumber()
     limit?: number;

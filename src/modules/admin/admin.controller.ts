@@ -25,8 +25,29 @@ export class AdminController {
     // User Management - Admin and Super Admin only
     @Get('users')
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async getAllUsers(@Query() filters: UserFilterDto) {
-        return this.adminService.getAllUsers(filters);
+    async getAllUsers(@Query() raw: any) {
+        let filters: any = { ...raw };
+        if (raw && typeof raw.filter === 'string') {
+            try {
+                filters = { ...filters, ...JSON.parse(raw.filter) };
+            } catch (_) {}
+        }
+        // Normalize common keys if sent as nested
+        if (filters['city.id'] && !filters.city) filters.city = filters['city.id'];
+        console.log('[AdminController] GET /admin/users merged filters:', filters);
+        return this.adminService.getAllUsers(filters as UserFilterDto);
+    }
+
+    @Get('chiefs')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getChiefs(@Query() raw: any) {
+        console.log('[AdminController] GET /admin/chiefs raw:', raw);
+        const result = this.adminService.getChiefs();
+        // Log after promise resolves as well
+        Promise.resolve(result).then(r => {
+            console.log('[AdminController] /admin/chiefs response meta:', { total: r.total, sample: r.data?.[0] });
+        });
+        return result;
     }
 
     @Get('users/:id')
@@ -59,8 +80,47 @@ export class AdminController {
     // Match Management - Football Chief, Academy Admin, Admin, Super Admin
     @Get('matches')
     @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async getAllMatches(@Query() filters: MatchFilterDto) {
-        return this.adminService.getAllMatches(filters);
+    async getAllMatches(@Query() raw: any) {
+        // React Admin passes filters under a `filter` query param (JSON string)
+        let filters: any = { ...raw };
+        if (raw && typeof raw.filter === 'string') {
+            try {
+                const parsed = JSON.parse(raw.filter);
+                filters = { ...filters, ...parsed };
+            } catch (_) {
+                // ignore parse errors
+            }
+        }
+
+        // Normalize common aliases from UI
+        // Map startTime/endTime -> startDate/endDate for backward compatibility
+        if (filters.startTime && !filters.startDate) filters.startDate = filters.startTime;
+        if (filters.endTime && !filters.endDate) filters.endDate = filters.endTime;
+
+        // Normalize nested filter keys that RA may send (e.g., 'venue.id')
+        if (filters['venue.id'] && !filters.venue) filters.venue = filters['venue.id'];
+        if (filters['city.id'] && !filters.city) filters.city = filters['city.id'];
+        if (filters['footballChief.id'] && !filters.footballChief) filters.footballChief = filters['footballChief.id'];
+
+        // Coerce possible object-valued filters to primitive IDs
+        const coerceId = (val: any) => {
+            if (!val) return val;
+            // Drop stringified object placeholders
+            if (val === '[object Object]') return null;
+            if (typeof val === 'object') return val.id ?? val.value ?? null;
+            if (typeof val === 'string' && /^\d+$/.test(val)) return Number(val);
+            return val;
+        };
+        filters.venue = coerceId(filters.venue);
+        filters.city = coerceId(filters.city);
+        filters.footballChief = coerceId(filters.footballChief);
+
+        // Remove empty/invalid ids so they don't trigger 500s
+        if (filters.venue === null || filters.venue === undefined || Number.isNaN(filters.venue)) delete filters.venue;
+        if (filters.city === null || filters.city === undefined || Number.isNaN(filters.city)) delete filters.city;
+        if (filters.footballChief === null || filters.footballChief === undefined || Number.isNaN(filters.footballChief)) delete filters.footballChief;
+
+        return this.adminService.getAllMatches(filters as MatchFilterDto);
     }
 
     @Get('matches/:id')
