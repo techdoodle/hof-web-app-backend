@@ -149,30 +149,7 @@ export class PlayerNationService {
       console.log('players.teamB sample:', payload.players?.teamB?.[0]);
       console.log('=== END PAYLOAD DEBUG ===');
 
-      // Persist payload to file for auditing/debugging
-      try {
-        const logsDir = path.resolve(process.cwd(), 'playernation-logs');
-        if (!fs.existsSync(logsDir)) {
-          fs.mkdirSync(logsDir, { recursive: true });
-        }
-        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-        const fileName = `uploadGame_${matchId}_${ts}.json`;
-        const filePath = path.join(logsDir, fileName);
-        const fileContent = JSON.stringify({
-          matchId,
-          timestamp: new Date().toISOString(),
-          url: `${this.configService.get('playernation.baseUrl')}/hof/uploadGame`,
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          token,
-          payload,
-        }, null, 2);
-        fs.writeFileSync(filePath, fileContent, { encoding: 'utf-8' });
-      } catch (e) {
-        this.logger.warn(`Failed to write PlayerNation payload to file: ${e?.message || e}`);
-      }
+      // (file payload logging removed)
       
       // Test token validity first
       console.log('Testing token validity...');
