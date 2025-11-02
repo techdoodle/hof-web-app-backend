@@ -1,11 +1,13 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
+import { Repository, MoreThan, DataSource } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Match } from '../../matches/matches.entity';
 import { User } from '../../user/user.entity';
+import { MatchParticipant } from '../../match-participants/match-participants.entity';
+import { MatchParticipantStats } from '../../match-participant-stats/match-participant-stats.entity';
 import { PlayerNationToken } from '../entities/playernation-token.entity';
 import { PlayerNationPlayerMapping, PlayerMappingStatus } from '../entities/playernation-player-mapping.entity';
 import { PlayerNationSubmitDto } from '../dto/playernation-submit.dto';
@@ -35,7 +37,8 @@ interface PlayerNationStatsResponse {
       name: string;
     }>;
     stats: Record<string, {
-      totalCount: number;
+      type: 'raw' | 'derived';
+      totalCount: number | string;
       isPercentageStat: boolean;
       minutes?: number[];
       description?: string;
@@ -54,10 +57,15 @@ export class PlayerNationService {
     private readonly matchRepository: Repository<Match>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(MatchParticipant)
+    private readonly matchParticipantRepository: Repository<MatchParticipant>,
+    @InjectRepository(MatchParticipantStats)
+    private readonly matchParticipantStatsRepository: Repository<MatchParticipantStats>,
     @InjectRepository(PlayerNationToken)
     private readonly tokenRepository: Repository<PlayerNationToken>,
     @InjectRepository(PlayerNationPlayerMapping)
     private readonly mappingRepository: Repository<PlayerNationPlayerMapping>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getValidToken(forceRefresh: boolean = false): Promise<string> {
@@ -264,6 +272,11 @@ export class PlayerNationService {
         });
       } else if (response.data.status === 'success') {
         await this.processPlayerStats(matchId, response.data);
+        // Update status to SUCCESS after processing
+        await this.matchRepository.update(matchId, {
+          playernationStatus: 'SUCCESS',
+        });
+        this.logger.log(`Match ${matchId} stats processed successfully`);
       }
 
       this.logger.log(`Polled match ${matchId}, status: ${response.data.status}`);
@@ -275,67 +288,188 @@ export class PlayerNationService {
 
   private async processPlayerStats(matchId: number, response: PlayerNationStatsResponse): Promise<void> {
     if (!response.playerStats) {
+      this.logger.warn(`No player stats in response for match ${matchId}`);
       return;
     }
 
+    const match = await this.matchRepository.findOne({ where: { matchId } });
+    if (!match) {
+      throw new NotFoundException(`Match ${matchId} not found`);
+    }
+
+    let processedCount = 0;
+    let unmappedCount = 0;
+
     // Process each player
-    for (const [playerId, playerData] of Object.entries(response.playerStats)) {
-      const { playerInfo, stats, hightlightURL } = playerData;
+    for (const [externalPlayerId, playerData] of Object.entries(response.playerStats)) {
+      const { playerInfo, stats } = playerData;
 
-      // Check if player has hofPlayerId
+      let user: User | null = null;
+
+      // Try to find user by hofPlayerId
       if (playerInfo.hofPlayerId) {
-        // Try to find user by hofPlayerId (assuming it's the user ID)
-        const user = await this.userRepository.findOne({
-          where: { id: parseInt(playerInfo.hofPlayerId.replace('HF-PLAYER-', '')) },
-        });
+        // Try parsing as numeric ID (what we send)
+        const numericId = parseInt(playerInfo.hofPlayerId);
+        if (!isNaN(numericId)) {
+          user = await this.userRepository.findOne({
+            where: { id: numericId },
+          });
+        }
 
-        if (user) {
-          // Map stats directly
-          await this.mapStatsToCompact(matchId, user.id, stats);
-          continue;
+        // If still not found, try matching by name and team from match participants
+        if (!user) {
+          const matchParticipants = await this.matchParticipantRepository.find({
+            where: { match: { matchId } },
+            relations: ['user'],
+          });
+
+          // Try to match by name (case-insensitive) and team
+          for (const participant of matchParticipants) {
+            const fullName = `${participant.user.firstName || ''} ${participant.user.lastName || ''}`.trim().toLowerCase();
+            const playerName = playerInfo.name.trim().toLowerCase();
+            
+            // Match team name (A/B or actual team names)
+            const teamMatch = 
+              participant.teamName === playerInfo.team ||
+              (match.teamAName && match.teamAName === playerInfo.team && participant.teamName === match.teamAName) ||
+              (match.teamBName && match.teamBName === playerInfo.team && participant.teamName === match.teamBName);
+
+            if (fullName.includes(playerName) || playerName.includes(fullName)) {
+              if (teamMatch) {
+                user = participant.user;
+                this.logger.log(`Matched player ${playerInfo.name} to user ${user.id} by name and team`);
+                break;
+              }
+            }
+          }
         }
       }
 
-      // Create mapping entry for manual matching
-      await this.mappingRepository.save({
-        matchId: matchId,
-        externalPlayerId: playerId,
-        externalName: playerInfo.name,
-        externalTeam: playerInfo.team,
-        thumbnailUrls: playerInfo.thumbnail,
-        status: PlayerMappingStatus.UNMATCHED,
-        createdById: 1, // TODO: Get from current user context
-      });
+      if (user) {
+        // Map and save stats
+        try {
+          await this.mapStatsToCompact(matchId, user.id, stats);
+          processedCount++;
+        } catch (error) {
+          this.logger.error(`Failed to save stats for user ${user.id} in match ${matchId}:`, error);
+          // Create mapping entry as fallback
+          await this.mappingRepository.save({
+            matchId: matchId,
+            externalPlayerId: externalPlayerId,
+            externalName: playerInfo.name,
+            externalTeam: playerInfo.team,
+            thumbnailUrls: playerInfo.thumbnail,
+            status: PlayerMappingStatus.UNMATCHED,
+            createdById: 1,
+          });
+          unmappedCount++;
+        }
+      } else {
+        // Create mapping entry for manual matching
+        await this.mappingRepository.save({
+          matchId: matchId,
+          externalPlayerId: externalPlayerId,
+          externalName: playerInfo.name,
+          externalTeam: playerInfo.team,
+          thumbnailUrls: playerInfo.thumbnail,
+          status: PlayerMappingStatus.UNMATCHED,
+          createdById: 1,
+        });
+        unmappedCount++;
+        this.logger.warn(`Could not match player ${playerInfo.name} (${playerInfo.hofPlayerId || 'no hofPlayerId'}) to any user`);
+      }
     }
 
-    // Update match status
-    await this.matchRepository.update(matchId, {
-      playernationStatus: 'PARTIAL', // Will be 'IMPORTED' when all players mapped
-    });
+    this.logger.log(`Processed ${processedCount} players, ${unmappedCount} unmapped for match ${matchId}`);
   }
 
   private async mapStatsToCompact(matchId: number, userId: number, stats: Record<string, any>): Promise<void> {
-    // Map PlayerNation stats to compact format
-    const compactStats = {
-      goals: stats.goal?.totalCount || 0,
-      assists: stats.assist?.totalCount || 0,
-      totalPasses: stats.pass?.totalCount || 0,
-      passingAccuracy: stats.passAccuracy?.isPercentageStat 
-        ? (stats.passAccuracy.totalCount / 100) 
-        : stats.passAccuracy?.totalCount || 0,
-      keyPasses: stats.keyPass?.totalCount || 0,
-      totalShots: stats.shot?.totalCount || 0,
-      shotAccuracy: stats.shotAccuracy?.isPercentageStat 
-        ? (stats.shotAccuracy.totalCount / 100) 
-        : stats.shotAccuracy?.totalCount || 0,
-      tackles: stats.tackle?.totalCount || 0,
-      interceptions: stats.interception?.totalCount || 0,
-      saves: stats.save?.totalCount || 0,
+    // Helper function to parse numeric values (handle string numbers and "NA")
+    const parseNumeric = (value: number | string | undefined): number => {
+      if (value === undefined || value === null) return 0;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        if (value === 'NA' || value === '') return 0;
+        const parsed = parseFloat(value);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return 0;
     };
 
-    // TODO: Upsert into match_participant_stats table
-    // This would require the match-participant-stats service
-    this.logger.log(`Mapped stats for user ${userId} in match ${matchId}:`, compactStats);
+    // Helper function to parse percentage (0-1 range or percentage)
+    const parsePercentage = (stat: any): number => {
+      if (!stat) return 0;
+      const value = parseNumeric(stat.totalCount);
+      if (stat.isPercentageStat) {
+        // If already 0-1 range, return as is; otherwise assume it's 0-100
+        return value > 1 ? value / 100 : value;
+      }
+      return value;
+    };
+
+    // Map PlayerNation stats to compact format based on actual response structure
+    const compactStats = {
+      totalGoal: parseNumeric(stats.goals?.totalCount),
+      totalAssist: parseNumeric(stats.assists?.totalCount),
+      totalPass: parseNumeric(stats.passes_total?.totalCount),
+      totalPassingAccuracy: parsePercentage(stats.passing_accuracy_overall),
+      totalKeyPass: parseNumeric(stats.key_passes?.totalCount),
+      totalShot: parseNumeric(stats.shots_total?.totalCount),
+      shotAccuracy: parsePercentage(stats.shot_accuracy),
+      totalTackles: parseNumeric(stats.tackles_total?.totalCount),
+      totalInterceptions: parseNumeric(stats.interceptions_total?.totalCount),
+      totalSave: parseNumeric(stats.saves?.totalCount),
+    };
+
+    // Get match, user, and match participant
+    const match = await this.matchRepository.findOne({ where: { matchId } });
+    if (!match) {
+      throw new NotFoundException(`Match ${matchId} not found`);
+    }
+
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`User ${userId} not found`);
+    }
+
+    const matchParticipant = await this.matchParticipantRepository.findOne({
+      where: {
+        match: { matchId },
+        user: { id: userId },
+      },
+    });
+
+    if (!matchParticipant) {
+      throw new NotFoundException(`Match participant not found for user ${userId} in match ${matchId}`);
+    }
+
+    // Check if stats already exist
+    const existingStats = await this.matchParticipantStatsRepository.findOne({
+      where: {
+        match: { matchId },
+        player: { id: userId },
+      },
+    });
+
+    // Use transaction to ensure atomicity
+    await this.dataSource.transaction(async (manager) => {
+      if (existingStats) {
+        // Update existing stats
+        Object.assign(existingStats, compactStats);
+        await manager.save(MatchParticipantStats, existingStats);
+        this.logger.log(`Updated stats for user ${userId} in match ${matchId}`);
+      } else {
+        // Create new stats
+        const statsEntity = manager.create(MatchParticipantStats, {
+          match: match,
+          player: user,
+          matchParticipant: matchParticipant,
+          ...compactStats,
+        });
+        await manager.save(MatchParticipantStats, statsEntity);
+        this.logger.log(`Created stats for user ${userId} in match ${matchId}`);
+      }
+    });
   }
 
   async getUnmappedPlayers(matchId: number): Promise<PlayerNationPlayerMapping[]> {

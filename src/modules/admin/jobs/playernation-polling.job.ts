@@ -20,7 +20,7 @@ export class PlayerNationPollingJob {
     this.logger.log('Starting PlayerNation polling job');
 
     try {
-      // Find matches that need polling
+      // Find matches that need polling (exclude SUCCESS, IMPORTED, ERROR, and TIMEOUT)
       const matchesToPoll = await this.matchRepository.find({
         where: [
           {
@@ -40,17 +40,40 @@ export class PlayerNationPollingJob {
       for (const match of matchesToPoll) {
         try {
           await this.playerNationService.pollMatchStats(match.matchId);
-          this.logger.log(`Successfully polled match ${match.matchId}`);
+          
+          // Refresh match to get updated status
+          const updatedMatch = await this.matchRepository.findOne({
+            where: { matchId: match.matchId },
+          });
+          
+          // Only log success if status wasn't changed to SUCCESS/IMPORTED by pollMatchStats
+          if (updatedMatch && updatedMatch.playernationStatus && !['SUCCESS', 'IMPORTED'].includes(updatedMatch.playernationStatus)) {
+            this.logger.log(`Polled match ${match.matchId}, status: ${updatedMatch.playernationStatus}`);
+          } else {
+            this.logger.log(`Successfully polled and processed match ${match.matchId}`);
+          }
         } catch (error) {
           this.logger.error(`Failed to poll match ${match.matchId}:`, error);
           
-          // Increment poll attempts even on failure
+          // Refresh match to check current status before incrementing attempts
+          const currentMatch = await this.matchRepository.findOne({
+            where: { matchId: match.matchId },
+          });
+          
+          // Don't increment attempts or mark as timeout if status was already set to SUCCESS/IMPORTED
+          if (currentMatch && currentMatch.playernationStatus && ['SUCCESS', 'IMPORTED'].includes(currentMatch.playernationStatus)) {
+            this.logger.log(`Match ${match.matchId} already has status ${currentMatch.playernationStatus}, skipping error handling`);
+            continue;
+          }
+          
+          // Increment poll attempts on failure
+          const newAttemptCount = (currentMatch?.playernationPollAttempts || match.playernationPollAttempts) + 1;
           await this.matchRepository.update(match.matchId, {
-            playernationPollAttempts: match.playernationPollAttempts + 1,
+            playernationPollAttempts: newAttemptCount,
           });
 
-          // If we've exceeded max attempts, mark as timeout
-          if (match.playernationPollAttempts + 1 >= 12) {
+          // If we've exceeded max attempts, mark as timeout (only if not already SUCCESS/IMPORTED)
+          if (newAttemptCount >= 12) {
             await this.matchRepository.update(match.matchId, {
               playernationStatus: 'TIMEOUT',
             });
