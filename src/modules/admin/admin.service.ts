@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, FindOptionsOrder } from 'typeorm';
+import { Repository, In, FindOptionsOrder, DataSource } from 'typeorm';
 import { User } from '../user/user.entity';
 import { Match } from '../matches/matches.entity';
 import { MatchParticipant } from '../match-participants/match-participants.entity';
@@ -10,6 +10,10 @@ import { City } from '../cities/cities.entity';
 import { Venue } from '../venue/venue.entity';
 import { MatchType } from '../match-types/match-types.entity';
 import { CsvUploadService } from '../match-participant-stats/csv-upload.service';
+import { BookingEntity } from '../booking/booking.entity';
+import { BookingSlotEntity, BookingSlotStatus } from '../booking/booking-slot.entity';
+import { BookingStatus, PaymentStatus } from '../../common/types/booking.types';
+import { generateBookingReference } from '../../common/utils/reference.util';
 import * as csv from 'csv-parser';
 import { Readable } from 'stream';
 import { CreateUserDto, UpdateUserDto, UserFilterDto } from './dto/user.dto';
@@ -17,6 +21,8 @@ import { CreateMatchDto, MatchFilterDto, UpdateMatchDto } from './dto/match.dto'
 
 @Injectable()
 export class AdminService {
+    private readonly logger = new Logger(AdminService.name);
+
     constructor(
         @InjectRepository(User)
         private readonly userRepository: Repository<User>,
@@ -34,7 +40,12 @@ export class AdminService {
         private readonly venueRepository: Repository<Venue>,
         @InjectRepository(MatchType)
         private readonly matchTypeRepository: Repository<MatchType>,
+        @InjectRepository(BookingEntity)
+        private readonly bookingRepository: Repository<BookingEntity>,
+        @InjectRepository(BookingSlotEntity)
+        private readonly bookingSlotRepository: Repository<BookingSlotEntity>,
         private readonly csvUploadService: CsvUploadService,
+        private readonly dataSource: DataSource,
     ) { }
 
     // User Management
@@ -446,52 +457,281 @@ export class AdminService {
         });
     }
 
+    /**
+     * Get next available slot number for a match
+     */
+    private async getNextAvailableSlotNumber(matchId: number, queryRunner: any): Promise<number | null> {
+        // Get all currently active slot numbers for this match
+        const activeSlots = await queryRunner.query(`
+            SELECT bs.slot_number 
+            FROM booking_slots bs 
+            JOIN bookings b ON bs.booking_id = b.id 
+            WHERE b.match_id = $1 AND bs.status = $2
+        `, [matchId, BookingSlotStatus.ACTIVE]);
+
+        const bookedSlotNumbers = activeSlots.map((row: any) => row.slot_number);
+
+        // Get match capacity
+        const match = await queryRunner.query(`
+            SELECT player_capacity FROM matches WHERE match_id = $1
+        `, [matchId]);
+
+        const totalCapacity = match[0]?.player_capacity || 0;
+
+        // Generate all possible slot numbers
+        const allSlots = Array.from({ length: totalCapacity }, (_, i) => i + 1);
+
+        // Find first available slot
+        const availableSlot = allSlots.find(slot => !bookedSlotNumbers.includes(slot));
+
+        return availableSlot || null;
+    }
+
+    /**
+     * Find booking slot for a participant
+     */
+    private async findBookingSlotForParticipant(matchId: number, userId: number): Promise<BookingSlotEntity | null> {
+        return this.bookingSlotRepository
+            .createQueryBuilder('bs')
+            .innerJoin('bs.booking', 'b')
+            .where('b.matchId = :matchId', { matchId })
+            .andWhere('bs.playerId = :userId', { userId })
+            .andWhere('bs.status = :status', { status: BookingSlotStatus.ACTIVE })
+            .getOne();
+    }
+
+    /**
+     * Check if user has existing online booking for this match
+     */
+    private async hasOnlineBooking(matchId: number, userId: number, queryRunner?: any): Promise<boolean> {
+        const repository = queryRunner ? queryRunner.manager.getRepository(BookingEntity) : this.bookingRepository;
+        
+        const existingBooking = await repository.findOne({
+            where: {
+                matchId,
+                userId,
+                paymentStatus: In([PaymentStatus.INITIATED, PaymentStatus.PROCESSING, PaymentStatus.COMPLETED]),
+            },
+        });
+
+        return !!existingBooking;
+    }
+
+    /**
+     * Create booking and slot for cash payment
+     */
+    private async createBookingSlotForCashPayment(
+        matchId: number,
+        userId: number,
+        user: User,
+        cashAmount: number,
+        queryRunner: any
+    ): Promise<{ booking: BookingEntity; slot: BookingSlotEntity }> {
+        // Get next available slot
+        const slotNumber = await this.getNextAvailableSlotNumber(matchId, queryRunner);
+        
+        if (!slotNumber) {
+            throw new ConflictException('No available slots for this match');
+        }
+
+        // Validate cash amount
+        if (cashAmount < 0) {
+            throw new BadRequestException('Cash amount cannot be negative');
+        }
+
+        // Create booking entity
+        const booking = queryRunner.manager.create(BookingEntity, {
+            matchId,
+            userId,
+            email: user.email || `${user.firstName}.${user.lastName}@cash.booking`,
+            bookingReference: generateBookingReference(),
+            totalSlots: 1,
+            amount: cashAmount || 0, // Cash payment amount
+            status: BookingStatus.CONFIRMED,
+            paymentStatus: PaymentStatus.PAID_CASH,
+            metadata: {
+                paymentMethod: 'CASH',
+                addedByAdmin: true,
+            },
+        });
+
+        const savedBooking = await queryRunner.manager.save(BookingEntity, booking);
+
+        // Create booking slot
+        const slot = queryRunner.manager.create(BookingSlotEntity, {
+            bookingId: savedBooking.id,
+            slotNumber,
+            playerId: userId,
+            playerName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+            playerEmail: user.email || '',
+            playerPhone: user.phoneNumber || '',
+            status: BookingSlotStatus.ACTIVE, // Immediately active for cash payments
+        });
+
+        const savedSlot = await queryRunner.manager.save(BookingSlotEntity, slot);
+
+        return { booking: savedBooking, slot: savedSlot };
+    }
+
     async addMatchParticipant(matchId: number, participantData: any) {
-        const match = await this.matchRepository.findOne({ where: { matchId } });
-        if (!match) {
-            throw new NotFoundException(`Match with ID ${matchId} not found`);
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            // Lock match row for concurrent access
+            const match = await queryRunner.query(
+                `SELECT * FROM matches WHERE match_id = $1 FOR UPDATE`,
+                [matchId]
+            );
+
+            if (!match || match.length === 0) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+
+            const matchData = match[0];
+
+            const user = await this.userRepository.findOne({ where: { id: participantData.userId } });
+            if (!user) {
+                throw new NotFoundException(`User with ID ${participantData.userId} not found`);
+            }
+
+            // Check if user already has online booking (within transaction)
+            const hasOnline = await this.hasOnlineBooking(matchId, participantData.userId, queryRunner);
+            if (hasOnline) {
+                throw new BadRequestException(
+                    'User already has an online booking for this match. Please use the frontend to add more slots.'
+                );
+            }
+
+            // Check if participant already exists (within transaction)
+            const existingParticipant = await queryRunner.manager.findOne(MatchParticipant, {
+                where: { match: { matchId }, user: { id: participantData.userId } },
+            });
+
+            if (existingParticipant) {
+                throw new BadRequestException('User is already a participant in this match');
+            }
+
+            // Check slot availability
+            const availableSlot = await this.getNextAvailableSlotNumber(matchId, queryRunner);
+            if (!availableSlot) {
+                throw new ConflictException('Match is full. No slots available.');
+            }
+
+            // Get cash amount from participant data (default to 0 if not provided)
+            const cashAmount = participantData.cashAmount !== undefined 
+                ? parseFloat(participantData.cashAmount) 
+                : 0;
+
+            // Create booking and slot for cash payment
+            const { booking, slot } = await this.createBookingSlotForCashPayment(
+                matchId,
+                participantData.userId,
+                user,
+                cashAmount,
+                queryRunner
+            );
+
+            // Create match participant
+            const participant = queryRunner.manager.create(MatchParticipant, {
+                match: { matchId },
+                user: { id: participantData.userId },
+                teamName: participantData.teamName,
+                paidStatsOptIn: participantData.paidStatsOptIn || false,
+            });
+
+            const savedParticipant = await queryRunner.manager.save(MatchParticipant, participant);
+
+            await queryRunner.commitTransaction();
+
+            this.logger.log(
+                `Created cash booking for user ${participantData.userId} in match ${matchId}, slot ${slot.slotNumber}`
+            );
+
+            return savedParticipant;
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
         }
-
-        const user = await this.userRepository.findOne({ where: { id: participantData.userId } });
-        if (!user) {
-            throw new NotFoundException(`User with ID ${participantData.userId} not found`);
-        }
-
-        const existingParticipant = await this.matchParticipantRepository.findOne({
-            where: { match: { matchId }, user: { id: participantData.userId } },
-        });
-
-        if (existingParticipant) {
-            throw new BadRequestException('User is already a participant in this match');
-        }
-
-        const participant = this.matchParticipantRepository.create({
-            match,
-            user,
-            teamName: participantData.teamName,
-            paidStatsOptIn: participantData.paidStatsOptIn || false,
-        });
-
-        return this.matchParticipantRepository.save(participant);
     }
 
     async removeMatchParticipant(matchId: number, userId: number) {
-        const participant = await this.matchParticipantRepository.findOne({
-            where: { match: { matchId }, user: { id: userId } },
-        });
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
 
-        if (!participant) {
-            throw new NotFoundException('Match participant not found');
+        try {
+            // Find participant within transaction
+            const participant = await queryRunner.manager.findOne(MatchParticipant, {
+                where: { match: { matchId }, user: { id: userId } },
+            });
+
+            if (!participant) {
+                throw new NotFoundException('Match participant not found');
+            }
+
+            // Find associated booking slot using transaction manager
+            const bookingSlot = await queryRunner.manager
+                .createQueryBuilder(BookingSlotEntity, 'bs')
+                .innerJoin('bs.booking', 'b')
+                .where('b.matchId = :matchId', { matchId })
+                .andWhere('bs.playerId = :userId', { userId })
+                .andWhere('bs.status = :status', { status: BookingSlotStatus.ACTIVE })
+                .getOne();
+
+            if (bookingSlot) {
+                // Get the associated booking using transaction manager
+                const booking = await queryRunner.manager.findOne(BookingEntity, {
+                    where: { id: bookingSlot.bookingId },
+                });
+
+                if (!booking) {
+                    throw new NotFoundException('Associated booking not found');
+                }
+
+                // Validate: Only allow deletion if payment_status is PAID_CASH (admin-created)
+                if (booking.paymentStatus !== PaymentStatus.PAID_CASH) {
+                    throw new BadRequestException(
+                        'Cannot remove participant with online payment. User must cancel through the frontend.'
+                    );
+                }
+
+                // Delete booking slot
+                await queryRunner.manager.remove(BookingSlotEntity, bookingSlot);
+
+                // Check if there are other slots for this booking
+                const remainingSlots = await queryRunner.manager.count(BookingSlotEntity, {
+                    where: { bookingId: booking.id },
+                });
+
+                // If no more slots, delete the booking as well
+                if (remainingSlots === 0) {
+                    await queryRunner.manager.remove(BookingEntity, booking);
+                }
+            }
+
+            // Delete any related match participant stats
+            await queryRunner.manager.delete(MatchParticipantStats, {
+                matchParticipant: { matchParticipantId: participant.matchParticipantId },
+            });
+
+            // Delete the participant
+            await queryRunner.manager.remove(MatchParticipant, participant);
+
+            await queryRunner.commitTransaction();
+
+            this.logger.log(`Removed participant ${userId} from match ${matchId} and associated booking slot`);
+
+            return { message: 'Match participant removed successfully' };
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
         }
-
-        // First delete any related match participant stats
-        await this.matchParticipantStatsRepository.delete({
-            matchParticipant: { matchParticipantId: participant.matchParticipantId }
-        });
-
-        // Then delete the participant
-        await this.matchParticipantRepository.remove(participant);
-        return { message: 'Match participant removed successfully' };
     }
 
     // CSV Upload Preview

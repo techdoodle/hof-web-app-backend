@@ -19,6 +19,8 @@ import { FirebaseStorageService } from '../user/firebase-storage.service';
 import { FirebaseConfig } from '../../config/firebase.config';
 import { PlayerNationToken } from './entities/playernation-token.entity';
 import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
+import { BookingEntity } from '../booking/booking.entity';
+import { BookingSlotEntity } from '../booking/booking-slot.entity';
 
 @Module({
     imports: [
@@ -34,6 +36,8 @@ import { PlayerNationPlayerMapping } from './entities/playernation-player-mappin
             MatchType,
             PlayerNationToken,
             PlayerNationPlayerMapping,
+            BookingEntity,
+            BookingSlotEntity,
         ]),
     ],
     controllers: [AdminController, TestController],

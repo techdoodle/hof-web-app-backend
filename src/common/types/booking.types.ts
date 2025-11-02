@@ -12,7 +12,8 @@ export enum PaymentStatus {
     INITIATED = 'INITIATED',
     PROCESSING = 'PROCESSING',
     COMPLETED = 'COMPLETED',
-    FAILED = 'FAILED'
+    FAILED = 'FAILED',
+    PAID_CASH = 'PAID_CASH'
 }
 
 export enum RefundStatus {
