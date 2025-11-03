@@ -22,6 +22,7 @@ import { NotificationType } from '../notification/interfaces/notification.interf
 import { generateBookingReference } from 'src/common/utils/reference.util';
 import { User } from '../user/user.entity';
 import { SlotAvailabilityMonitorService } from '../waitlist/slot-availability-monitor.service';
+import { MatchParticipant } from '../match-participants/match-participants.entity';
 
 @Injectable()
 export class BookingService {
@@ -32,6 +33,8 @@ export class BookingService {
         private bookingRepository: Repository<BookingEntity>,
         @InjectRepository(BookingSlotEntity)
         private bookingSlotRepository: Repository<BookingSlotEntity>,
+        @InjectRepository(MatchParticipant)
+        private matchParticipantRepository: Repository<MatchParticipant>,
         private connection: Connection,
         private slotLockService: SlotLockService,
         private refundService: RefundService,
@@ -652,6 +655,31 @@ export class BookingService {
                 { status: BookingSlotStatus.ACTIVE }
             );
 
+            // Sync match participants for each unique player in activated slots
+            try {
+                const activatedSlots: Array<{ slot_number: number; player_id: number }> = await queryRunner.query(
+                    `SELECT slot_number, player_id FROM booking_slots WHERE booking_id = $1 AND status = $2`,
+                    [bookingId, BookingSlotStatus.ACTIVE]
+                );
+                const uniquePlayerIds = Array.from(new Set(activatedSlots.map(s => s.player_id).filter(Boolean)));
+                for (const pid of uniquePlayerIds) {
+                    if (!pid) continue;
+                    const existing = await queryRunner.manager.findOne(MatchParticipant, {
+                        where: { match: { matchId: booking.matchId }, user: { id: pid } },
+                    });
+                    if (!existing) {
+                        const participant = queryRunner.manager.create(MatchParticipant, {
+                            match: { matchId: booking.matchId },
+                            user: { id: pid },
+                            teamName: 'Unassigned',
+                        });
+                        await queryRunner.manager.save(MatchParticipant, participant);
+                    }
+                }
+            } catch (e) {
+                this.logger.warn(`Participant sync on payment confirm failed for booking ${bookingId}: ${e?.message || e}`);
+            }
+
             // Increment booked_slots when payment succeeds
             await queryRunner.query(
                 `UPDATE matches 
@@ -971,6 +999,23 @@ export class BookingService {
                 { status: BookingSlotStatus.CANCELLED }
             );
 
+            // Remove participants for all players from this booking (full cancellation)
+            try {
+                const cancelledSlots: Array<{ slot_number: number; player_id: number }> = await queryRunner.query(
+                    `SELECT slot_number, player_id FROM booking_slots WHERE booking_id = $1`,
+                    [booking.id]
+                );
+                const playerIds = Array.from(new Set(cancelledSlots.map(s => s.player_id).filter(Boolean)));
+                for (const pid of playerIds) {
+                    await queryRunner.manager.delete(MatchParticipant, {
+                        match: { matchId: booking.matchId },
+                        user: { id: pid },
+                    } as any);
+                }
+            } catch (e) {
+                this.logger.warn(`Participant removal on full cancel failed for booking ${bookingId}: ${e?.message || e}`);
+            }
+
             // Release locked slots
             const result = await queryRunner.query(
                 `SELECT locked_slots, version FROM matches WHERE match_id = $1 FOR UPDATE`,
@@ -1036,6 +1081,23 @@ export class BookingService {
                     { status: BookingSlotStatus.CANCELLED_REFUND_PENDING }
                 );
 
+                // Remove participants for each cancelled slot's player immediately (per-player)
+                try {
+                    const rows: Array<{ slot_number: number; player_id: number }> = await queryRunner.query(
+                        `SELECT slot_number, player_id FROM booking_slots WHERE booking_id = $1 AND slot_number = ANY($2)`,
+                        [dto.bookingId, slotNumbers]
+                    );
+                    const playerIdsToRemove = Array.from(new Set(rows.map(r => r.player_id).filter(Boolean)));
+                    for (const pid of playerIdsToRemove) {
+                        await queryRunner.manager.delete(MatchParticipant, {
+                            match: { matchId: booking.matchId },
+                            user: { id: pid },
+                        } as any);
+                    }
+                } catch (e) {
+                    this.logger.warn(`Participant removal on partial cancel failed for booking ${dto.bookingId}: ${e?.message || e}`);
+                }
+
                 // Set booking status to partially cancelled
                 const remainingActiveSlots = await queryRunner.manager.count(
                     BookingSlotEntity,
@@ -1060,6 +1122,23 @@ export class BookingService {
                     { bookingId: dto.bookingId },
                     { status: BookingSlotStatus.CANCELLED_REFUND_PENDING }
                 );
+
+                // Remove participants for all players in this booking
+                try {
+                    const rows: Array<{ slot_number: number; player_id: number }> = await queryRunner.query(
+                        `SELECT slot_number, player_id FROM booking_slots WHERE booking_id = $1`,
+                        [dto.bookingId]
+                    );
+                    const playerIds = Array.from(new Set(rows.map(r => r.player_id).filter(Boolean)));
+                    for (const pid of playerIds) {
+                        await queryRunner.manager.delete(MatchParticipant, {
+                            match: { matchId: booking.matchId },
+                            user: { id: pid },
+                        } as any);
+                    }
+                } catch (e) {
+                    this.logger.warn(`Participant removal on full cancel (partial API) failed for booking ${dto.bookingId}: ${e?.message || e}`);
+                }
 
                 // Update booking status and refund status using query
                 await queryRunner.query(

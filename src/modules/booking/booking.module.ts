@@ -22,10 +22,11 @@ import { User } from '../user/user.entity';
 import { SlotAvailabilityMonitorService } from '../waitlist/slot-availability-monitor.service';
 import { WaitlistModule } from '../waitlist/waitlist.module';
 import { Match } from '../matches/matches.entity';
+import { MatchParticipant } from '../match-participants/match-participants.entity';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([BookingEntity, BookingSlotEntity, RefundEntity, RazorpayOrder, PaymentAttempt, Refund, Notification, User, Match]),
+        TypeOrmModule.forFeature([BookingEntity, BookingSlotEntity, RefundEntity, RazorpayOrder, PaymentAttempt, Refund, Notification, User, Match, MatchParticipant]),
         forwardRef(() => WaitlistModule)
     ],
     controllers: [BookingController],
