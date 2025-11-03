@@ -73,12 +73,8 @@ export class BookingService {
                 throw new ConflictException('Some slots are no longer available');
             }
 
-            // Get available slot numbers
-            const availableSlots = await this.getAvailableSlotNumbers(Number(dto.matchId), dto.totalSlots, queryRunner);
-
-            if (availableSlots.length < dto.totalSlots) {
-                throw new ConflictException(`Only ${availableSlots.length} slots available`);
-            }
+            // NOTE: Slots are already locked via tryLockSlots using dto.slotNumbers.
+            // We will honor the exact requested slot numbers to avoid desyncs.
 
             // Create booking
             const booking = this.bookingRepository.create({
@@ -109,6 +105,17 @@ export class BookingService {
 
             // Create or find users for each player
             const playerUsers: User[] = [];
+            // Determine whether it's valid to auto-use the token user's phone for the first slot
+            const canUseTokenUserAsFirst = tokenUser?.id
+                ? !(await queryRunner.query(
+                    `SELECT 1 
+                     FROM booking_slots bs 
+                     JOIN bookings b ON bs.booking_id = b.id 
+                     WHERE b.match_id = $1 AND bs.player_id = $2 AND bs.status = $3 
+                     LIMIT 1`,
+                    [Number(dto.matchId), Number(tokenUser.id), BookingSlotStatus.ACTIVE]
+                  )).length
+                : true;
             for (let i = 0; i < dto.players.length; i++) {
                 const player = dto.players[i];
 
@@ -116,7 +123,7 @@ export class BookingService {
                 // For additional players, use provided phone
                 let phoneToUse = player.phone;
 
-                if (i === 0 && tokenUser?.phoneNumber) {
+                if (i === 0 && tokenUser?.phoneNumber && canUseTokenUserAsFirst) {
                     // First player is the main user - get their phone from JWT token
                     phoneToUse = tokenUser.phoneNumber;
                 }
@@ -132,8 +139,8 @@ export class BookingService {
             console.log("dto.players", dto.players);
             console.log("availableSlots", availableSlots);
             console.log("dto.totalSlots", dto.totalSlots);
-            // Create booking slots with assigned slot numbers and player IDs
-            const bookingSlots = availableSlots.slice(0, dto.totalSlots).map((slotNumber, index) => {
+            // Create booking slots with the exact requested slot numbers (already locked)
+            const bookingSlots = dto.slotNumbers.map((slotNumber, index) => {
                 const player = dto.players[index] || dto.players[0] || { firstName: '', lastName: '', phone: '' };
                 const playerUser = playerUsers[index] || playerUsers[0];
 
