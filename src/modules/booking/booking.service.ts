@@ -137,7 +137,6 @@ export class BookingService {
             }
             console.log("playerUsers", playerUsers);
             console.log("dto.players", dto.players);
-            console.log("availableSlots", availableSlots);
             console.log("dto.totalSlots", dto.totalSlots);
             // Create booking slots with the exact requested slot numbers (already locked)
             const bookingSlots = dto.slotNumbers.map((slotNumber, index) => {
