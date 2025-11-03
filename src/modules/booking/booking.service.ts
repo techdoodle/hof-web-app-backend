@@ -48,12 +48,27 @@ export class BookingService {
 
     async createBooking(dto: CreateBookingDto, tokenUser?: any): Promise<BookingEntity> {
         // Validate input
+        this.logger.log(`[createBooking] received dto: matchId=${dto.matchId}, userId=${dto.userId}, totalSlots=${dto.totalSlots}, slotNumbers=${JSON.stringify(dto.slotNumbers)}`);
+        if (!Array.isArray(dto.slotNumbers)) {
+            this.logger.warn('[createBooking] slotNumbers is not an array');
+        }
         if (!dto.slotNumbers?.length) {
             throw new BadRequestException('No slots selected');
         }
 
         if (dto.slotNumbers.length !== dto.totalSlots) {
             throw new BadRequestException('Slot count mismatch');
+        }
+
+        // Ensure player details provided for each slot
+        if (!Array.isArray(dto.players) || dto.players.length !== dto.totalSlots) {
+            throw new BadRequestException('Player details are required for each slot');
+        }
+
+        // Ensure slot numbers are unique
+        const uniqueCount = new Set(dto.slotNumbers).size;
+        if (uniqueCount !== dto.slotNumbers.length) {
+            throw new BadRequestException('Duplicate slot numbers provided');
         }
 
 
@@ -68,6 +83,7 @@ export class BookingService {
                 dto.slotNumbers,
                 queryRunner
             );
+            this.logger.log(`[createBooking] lockResult.success=${lockResult.success}`);
 
             if (!lockResult.success) {
                 throw new ConflictException('Some slots are no longer available');
@@ -106,16 +122,19 @@ export class BookingService {
             // Create or find users for each player
             const playerUsers: User[] = [];
             // Determine whether it's valid to auto-use the token user's phone for the first slot
-            const canUseTokenUserAsFirst = tokenUser?.id
-                ? !(await queryRunner.query(
-                    `SELECT 1 
+            let canUseTokenUserAsFirst = true;
+            if (tokenUser?.id) {
+                const rows: Array<{ exists: number }> = await queryRunner.query(
+                    `SELECT 1 as exists 
                      FROM booking_slots bs 
                      JOIN bookings b ON bs.booking_id = b.id 
                      WHERE b.match_id = $1 AND bs.player_id = $2 AND bs.status = $3 
                      LIMIT 1`,
-                    [Number(dto.matchId), Number(tokenUser.id), BookingSlotStatus.ACTIVE]
-                  )).length
-                : true;
+                    [Number(dto.matchId), Number(tokenUser.id), 'ACTIVE']
+                );
+                canUseTokenUserAsFirst = rows.length === 0;
+            }
+            this.logger.log(`[createBooking] canUseTokenUserAsFirst=${canUseTokenUserAsFirst}`);
             for (let i = 0; i < dto.players.length; i++) {
                 const player = dto.players[i];
 
@@ -131,7 +150,9 @@ export class BookingService {
                 const user = await this.bookingUserService.findOrCreateUserByPhone(phoneToUse, {
                     firstName: player.firstName,
                     lastName: player.lastName,
-                    email: i === 0 ? dto.email : undefined // Only pass email for the primary user
+                    // Only pass email when first slot belongs to the token user (initial booking),
+                    // for additional bookings (canUseTokenUserAsFirst === false) don't attach email to friend users
+                    email: i === 0 && canUseTokenUserAsFirst ? dto.email : undefined
                 });
                 playerUsers.push(user);
             }
@@ -159,6 +180,7 @@ export class BookingService {
                     status: BookingSlotStatus.PENDING_PAYMENT, // Pending payment until confirmed
                 });
             });
+            this.logger.log(`[createBooking] creating bookingSlots: ${bookingSlots.map(s => `#${s.slotNumber}->player:${s.playerId}`).join(', ')}`);
 
             await queryRunner.manager.save(bookingSlots);
             await queryRunner.commitTransaction();
@@ -174,6 +196,7 @@ export class BookingService {
 
             return savedBooking;
         } catch (error) {
+            this.logger.error('[createBooking] failed', error?.stack || error);
             await queryRunner.rollbackTransaction();
             throw error;
         } finally {
@@ -570,6 +593,7 @@ export class BookingService {
         await queryRunner.startTransaction();
 
         try {
+            this.logger.log(`[handlePaymentCallback] bookingId=${bookingId}`);
             const booking = await this.getBookingById(bookingId);
 
             if (booking.status !== BookingStatus.PAYMENT_PENDING) {
@@ -584,6 +608,7 @@ export class BookingService {
             );
 
             if (!isValidSignature) {
+                this.logger.warn(`[handlePaymentCallback] invalid signature for bookingId=${bookingId}`);
                 console.log('Payment failed for booking:', bookingId);
                 await queryRunner.query(
                     `UPDATE bookings 
@@ -633,6 +658,7 @@ export class BookingService {
 
             // Get payment details from Razorpay
             const paymentDetails = await this.razorpayService.getPaymentDetails(dto.razorpay_payment_id);
+            this.logger.log(`[handlePaymentCallback] paymentDetails.status=${paymentDetails?.status}, captured=${paymentDetails?.captured}`);
 
             // Update booking with payment details
             booking.status = BookingStatus.CONFIRMED;
@@ -736,6 +762,7 @@ export class BookingService {
 
             return booking;
         } catch (error) {
+            this.logger.error('[handlePaymentCallback] failed', error?.stack || error);
             await queryRunner.rollbackTransaction();
             const booking = await this.getBookingById(bookingId);
             booking.status = BookingStatus.PAYMENT_FAILED;
@@ -994,6 +1021,7 @@ export class BookingService {
         await queryRunner.startTransaction();
 
         try {
+            this.logger.log(`[cancelPayment] bookingId=${bookingId}`);
             // Update booking status to failed
             booking.status = BookingStatus.PAYMENT_FAILED;
             await queryRunner.manager.save(booking);
@@ -1051,6 +1079,7 @@ export class BookingService {
             await queryRunner.commitTransaction();
             return booking;
         } catch (error) {
+            this.logger.error('[cancelPayment] failed', error?.stack || error);
             await queryRunner.rollbackTransaction();
             throw error;
         } finally {
