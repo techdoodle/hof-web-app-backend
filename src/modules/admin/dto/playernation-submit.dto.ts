@@ -13,9 +13,8 @@ export class PlayerDto {
   @IsString()
   name: string;
 
-  @IsOptional()
   @IsString()
-  hofPlayerId?: string;
+  hofPlayerId: string; // Required by PlayerNation API
 
   @IsOptional()
   @IsString()

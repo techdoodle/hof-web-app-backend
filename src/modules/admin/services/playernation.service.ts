@@ -12,6 +12,8 @@ import { PlayerNationToken } from '../entities/playernation-token.entity';
 import { PlayerNationPlayerMapping, PlayerMappingStatus } from '../entities/playernation-player-mapping.entity';
 import { PlayerNationSubmitDto } from '../dto/playernation-submit.dto';
 import { SaveMappingsDto } from '../dto/playernation-mapping.dto';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
 
 interface PlayerNationResponse {
@@ -30,7 +32,8 @@ interface PlayerNationStatsResponse {
       jerseyNumber: string;
       team: string;
       hofPlayerId?: string;
-      thumbnail: string[];
+        thumbnail: string[];
+        playerVideo?: string;
     };
     hightlightURL: Array<{
       youtubeVideoUrl: string;
@@ -67,6 +70,20 @@ export class PlayerNationService {
     private readonly mappingRepository: Repository<PlayerNationPlayerMapping>,
     private readonly dataSource: DataSource,
   ) {}
+
+  private async writeJsonLog(kind: 'uploadGame' | 'getStats', matchId: number, phase: 'request' | 'response' | 'error', payload: any) {
+    try {
+      const baseDir = path.resolve(process.cwd(), 'playernation_logs');
+      await fs.mkdir(baseDir, { recursive: true });
+      const dir = path.join(baseDir, `match_${matchId}`);
+      await fs.mkdir(dir, { recursive: true });
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const file = path.join(dir, `${kind}-${phase}-${ts}.json`);
+      await fs.writeFile(file, JSON.stringify(payload, null, 2), 'utf-8');
+    } catch (e) {
+      this.logger.warn(`Failed to write PlayerNation ${kind} ${phase} log for match ${matchId}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   async getValidToken(forceRefresh: boolean = false): Promise<string> {
     // Check for existing valid token (with 1 hour buffer)
@@ -190,13 +207,42 @@ export class PlayerNationService {
         'Authorization': `Bearer ${finalToken}`,
       } as Record<string, string>;
 
+      // Ensure playerVideo exists as empty string when not provided
+      const normalizePlayers = (arr: any[] = []) =>
+        arr.map((p: any) => ({
+          ...p,
+          playerVideo: p.playerVideo ?? '',
+        }));
+
+      const payloadForPN = {
+        ...payload,
+        players: {
+          teamA: normalizePlayers(payload.players?.teamA),
+          teamB: normalizePlayers(payload.players?.teamB),
+        },
+      } as PlayerNationSubmitDto;
+
+      // write request log (normalized)
+      await this.writeJsonLog('uploadGame', matchId, 'request', {
+        url: uploadUrl,
+        headers: requestHeaders,
+        payload: payloadForPN,
+      });
+
       const response = await firstValueFrom(
         this.httpService.post<PlayerNationResponse>(
           uploadUrl,
-          payload,
+          payloadForPN,
           { headers: requestHeaders },
         ),
       );
+
+      // write response log
+      await this.writeJsonLog('uploadGame', matchId, 'response', {
+        status: response.status,
+        data: response.data,
+        headers: response.headers,
+      });
 
       // (file response logging removed)
 
@@ -208,7 +254,7 @@ export class PlayerNationService {
       await this.matchRepository.update(matchId, {
         matchStatsId: response.data.matchId,
         playernationStatus: 'PENDING',
-        playernationPayload: payload as any,
+        playernationPayload: payloadForPN as any,
         playernationNextPollAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
         playernationPollAttempts: 0,
       });
@@ -221,7 +267,15 @@ export class PlayerNationService {
       console.error('Status:', error.response?.status);
       console.error('Headers:', error.response?.headers);
 
-      // (file error logging removed)
+      // write error log
+      await this.writeJsonLog('uploadGame', matchId, 'error', {
+        message: error.message,
+        response: {
+          status: error.response?.status,
+          data: error.response?.data,
+          headers: error.response?.headers,
+        },
+      });
       
       this.logger.error(`Failed to submit match ${matchId} to PlayerNation`, error);
       throw new BadRequestException('Failed to submit match to PlayerNation');
@@ -241,23 +295,35 @@ export class PlayerNationService {
     const token = await this.getValidToken(true);
 
     try {
+      const getUrl = `${this.configService.get('playernation.baseUrl')}/hof/getStats`;
+      const requestHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      } as Record<string, string>;
+
+      await this.writeJsonLog('getStats', matchId, 'request', {
+        url: getUrl,
+        headers: requestHeaders,
+        payload: { matchId: match.matchStatsId },
+      });
+
       const response = await firstValueFrom(
         this.httpService.post<PlayerNationStatsResponse>(
-          `${this.configService.get('playernation.baseUrl')}/hof/getStats`,
+          getUrl,
           { matchId: match.matchStatsId },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-          },
+          { headers: requestHeaders },
         ),
       );
 
-      // Update match with response
+      await this.writeJsonLog('getStats', matchId, 'response', {
+        status: response.status,
+        data: response.data,
+        headers: response.headers,
+      });
+
+      // Persist last response; attempts will be updated conditionally below
       await this.matchRepository.update(matchId, {
         playernationLastResponse: response.data as any,
-        playernationPollAttempts: match.playernationPollAttempts + 1,
       });
 
       if (response.data.status === 'analyzing') {
@@ -265,6 +331,7 @@ export class PlayerNationService {
         await this.matchRepository.update(matchId, {
           playernationStatus: 'PROCESSING',
           playernationNextPollAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
+          playernationPollAttempts: (match.playernationPollAttempts || 0) + 1,
         });
       } else if (response.data.status === 'cancelled') {
         await this.matchRepository.update(matchId, {
@@ -272,16 +339,22 @@ export class PlayerNationService {
         });
       } else if (response.data.status === 'success') {
         await this.processPlayerStats(matchId, response.data);
-        // Update status to SUCCESS after processing
-        await this.matchRepository.update(matchId, {
-          playernationStatus: 'SUCCESS',
-        });
+        // Do not override SUCCESS_WITH_UNMATCHED set by processPlayerStats
+        // If all players were matched and ingested, processPlayerStats will set SUCCESS or IMPORTED elsewhere
         this.logger.log(`Match ${matchId} stats processed successfully`);
       }
 
       this.logger.log(`Polled match ${matchId}, status: ${response.data.status}`);
     } catch (error) {
       this.logger.error(`Failed to poll match ${matchId}`, error);
+      await this.writeJsonLog('getStats', matchId, 'error', {
+        message: error.message,
+        response: {
+          status: error.response?.status,
+          data: error.response?.data,
+          headers: error.response?.headers,
+        },
+      });
       throw new BadRequestException('Failed to poll match stats from PlayerNation');
     }
   }
@@ -297,90 +370,110 @@ export class PlayerNationService {
       throw new NotFoundException(`Match ${matchId} not found`);
     }
 
-    let processedCount = 0;
+    let matchedCount = 0;
     let unmappedCount = 0;
 
-    // Process each player
+    // Build or update mapping entries ONLY; do NOT ingest stats here (blocked until all matched)
+    const matchParticipants = await this.matchParticipantRepository.find({
+      where: { match: { matchId } },
+      relations: ['user'],
+    });
+
     for (const [externalPlayerId, playerData] of Object.entries(response.playerStats)) {
-      const { playerInfo, stats } = playerData;
+      const { playerInfo } = playerData;
 
-      let user: User | null = null;
+      let internalUser: User | null = null;
 
-      // Try to find user by hofPlayerId
-      if (playerInfo.hofPlayerId) {
-        // Try parsing as numeric ID (what we send)
+      // Attempt auto-matching only to set mapping to MATCHED if unequivocal
+      if (playerInfo.playerVideo && playerInfo.hofPlayerId) {
         const numericId = parseInt(playerInfo.hofPlayerId);
         if (!isNaN(numericId)) {
-          user = await this.userRepository.findOne({
-            where: { id: numericId },
-          });
+          internalUser = await this.userRepository.findOne({ where: { id: numericId } });
         }
+      }
 
-        // If still not found, try matching by name and team from match participants
-        if (!user) {
-          const matchParticipants = await this.matchParticipantRepository.find({
-            where: { match: { matchId } },
-            relations: ['user'],
-          });
-
-          // Try to match by name (case-insensitive) and team
-          for (const participant of matchParticipants) {
-            const fullName = `${participant.user.firstName || ''} ${participant.user.lastName || ''}`.trim().toLowerCase();
-            const playerName = playerInfo.name.trim().toLowerCase();
-            
-            // Match team name (A/B or actual team names)
-            const teamMatch = 
-              participant.teamName === playerInfo.team ||
-              (match.teamAName && match.teamAName === playerInfo.team && participant.teamName === match.teamAName) ||
-              (match.teamBName && match.teamBName === playerInfo.team && participant.teamName === match.teamBName);
-
-            if (fullName.includes(playerName) || playerName.includes(fullName)) {
-              if (teamMatch) {
-                user = participant.user;
-                this.logger.log(`Matched player ${playerInfo.name} to user ${user.id} by name and team`);
-                break;
-              }
-            }
+      if (!internalUser) {
+        // Fallback: try name + team match
+        const playerName = playerInfo.name.trim().toLowerCase();
+        for (const participant of matchParticipants) {
+          const fullName = `${participant.user.firstName || ''} ${participant.user.lastName || ''}`.trim().toLowerCase();
+          const teamMatch =
+            participant.teamName === playerInfo.team ||
+            (match.teamAName && match.teamAName === playerInfo.team && participant.teamName === match.teamAName) ||
+            (match.teamBName && match.teamBName === playerInfo.team && participant.teamName === match.teamBName);
+          if ((fullName && (fullName.includes(playerName) || playerName.includes(fullName))) && teamMatch) {
+            internalUser = participant.user;
+            break;
           }
         }
       }
 
-      if (user) {
-        // Map and save stats
-        try {
-          await this.mapStatsToCompact(matchId, user.id, stats);
-          processedCount++;
-        } catch (error) {
-          this.logger.error(`Failed to save stats for user ${user.id} in match ${matchId}:`, error);
-          // Create mapping entry as fallback
-          await this.mappingRepository.save({
-            matchId: matchId,
-            externalPlayerId: externalPlayerId,
-            externalName: playerInfo.name,
-            externalTeam: playerInfo.team,
-            thumbnailUrls: playerInfo.thumbnail,
-            status: PlayerMappingStatus.UNMATCHED,
-            createdById: 1,
-          });
-          unmappedCount++;
-        }
+      const existing = await this.mappingRepository.findOne({ where: { matchId, externalPlayerId } });
+      const status = internalUser ? PlayerMappingStatus.MATCHED : PlayerMappingStatus.UNMATCHED;
+      const payload = {
+        matchId,
+        externalPlayerId,
+        externalName: playerInfo.name,
+        externalTeam: playerInfo.team,
+        thumbnailUrls: playerInfo.thumbnail,
+        internalPlayerId: internalUser?.id,
+        internalPhone: internalUser?.phoneNumber,
+        status,
+      } as Partial<PlayerNationPlayerMapping> & { matchId: number; externalPlayerId: string };
+
+      if (existing) {
+        await this.mappingRepository.update({ matchId, externalPlayerId }, payload);
       } else {
-        // Create mapping entry for manual matching
-        await this.mappingRepository.save({
-          matchId: matchId,
-          externalPlayerId: externalPlayerId,
-          externalName: playerInfo.name,
-          externalTeam: playerInfo.team,
-          thumbnailUrls: playerInfo.thumbnail,
-          status: PlayerMappingStatus.UNMATCHED,
-          createdById: 1,
-        });
-        unmappedCount++;
-        this.logger.warn(`Could not match player ${playerInfo.name} (${playerInfo.hofPlayerId || 'no hofPlayerId'}) to any user`);
+        await this.mappingRepository.save(payload as any);
+      }
+
+      if (status === PlayerMappingStatus.MATCHED) matchedCount++; else unmappedCount++;
+    }
+
+    // Update match status based on whether there are unmapped players
+    await this.matchRepository.update(matchId, {
+      playernationStatus: unmappedCount > 0 ? 'SUCCESS_WITH_UNMATCHED' : 'SUCCESS',
+    });
+
+    this.logger.log(`Built mappings for match ${matchId}: matched=${matchedCount}, unmapped=${unmappedCount}`);
+  }
+
+  async processMatchedPlayerStats(matchId: number): Promise<{ processed: number; expected: number }>{
+    const match = await this.matchRepository.findOne({ where: { matchId } });
+    if (!match) throw new NotFoundException('Match not found');
+
+    const last = match.playernationLastResponse as any as PlayerNationStatsResponse;
+    if (!last || !last.playerStats) throw new BadRequestException('No PlayerNation stats available to process');
+
+    const unmappedCount = await this.mappingRepository.count({ where: { matchId, status: PlayerMappingStatus.UNMATCHED } });
+    if (unmappedCount > 0) {
+      throw new BadRequestException('Cannot process stats: there are unmapped players');
+    }
+
+    const mappings = await this.mappingRepository.find({ where: { matchId, status: PlayerMappingStatus.MATCHED } });
+    const externalIdToInternal = new Map<string, number>();
+    mappings.forEach(m => { if (m.internalPlayerId) externalIdToInternal.set(m.externalPlayerId, m.internalPlayerId); });
+
+    let processed = 0;
+    for (const [externalPlayerId, playerData] of Object.entries(last.playerStats)) {
+      const internalId = externalIdToInternal.get(externalPlayerId);
+      if (!internalId) continue;
+      try {
+        await this.mapStatsToCompact(matchId, internalId, playerData.stats);
+        processed++;
+      } catch (e) {
+        this.logger.error(`Failed to ingest stats for internal user ${internalId} (external ${externalPlayerId})`, e);
       }
     }
 
-    this.logger.log(`Processed ${processedCount} players, ${unmappedCount} unmapped for match ${matchId}`);
+    // If we couldn't process all matched mappings, mark as POLL_SUCCESS_MAPPING_FAILED
+    const expected = Array.from(externalIdToInternal.keys()).length;
+    if (processed < expected) {
+      await this.matchRepository.update(matchId, { playernationStatus: 'POLL_SUCCESS_MAPPING_FAILED' });
+    } else {
+      await this.matchRepository.update(matchId, { playernationStatus: 'IMPORTED' });
+    }
+    return { processed, expected };
   }
 
   private async mapStatsToCompact(matchId: number, userId: number, stats: Record<string, any>): Promise<void> {

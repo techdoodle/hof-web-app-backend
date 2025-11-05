@@ -20,7 +20,7 @@ export class PlayerNationPollingJob {
     this.logger.log('Starting PlayerNation polling job');
 
     try {
-      // Find matches that need polling (exclude SUCCESS, IMPORTED, ERROR, and TIMEOUT)
+      // Find matches that need polling (exclude SUCCESS, SUCCESS_WITH_UNMATCHED, IMPORTED, ERROR, and TIMEOUT)
       const matchesToPoll = await this.matchRepository.find({
         where: [
           {
@@ -72,7 +72,7 @@ export class PlayerNationPollingJob {
             playernationPollAttempts: newAttemptCount,
           });
 
-          // If we've exceeded max attempts, mark as timeout (only if not already SUCCESS/IMPORTED)
+          // If we've exceeded max attempts, mark as timeout (only if not already SUCCESS/SUCCESS_WITH_UNMATCHED/IMPORTED)
           if (newAttemptCount >= 12) {
             await this.matchRepository.update(match.matchId, {
               playernationStatus: 'TIMEOUT',

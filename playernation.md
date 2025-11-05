@@ -73,7 +73,7 @@ teamBScore (number) - Team B scrore
 matchMetaDataJson (JSON) - JSON object with additional info on the match such as formation, positions, etc.
 players.teamA (array) Required - List of players for Team A
 players.teamA[ ].name (string) - Player name
-players.teamA[ ].hofPlayerId (string) - Hof internal player ID
+players.teamA[ ].hofPlayerId (string) Required - Hof internal player ID(should be unique for each player)
 players.teamA[ ].jerseyNumber (string) - Player jersey number
 players.teamA[ ].playerVideo (string (URL)) - Player 360 video URL
 players.teamA[ ].playerImages (array) - Array of player images
@@ -81,13 +81,13 @@ players.teamA[ ].ownGoal (number) - Goals scored by this player
 players.teamA[ ].goal (number) - Goals scored against this player
 players.teamB (array) Required - List of players for Team B
 players.teamB[ ].name (string) - Player name
-players.teamB[ ].hofPlayerId (string) - Hof internal player ID
+players.teamB[ ].hofPlayerId (string) Required - Hof internal player ID(should be unique for each player)
 players.teamB[ ].jerseyNumber (string) - Player jersey number
 players.teamB[ ].playerVideo (string (URL)) - Player 360 video URL
 players.teamB[ ].playerImages (array) - Array of player images
 players.teamB[ ].ownGoal (number) - Number of goals this player accidentally scored against their own team.
 players.teamB[ ].goal (number) - Number of goals this player scored against the opponent team.
-Copy
+Example
 {
   "teamA": "Barcelona FC",
   "teamB": "Real Madrid",
@@ -108,6 +108,7 @@ Copy
     "teamA": [
       {
         "name": "Lionel Messi",
+        "hofPlayerId": "ABC001",
         "jerseyNumber": "10",
         "playerVideo": "https://example.com/messi-360.mp4",
         "playerImages": [
@@ -118,7 +119,7 @@ Copy
       },
       {
         "name": "Sergio Busquets",
-        "hofPlayerId": "HF-PLAYER-002",
+        "hofPlayerId": "ABC002",
         "jerseyNumber": "11",
         "goal": 0,
         "ownGoal": 1
@@ -127,14 +128,14 @@ Copy
     "teamB": [
       {
         "name": "Karim Benzema",
-        "hofPlayerId": "HF-PLAYER-003",
+        "hofPlayerId": "ABC003",
         "jerseyNumber": "9",
         "goal": 1,
         "ownGoal": 2
       },
       {
         "name": "Luka Modric",
-        "hofPlayerId": "HF-PLAYER-004",
+        "hofPlayerId": "ABC004",
         "jerseyNumber": "10"
       }
     ]
@@ -145,18 +146,17 @@ success (boolean) – Indicates whether the request was successful
 message (string) – Response message providing additional context
 matchId (string) – Unique identifier for the requested match
 Example:
-Copy
+Example
 {
   "success": true,
-  "message": "Match upload successfully",
+  "message": "Match uploaded successfully",
   "matchId": "255a3673-dc5d-451f-a5c1-dbc4b020464f"
 }
 Response Codes:
-201 - Success: Match upload successfully
+201 - Success: Match uploaded successfully
 400 - Invalid Data: Provided data is incomplete or invalid
 401 - Unauthorized: Missing or invalid JWT token
 500 - Internal Server Error: Something went wrong on our end.
-
 
 
 
@@ -173,51 +173,70 @@ Content-Type (string) Required - application/json
 Authorization (string) Required - Bearer token for authentication. Example: 'Bearer YOUR_JWT_TOKEN'
 Request Body
 matchId (string (UUID)) Required - Unique identifier of the match
-Copy
+Example
 {
   "matchId": "f26fccaa-97b5-4cbc-9e0a-4e874ca1b59d"
 }
+Notes
+There are two possible flows to consider:
+1. playerVideo is provided for a player
+• The ID mapping will be accurate.
+• You can check if the playerVideo field is not empty and safely use the mapping provided by us.
+
+2. playerVideo is not provided for a player
+• The playerVideo field will be empty.
+• In this case, we will share screenshots (thumbnail) for you to perform the mapping on your end.
+• Do not rely on our mapping, as it will not be accurate in this flow.
 Response
 status (string) – Indicates the overall status of the response (e.g., success or analyzing or cancelled)
 matchNotes (string) – Match analysis completed successfully/ The match is currently being analyzed/ This was not a football match footage
+matchHighlights (string) – URL of the match highlight video or media file showcasing key moments from the game.
 playerStats (object) – Detailed player-wise statistics keyed by matchId
-playerStats.<playerId>.playerInfo (object) – Information about the player (name, jersey number, team, hofPlayerId,thumbnail)
+playerStats.<playerId>.playerInfo (object) – Information about the player (name, jersey number, team, hofPlayerId (with Hof- prefix), thumbnail, playerVideo)
 playerStats.<playerId>.stats (object) – Performance statistics for the player including goals, assists, tackles, etc.
-playerStats.<playerId>.hightlightURL (array) – Array of highlight videos for the player's performance.
-playerStats.<playerId>.hightlightURL[ ].youtubeVideoUrl (string) – YouTube video URL of the highlight.
-playerStats.<playerId>.hightlightURL[ ].name (string) – Name/identifier of the highlight video (e.g., 'top_moments_1', 'top_moments_2').
+playerStats.<playerId>.highlightURL (array) – Array of highlight videos for the player's performance.
+playerStats.<playerId>.highlightURL[ ].youtubeVideoUrl (string) – YouTube video URL of the highlight.
+playerStats.<playerId>.highlightURL[ ].youtubeUploadStatus (string) – Indicates the current upload status of the YouTube video (e.g., 'PROCESSING', 'COMPLETED', 'FAILED').
+playerStats.<playerId>.highlightURL[ ].name (string) – Name/identifier of the highlight video (e.g., 'top_moments_1', 'top_moments_2').
 playerStats.<playerId>.stats.<statName>.totalCount (number) – Total occurrences of the given stat (e.g., goals = 2)
+playerStats.<playerId>.stats.<statName>.type (string) – Specifies whether the statistic is a raw value (directly recorded) or a derived value (calculated from other stats).
 playerStats.<playerId>.stats.<statName>.isPercentageStat (boolean) – Whether the stat is a percentage
 playerStats.<playerId>.stats.<statName>.minutes (array<number>) – Match minutes when this event occurred (only provided for time-based actions like goals; empty if not applicable)
-Example:
+Example 1:
 Expand
-Copy
+Example 1
 {
   "status": "success",
+  "matchNotes": "Match analysis completed successfully",
+  "matchHighlights": "null",
   "playerStats": {
     "255a3673-dc5d-451f-a5c1-dbc4b020464f": {
       "playerInfo": {
         "name": "Luka Modric",
         "jerseyNumber": "10",
         "team": "B",
-        "hofPlayerId": "HF-PLAYER-004",
+        "hofPlayerId": "Hof-ABC004",
+        "playerVideo": "https://hof-360video.com/player-255a3673-dc5d-451f-a5c1-dbc4b020464f.mp4",
         "thumbnail": [
           "https://hof-thumbnail.com/player-255a3673-dc5d-451f-a5c1-dbc4b020464f.png"
         ]
       },
-      "hightlightURL": [
+      "highlightURL": [
         {
-          "youtubeVideoUrl": "https://www.youtube.com/watch?v=example1",
-          "name": "top_moments_2"
+          "youtubeVideoUrl": "https://www.youtube.com/watch?v=L3OmFBQhGjU",
+          "youtubeUploadStatus": "COMPLETED",
+          "name": "top_moments_1"
         },
         {
-          "youtubeVideoUrl": "https://www.youtube.com/watch?v=example2",
-          "name": "top_moments_1"
+          "youtubeVideoUrl": "https://www.youtube.com/watch?v=L3OmFBQhGjU",
+          "youtubeUploadStatus": "COMPLETED",
+          "name": "top_moments_2"
         }
       ],
       "stats": {
         "goal": {
           "totalCount": 2,
+          "type": "raw",
           "description": "Successful attempt that results in a goal",
           "isPercentageStat": false,
           "minutes": [
@@ -228,6 +247,11 @@ Copy
       }
     }
   }
+}
+Example 2:
+{
+  "status": "analyzing",
+  "matchNotes": "The match is currently being analyzed"
 }
 Response Codes:
 200 - Success: Match statistics retrieved successfully or The match is currently being analyzed or This was not a football match footage

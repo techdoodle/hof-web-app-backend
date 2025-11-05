@@ -50,16 +50,12 @@ export class PlayerNationPlayerMapping {
   })
   status: PlayerMappingStatus;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'created_by' })
-  createdBy: User;
+  createdBy?: User;
 
-  @Column({ name: 'created_by', type: 'integer' })
-  createdById: number;
+  @Column({ name: 'created_by', type: 'integer', nullable: true })
+  createdById?: number;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  updatedAt: Date;
+  // Timestamps omitted to match existing DB schema (no created_at/updated_at columns)
 }

@@ -312,6 +312,28 @@ export class AdminController {
         return { message: 'Poll initiated successfully' };
     }
 
+    // Support GET for clients that invoke poll via GET
+    @Get('playernation/poll-now/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async pollNowGet(@Param('matchId', ParseIntPipe) matchId: number) {
+        await this.playerNationService.pollMatchStats(matchId);
+        return { message: 'Poll initiated successfully' };
+    }
+
+    @Post('playernation/process-stats/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async processMatchedStats(@Param('matchId', ParseIntPipe) matchId: number) {
+        const result = await this.playerNationService.processMatchedPlayerStats(matchId);
+        return { message: 'Stats processed', ...result };
+    }
+
+    @Get('playernation/unmapped-count/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getUnmappedCount(@Param('matchId', ParseIntPipe) matchId: number) {
+        const count = await this.playerNationService.getUnmappedPlayers(matchId);
+        return { count: (count || []).length };
+    }
+
     @Get('playernation/unmapped/:matchId')
     @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async getUnmappedPlayers(@Param('matchId', ParseIntPipe) matchId: number): Promise<PlayerNationPlayerMapping[]> {
