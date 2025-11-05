@@ -259,7 +259,7 @@ export class PlayerNationService {
       }
 
       // Update match with PlayerNation matchId and status
-      await this.matchRepository.update(matchId, {
+      await this.matchRepository.update({ matchId }, {
         matchStatsId: response.data.matchId,
         playernationStatus: 'PENDING',
         playernationPayload: payloadForPN as any,
@@ -330,19 +330,19 @@ export class PlayerNationService {
       });
 
       // Persist last response; attempts will be updated conditionally below
-      await this.matchRepository.update(matchId, {
+      await this.matchRepository.update({ matchId }, {
         playernationLastResponse: response.data as any,
       });
 
       if (response.data.status === 'analyzing') {
         // Schedule next poll
-        await this.matchRepository.update(matchId, {
+        await this.matchRepository.update({ matchId }, {
           playernationStatus: 'PROCESSING',
           playernationNextPollAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
           playernationPollAttempts: (match.playernationPollAttempts || 0) + 1,
         });
       } else if (response.data.status === 'cancelled') {
-        await this.matchRepository.update(matchId, {
+        await this.matchRepository.update({ matchId }, {
           playernationStatus: 'ERROR',
         });
       } else if (response.data.status === 'success') {
@@ -386,6 +386,20 @@ export class PlayerNationService {
       where: { match: { matchId } },
       relations: ['user'],
     });
+
+    // Prune stale mappings not present in this response
+    const incomingExternalIds = Object.keys(response.playerStats || {});
+    if (incomingExternalIds.length > 0) {
+      await this.mappingRepository.createQueryBuilder()
+        .delete()
+        .from(PlayerNationPlayerMapping)
+        .where('match_id = :matchId', { matchId })
+        .andWhere('external_player_id NOT IN (:...ids)', { ids: incomingExternalIds })
+        .execute();
+    } else {
+      // No players returned; remove all mappings for this match
+      await this.mappingRepository.delete({ matchId });
+    }
 
     for (const [externalPlayerId, playerData] of Object.entries(response.playerStats)) {
       const { playerInfo } = playerData;
@@ -438,12 +452,26 @@ export class PlayerNationService {
       if (status === PlayerMappingStatus.MATCHED) matchedCount++; else unmappedCount++;
     }
 
-    // Update match status based on whether there are unmapped players
-    await this.matchRepository.update(matchId, {
-      playernationStatus: unmappedCount > 0 ? 'SUCCESS_WITH_UNMATCHED' : 'SUCCESS',
-    });
-
     this.logger.log(`Built mappings for match ${matchId}: matched=${matchedCount}, unmapped=${unmappedCount}`);
+
+    // If no unmapped players remain, auto-ingest immediately
+    if (unmappedCount === 0) {
+      this.logger.log(`No unmapped players for match ${matchId}. Auto-ingesting stats...`);
+      await this.processMatchedPlayerStats(matchId);
+    } else {
+      // Otherwise, mark as SUCCESS_WITH_UNMATCHED to prompt manual mapping
+      await this.matchRepository.update({ matchId }, {
+        playernationStatus: 'SUCCESS_WITH_UNMATCHED',
+      });
+    }
+  }
+
+  async purgeAllMappings(): Promise<{ deleted: number }> {
+    const res = await this.mappingRepository.createQueryBuilder()
+      .delete()
+      .from(PlayerNationPlayerMapping)
+      .execute();
+    return { deleted: res.affected || 0 };
   }
 
   async processMatchedPlayerStats(matchId: number): Promise<{ processed: number; expected: number }>{
@@ -467,7 +495,12 @@ export class PlayerNationService {
       const internalId = externalIdToInternal.get(externalPlayerId);
       if (!internalId) continue;
       try {
-        await this.mapStatsToCompact(matchId, internalId, playerData.stats);
+        // Only push YouTube highlight URL (no fallback)
+        const highlightArr = (playerData as any)?.hightlightURL || (playerData as any)?.highlightURL;
+        const playerVideoUrl = Array.isArray(highlightArr) && highlightArr.length > 0
+          ? (highlightArr[0]?.youtubeVideoUrl as string | undefined)
+          : undefined;
+        await this.mapStatsToCompact(matchId, internalId, playerData.stats, playerVideoUrl);
         processed++;
       } catch (e) {
         this.logger.error(`Failed to ingest stats for internal user ${internalId} (external ${externalPlayerId})`, e);
@@ -477,14 +510,14 @@ export class PlayerNationService {
     // If we couldn't process all matched mappings, mark as POLL_SUCCESS_MAPPING_FAILED
     const expected = Array.from(externalIdToInternal.keys()).length;
     if (processed < expected) {
-      await this.matchRepository.update(matchId, { playernationStatus: 'POLL_SUCCESS_MAPPING_FAILED' });
+      await this.matchRepository.update({ matchId }, { playernationStatus: 'POLL_SUCCESS_MAPPING_FAILED' });
     } else {
-      await this.matchRepository.update(matchId, { playernationStatus: 'IMPORTED' });
+      await this.matchRepository.update({ matchId }, { playernationStatus: 'IMPORTED' });
     }
     return { processed, expected };
   }
 
-  private async mapStatsToCompact(matchId: number, userId: number, stats: Record<string, any>): Promise<void> {
+  private async mapStatsToCompact(matchId: number, userId: number, stats: Record<string, any>, playerVideoUrl?: string): Promise<void> {
     // Helper function to parse numeric values (handle string numbers and "NA")
     const parseNumeric = (value: number | string | undefined): number => {
       if (value === undefined || value === null) return 0;
@@ -554,6 +587,12 @@ export class PlayerNationService {
 
     // Use transaction to ensure atomicity
     await this.dataSource.transaction(async (manager) => {
+      // Update participant's PlayerNation video URL if provided
+      if (playerVideoUrl && playerVideoUrl.trim() !== '') {
+        matchParticipant.playernationVideoUrl = playerVideoUrl;
+        await manager.save(MatchParticipant, matchParticipant);
+      }
+
       if (existingStats) {
         // Update existing stats
         Object.assign(existingStats, compactStats);

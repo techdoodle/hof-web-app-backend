@@ -25,11 +25,11 @@ export class PlayerNationPollingJob {
         where: [
           {
             playernationStatus: 'PENDING',
-            playernationPollAttempts: LessThan(12),
+            playernationPollAttempts: LessThan(24),
           },
           {
             playernationStatus: 'PROCESSING',
-            playernationPollAttempts: LessThan(12),
+            playernationPollAttempts: LessThan(24),
             playernationNextPollAt: LessThan(new Date()),
           },
         ],
@@ -73,11 +73,11 @@ export class PlayerNationPollingJob {
           });
 
           // If we've exceeded max attempts, mark as timeout (only if not already SUCCESS/SUCCESS_WITH_UNMATCHED/IMPORTED)
-          if (newAttemptCount >= 12) {
+          if (newAttemptCount >= 24) {
             await this.matchRepository.update(match.matchId, {
               playernationStatus: 'TIMEOUT',
             });
-            this.logger.warn(`Match ${match.matchId} marked as TIMEOUT after 12 failed attempts`);
+            this.logger.warn(`Match ${match.matchId} marked as TIMEOUT after 24 failed attempts`);
           }
         }
       }
