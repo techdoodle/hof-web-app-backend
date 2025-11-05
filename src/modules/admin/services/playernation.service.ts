@@ -71,6 +71,14 @@ export class PlayerNationService {
     private readonly dataSource: DataSource,
   ) {}
 
+  private parseHofPlayerId(value?: string): number | undefined {
+    if (!value) return undefined;
+    // PlayerNation may return IDs like "Hof-123"; strip the prefix (case-insensitive)
+    const cleaned = value.replace(/^hof-/i, '');
+    const numeric = parseInt(cleaned, 10);
+    return isNaN(numeric) ? undefined : numeric;
+  }
+
   private async writeJsonLog(kind: 'uploadGame' | 'getStats', matchId: number, phase: 'request' | 'response' | 'error', payload: any) {
     try {
       const baseDir = path.resolve(process.cwd(), 'playernation_logs');
@@ -386,8 +394,8 @@ export class PlayerNationService {
 
       // Attempt auto-matching only to set mapping to MATCHED if unequivocal
       if (playerInfo.playerVideo && playerInfo.hofPlayerId) {
-        const numericId = parseInt(playerInfo.hofPlayerId);
-        if (!isNaN(numericId)) {
+        const numericId = this.parseHofPlayerId(playerInfo.hofPlayerId);
+        if (numericId !== undefined) {
           internalUser = await this.userRepository.findOne({ where: { id: numericId } });
         }
       }
