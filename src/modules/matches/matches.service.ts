@@ -248,7 +248,7 @@ export class MatchesService {
         match.venue.longitude
       );
 
-      if (distance <= 50000) {
+      if (distance <= 100) {
         const venueId = match.venue.id;
 
         if (!venueMap.has(venueId)) {
