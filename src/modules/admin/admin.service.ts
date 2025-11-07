@@ -8,6 +8,8 @@ import { MatchParticipantStats } from '../match-participant-stats/match-particip
 import { FootballTeam } from '../football-teams/football-teams.entity';
 import { City } from '../cities/cities.entity';
 import { Venue } from '../venue/venue.entity';
+import { VenueFormatEntity } from '../venue/venue-formats.entity';
+import { VenueFormat } from '../venue/venue-format.enum';
 import { MatchType } from '../match-types/match-types.entity';
 import { CsvUploadService } from '../match-participant-stats/csv-upload.service';
 import { BookingEntity } from '../booking/booking.entity';
@@ -38,6 +40,8 @@ export class AdminService {
         private readonly cityRepository: Repository<City>,
         @InjectRepository(Venue)
         private readonly venueRepository: Repository<Venue>,
+        @InjectRepository(VenueFormatEntity)
+        private readonly venueFormatRepository: Repository<VenueFormatEntity>,
         @InjectRepository(MatchType)
         private readonly matchTypeRepository: Repository<MatchType>,
         @InjectRepository(BookingEntity)
@@ -929,35 +933,99 @@ export class AdminService {
 
     // Venue Management
     async getVenues(query: any) {
-        const venues = await this.venueRepository.find({
-            relations: ['city'],
-            order: { name: 'ASC' }
-        });
+        try {
+            const venues = await this.venueRepository.find({
+                relations: ['city', 'venueFormats'],
+                order: { name: 'ASC' }
+            });
 
-        const total = await this.venueRepository.count();
+            const total = await this.venueRepository.count();
 
-        return {
-            data: venues,
-            total: total
-        };
+            return {
+                data: venues,
+                total: total
+            };
+        } catch (error: any) {
+            // If venue_formats table doesn't exist yet, fetch without the relation
+            if (error.message?.includes('venue_formats') || error.message?.includes('does not exist')) {
+                this.logger.warn('venue_formats table does not exist, fetching venues without format relations');
+                const venues = await this.venueRepository.find({
+                    relations: ['city'],
+                    order: { name: 'ASC' }
+                });
+                // Add empty venueFormats array to each venue
+                const venuesWithFormats = venues.map(v => ({ ...v, venueFormats: [] }));
+                return {
+                    data: venuesWithFormats,
+                    total: venues.length
+                };
+            }
+            throw error;
+        }
     }
 
     async getVenue(id: number) {
-        const venue = await this.venueRepository.findOne({
-            where: { id },
-            relations: ['city']
-        });
+        try {
+            const venue = await this.venueRepository.findOne({
+                where: { id },
+                relations: ['city', 'venueFormats']
+            });
 
-        if (!venue) {
-            throw new NotFoundException(`Venue with ID ${id} not found`);
+            if (!venue) {
+                throw new NotFoundException(`Venue with ID ${id} not found`);
+            }
+
+            // Map format enum to cost field names
+            const formatToFieldMap: Record<string, string> = {
+                'FIVE_VS_FIVE': '5v5_Cost',
+                'SIX_VS_SIX': '6v6_Cost',
+                'SEVEN_VS_SEVEN': '7v7_Cost',
+                'EIGHT_VS_EIGHT': '8v8_Cost',
+                'NINE_VS_NINE': '9v9_Cost',
+                'TEN_VS_TEN': '10v10_Cost',
+                'ELEVEN_VS_ELEVEN': '11v11_Cost',
+            };
+
+            // Create flat cost fields for form
+            const costFields: Record<string, number> = {};
+            if (venue.venueFormats) {
+                venue.venueFormats.forEach((vf) => {
+                    const fieldName = formatToFieldMap[vf.format];
+                    if (fieldName) {
+                        costFields[fieldName] = vf.cost;
+                    }
+                });
+            }
+
+            // Transform the response to include city ID for react-admin ReferenceInput
+            return {
+                ...venue,
+                city: venue.city?.id || venue.city, // Ensure city is the ID for react-admin
+                cityData: venue.city, // Keep full city data for display purposes
+                ...costFields // Add flat cost fields for form
+            };
+        } catch (error: any) {
+            // If venue_formats table doesn't exist yet, fetch without the relation
+            if (error.message?.includes('venue_formats') || error.message?.includes('does not exist')) {
+                this.logger.warn('venue_formats table does not exist, fetching venue without format relations');
+                const venue = await this.venueRepository.findOne({
+                    where: { id },
+                    relations: ['city']
+                });
+
+                if (!venue) {
+                    throw new NotFoundException(`Venue with ID ${id} not found`);
+                }
+
+                return {
+                    ...venue,
+                    city: venue.city?.id || venue.city,
+                    cityData: venue.city,
+                    venueFormats: []
+                };
+            }
+            throw error;
         }
-
-        // Transform the response to include city ID for react-admin ReferenceInput
-        return {
-            ...venue,
-            city: venue.city?.id || venue.city, // Ensure city is the ID for react-admin
-            cityData: venue.city // Keep full city data for display purposes
-        };
     }
 
     async createVenue(createVenueDto: any) {
@@ -967,6 +1035,10 @@ export class AdminService {
             const name: string = (createVenueDto.name || '').toString().trim();
             const phoneNumber: string = (createVenueDto.phoneNumber || '').toString().trim();
             const address: string = (createVenueDto.address || '').toString().trim();
+            const latitude = createVenueDto.latitude ? Number(createVenueDto.latitude) : null;
+            const longitude = createVenueDto.longitude ? Number(createVenueDto.longitude) : null;
+            const displayBanner = createVenueDto.displayBanner || null;
+            const venueFormats = createVenueDto.venueFormats || [];
 
             if (!name) {
                 throw new BadRequestException('Venue name is required');
@@ -986,14 +1058,37 @@ export class AdminService {
                 throw new BadRequestException('Phone number already exists');
             }
 
-            const venue = this.venueRepository.create({
-                name,
-                phoneNumber,
-                address,
-                city: { id: Number(cityId) }
-            });
+            // Create venue with formats in a transaction
+            return await this.dataSource.transaction(async (manager) => {
+                const venue = new Venue();
+                venue.name = name;
+                venue.phoneNumber = phoneNumber;
+                if (address) venue.address = address;
+                if (latitude !== null && latitude !== undefined) venue.latitude = latitude;
+                if (longitude !== null && longitude !== undefined) venue.longitude = longitude;
+                if (displayBanner) venue.displayBanner = displayBanner;
+                venue.city = { id: Number(cityId) } as City;
 
-            return await this.venueRepository.save(venue);
+                const savedVenue = await manager.save(Venue, venue);
+
+                // Create venue formats if provided
+                if (venueFormats && venueFormats.length > 0) {
+                    const formatEntities = venueFormats.map((vf: any) => {
+                        const formatEntity = new VenueFormatEntity();
+                        formatEntity.venue = savedVenue;
+                        formatEntity.format = vf.format;
+                        formatEntity.cost = Number(vf.cost);
+                        return formatEntity;
+                    });
+                    await manager.save(VenueFormatEntity, formatEntities);
+                }
+
+                // Reload with relations
+                return await manager.findOne(Venue, {
+                    where: { id: savedVenue.id },
+                    relations: ['city', 'venueFormats']
+                });
+            });
         } catch (error) {
             if (error instanceof BadRequestException) throw error;
             throw new BadRequestException(error?.message || 'Failed to create venue');
@@ -1001,18 +1096,55 @@ export class AdminService {
     }
 
     async updateVenue(id: number, updateVenueDto: any) {
-        const venue = await this.venueRepository.findOne({ where: { id } });
+        const venue = await this.venueRepository.findOne({
+            where: { id },
+            relations: ['venueFormats']
+        });
         if (!venue) {
             throw new NotFoundException(`Venue with ID ${id} not found`);
         }
 
+        // Handle city update
         if (updateVenueDto.cityId) {
             updateVenueDto.city = { id: updateVenueDto.cityId };
             delete updateVenueDto.cityId;
         }
 
+        // Extract venueFormats if provided
+        const venueFormats = updateVenueDto.venueFormats;
+        delete updateVenueDto.venueFormats;
+
+        // Update venue basic fields
         Object.assign(venue, updateVenueDto);
-        return this.venueRepository.save(venue);
+
+        // Handle venue formats update in transaction
+        return await this.dataSource.transaction(async (manager) => {
+            const savedVenue = await manager.save(Venue, venue);
+
+            // If venueFormats is provided, replace all existing formats
+            if (venueFormats !== undefined) {
+                // Delete existing formats
+                await manager.delete(VenueFormatEntity, { venue: { id: savedVenue.id } });
+
+                // Create new formats if provided
+                if (venueFormats && venueFormats.length > 0) {
+                    const formatEntities = venueFormats.map((vf: any) => {
+                        const formatEntity = new VenueFormatEntity();
+                        formatEntity.venue = savedVenue;
+                        formatEntity.format = vf.format;
+                        formatEntity.cost = Number(vf.cost);
+                        return formatEntity;
+                    });
+                    await manager.save(VenueFormatEntity, formatEntities);
+                }
+            }
+
+            // Reload with relations
+            return await manager.findOne(Venue, {
+                where: { id: savedVenue.id },
+                relations: ['city', 'venueFormats']
+            });
+        });
     }
 
     async deleteVenue(id: number) {

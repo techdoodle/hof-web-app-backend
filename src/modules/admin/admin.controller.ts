@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query, UploadedFile, UseInterceptors, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query, UploadedFile, UseInterceptors, ParseIntPipe, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -10,6 +11,7 @@ import { CreateMatchDto, UpdateMatchDto, MatchFilterDto } from './dto/match.dto'
 import { PlayerNationSubmitDto } from './dto/playernation-submit.dto';
 import { SaveMappingsDto } from './dto/playernation-mapping.dto';
 import { PlayerNationService } from './services/playernation.service';
+import { VenueExcelUploadService } from './services/venue-excel-upload.service';
 import { FirebaseStorageService } from '../user/firebase-storage.service';
 import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
 
@@ -19,6 +21,7 @@ export class AdminController {
     constructor(
         private readonly adminService: AdminService,
         private readonly playerNationService: PlayerNationService,
+        private readonly venueExcelUploadService: VenueExcelUploadService,
         private readonly firebaseStorageService: FirebaseStorageService,
     ) { }
 
@@ -233,6 +236,23 @@ export class AdminController {
         return this.adminService.getVenues(query);
     }
 
+    @Get('venues/excel-template')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN)
+    async getVenuesExcelTemplate(@Res() res: Response) {
+        try {
+            const buffer = this.venueExcelUploadService.generateExcelTemplate();
+            if (!buffer || buffer.length === 0) {
+                return res.status(500).json({ message: 'Failed to generate Excel template: empty buffer' });
+            }
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=venue_template.xlsx');
+            res.send(buffer);
+        } catch (error: any) {
+            console.error('Error generating Excel template:', error);
+            res.status(500).json({ message: 'Failed to generate Excel template', error: error?.message || String(error) });
+        }
+    }
+
     @Get('venues/:id')
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN)
     async getVenue(@Param('id', ParseIntPipe) id: number) {
@@ -258,6 +278,25 @@ export class AdminController {
     @Roles(UserRole.SUPER_ADMIN)
     async deleteVenue(@Param('id', ParseIntPipe) id: number) {
         return this.adminService.deleteVenue(id);
+    }
+
+    @Post('venues/upload-excel')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @UseInterceptors(FileInterceptor('file'))
+    async uploadVenuesExcel(@UploadedFile() file: Express.Multer.File) {
+        if (!file) {
+            throw new Error('No file uploaded');
+        }
+
+        const data = await this.venueExcelUploadService.parseExcelFile(file);
+        const result = await this.venueExcelUploadService.processVenueUpload(data);
+
+        return {
+            message: `Successfully processed ${result.created + result.updated} venues (${result.created} created, ${result.updated} updated)`,
+            created: result.created,
+            updated: result.updated,
+            errors: result.errors,
+        };
     }
 
     // Match Types
