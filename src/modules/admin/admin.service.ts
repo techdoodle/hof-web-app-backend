@@ -233,11 +233,31 @@ export class AdminService {
                 // (logs removed)
             }
 
+            // Get participant counts for all matches
+            const matchIds = finalMatches.map(m => m.matchId);
+            const countMap = new Map<number, number>();
+            
+            if (matchIds.length > 0) {
+                // Use raw SQL query for more reliable column names
+                const participantCounts = await this.dataSource.query(
+                    `SELECT match_id as "matchId", COUNT(*) as count 
+                     FROM match_participants 
+                     WHERE match_id = ANY($1::int[])
+                     GROUP BY match_id`,
+                    [matchIds]
+                );
+
+                participantCounts.forEach((pc: any) => {
+                    countMap.set(Number(pc.matchId), parseInt(pc.count, 10));
+                });
+            }
+
             // Map matchId to id for frontend compatibility
             const mappedMatches = finalMatches.map(match => ({
                 ...match,
                 id: match.matchId, // Add id field while keeping matchId
-                matchTypeId: match.matchTypeRef?.id
+                matchTypeId: match.matchTypeRef?.id,
+                participantCount: countMap.get(match.matchId) || 0
             }));
 
             return {
@@ -932,7 +952,12 @@ export class AdminService {
             throw new NotFoundException(`Venue with ID ${id} not found`);
         }
 
-        return venue;
+        // Transform the response to include city ID for react-admin ReferenceInput
+        return {
+            ...venue,
+            city: venue.city?.id || venue.city, // Ensure city is the ID for react-admin
+            cityData: venue.city // Keep full city data for display purposes
+        };
     }
 
     async createVenue(createVenueDto: any) {
