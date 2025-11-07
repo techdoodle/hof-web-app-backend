@@ -19,9 +19,18 @@ export class Venue {
   @Column({ name: 'address', type: 'varchar', length: 500, nullable: true })
   address: string;
 
+  @Column({ name: 'display_banner', type: 'text', nullable: true })
+  displayBanner: string;
+
+  @Column({ name: 'latitude', type: 'decimal', precision: 10, scale: 8, nullable: true })
+  latitude: number;
+
+  @Column({ name: 'longitude', type: 'decimal', precision: 11, scale: 8, nullable: true })
+  longitude: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
-} 
+}

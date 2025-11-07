@@ -43,7 +43,10 @@ export class MatchParticipantsController {
 
   @Get('match/:matchId')
   async findByMatch(@Param('matchId', ParseIntPipe) matchId: number): Promise<MatchParticipant[]> {
-    return await this.matchParticipantsService.findByMatch(matchId);
+    console.log('Match-participants API called for match:', matchId);
+    const participants = await this.matchParticipantsService.findByMatch(matchId);
+    console.log('Match-participants API returning:', participants);
+    return participants;
   }
 
   @Get('user/:userId')

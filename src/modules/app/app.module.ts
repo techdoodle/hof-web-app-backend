@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import configuration from 'src/config/configuration';
+import playernationConfig from 'src/config/playernation.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from '../auth/auth.module';
@@ -15,12 +17,21 @@ import { MatchParticipantsModule } from '../match-participants/match-participant
 import { MatchParticipantStatsModule } from '../match-participant-stats/match-participant-stats.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from '../admin/admin.module';
+import { MatchTypesModule } from '../match-types/match-types.module';
+import { NotificationModule } from '../notification/notification.module';
+import { BookingModule } from '../booking/booking.module';
+import { WaitlistModule } from '../waitlist/waitlist.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [configuration],
+      load: [configuration, playernationConfig],
+      envFilePath: ['.env'],
+      cache: false,
+      expandVariables: true,
+      ignoreEnvFile: false,
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -58,7 +69,11 @@ import { AdminModule } from '../admin/admin.module';
     MatchesModule,
     MatchParticipantsModule,
     MatchParticipantStatsModule,
+    MatchTypesModule,
     AdminModule,
+    NotificationModule,
+    BookingModule,
+    WaitlistModule,
   ],
   controllers: [AppController],
   providers: [
@@ -67,7 +82,6 @@ import { AdminModule } from '../admin/admin.module';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-
   ],
 })
 export class AppModule { }

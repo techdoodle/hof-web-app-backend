@@ -12,6 +12,13 @@ async function bootstrap() {
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ limit: '50mb', extended: true }));
 
+  // Set request timeout for video uploads
+  app.use((req, res, next) => {
+    req.setTimeout(120000); // 2 minutes for video uploads
+    res.setTimeout(120000); // 2 minutes for video uploads
+    next();
+  });
+
   // CORS configuration for development and production
   const allowedOrigins = [
     'http://localhost:3000', // Local frontend

@@ -1,17 +1,32 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Like } from 'typeorm';
+import { Repository, Between, Like, Connection } from 'typeorm';
 import { Match } from './matches.entity';
 import { MatchType } from '../../common/enums/match-type.enum';
+import { BookingSlotEntity, BookingSlotStatus } from '../booking/booking-slot.entity';
+import { WaitlistEntry, WaitlistStatus } from '../waitlist/entities/waitlist-entry.entity';
 
 @Injectable()
 export class MatchesService {
   constructor(
     @InjectRepository(Match)
     private readonly matchRepository: Repository<Match>,
+    @InjectRepository(BookingSlotEntity)
+    private readonly bookingSlotRepository: Repository<BookingSlotEntity>,
+    @InjectRepository(WaitlistEntry)
+    private readonly waitlistRepository: Repository<WaitlistEntry>,
+    private readonly connection: Connection,
   ) { }
 
   async create(createMatchDto: Partial<Match>): Promise<Match> {
+    // Set offer_price equal to slot_price if not provided or null
+    if (createMatchDto.slotPrice !== undefined && (createMatchDto.offerPrice === undefined || createMatchDto.offerPrice === null)) {
+      createMatchDto.offerPrice = createMatchDto.slotPrice;
+    }
+
+    // Validate pricing
+    this.validatePricing(createMatchDto.slotPrice ?? 0, createMatchDto.offerPrice ?? 0);
+
     const match = this.matchRepository.create(createMatchDto);
     return await this.matchRepository.save(match);
   }
@@ -36,6 +51,14 @@ export class MatchesService {
 
   async update(matchId: number, updateMatchDto: Partial<Match>): Promise<Match> {
     const match = await this.findOne(matchId);
+
+    // Validate pricing if either field is being updated
+    if (updateMatchDto.slotPrice !== undefined || updateMatchDto.offerPrice !== undefined) {
+      const slotPrice = updateMatchDto.slotPrice !== undefined ? updateMatchDto.slotPrice : match.slotPrice;
+      const offerPrice = updateMatchDto.offerPrice !== undefined ? updateMatchDto.offerPrice : match.offerPrice;
+      this.validatePricing(slotPrice, offerPrice);
+    }
+
     Object.assign(match, updateMatchDto);
     return await this.matchRepository.save(match);
   }
@@ -45,10 +68,10 @@ export class MatchesService {
     await this.matchRepository.remove(match);
   }
 
-  async findByMatchType(matchType: MatchType): Promise<Match[]> {
+  async findByMatchType(matchTypeId: number): Promise<Match[]> {
     return await this.matchRepository.find({
-      where: { matchType },
-      relations: ['footballChief', 'city', 'venue'],
+      where: { matchTypeRef: { id: matchTypeId } as any },
+      relations: ['footballChief', 'city', 'venue', 'matchTypeRef'],
       order: { startTime: 'DESC' },
     });
   }
@@ -156,4 +179,200 @@ export class MatchesService {
     return await this.matchRepository.save(match);
   }
 
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round((R * c) * 100) / 100;
+  }
+
+  private validatePricing(slotPrice: number, offerPrice: number): void {
+    // Both prices must be >= 0
+    if (slotPrice < 0 || offerPrice < 0) {
+      throw new Error('Slot price and offer price must be greater than or equal to 0');
+    }
+
+    // Offer price must be <= slot price
+    if (offerPrice > slotPrice) {
+      throw new Error('Offer price must be less than or equal to slot price');
+    }
+  }
+
+  async checkSlotAvailability(matchId: number, slots: number): Promise<{ availableSlots: number }> {
+    const match = await this.matchRepository.findOne({ where: { matchId } });
+    if (!match) {
+      throw new HttpException('Match not found', HttpStatus.NOT_FOUND);
+    }
+
+    // Get currently active slots
+    const activeSlots = await this.connection.query(`
+      SELECT bs.slot_number 
+      FROM booking_slots bs 
+      JOIN bookings b ON bs.booking_id = b.id 
+      WHERE b.match_id = $1 AND bs.status = $2
+    `, [matchId, 'ACTIVE']);
+
+    const bookedSlotNumbers = activeSlots.map(row => row.slot_number);
+    const totalCapacity = match.playerCapacity || 0;
+    const allSlots = Array.from({ length: totalCapacity }, (_, i) => i + 1);
+    const availableSlots = allSlots.filter(slot => !bookedSlotNumbers.includes(slot));
+
+    return { availableSlots: availableSlots.length };
+  }
+
+  async findNearbyMatches(location: { latitude: number; longitude: number }) {
+    const matches = await this.matchRepository
+      .createQueryBuilder('match')
+      .leftJoinAndSelect('match.venue', 'venue')
+      .leftJoinAndSelect('match.matchTypeRef', 'matchType')
+      .leftJoinAndSelect('match.footballChief', 'footballChief')
+      .where('venue.latitude IS NOT NULL')
+      .andWhere('venue.longitude IS NOT NULL')
+      .andWhere('venue.latitude != 0')
+      .andWhere('venue.longitude != 0')
+      .andWhere('match.start_time > :currentTime', { currentTime: new Date() })
+      .getMany();
+
+    // Group matches by venue
+    const venueMap = new Map();
+
+    matches.forEach(match => {
+      const distance = this.calculateDistance(
+        location.latitude,
+        location.longitude,
+        match.venue.latitude,
+        match.venue.longitude
+      );
+
+      if (distance <= 50000) {
+        const venueId = match.venue.id;
+
+        if (!venueMap.has(venueId)) {
+          venueMap.set(venueId, {
+            venue: {
+              ...match.venue,
+              distance
+            },
+            matches: []
+          });
+        }
+
+        venueMap.get(venueId).matches.push({
+          id: match.matchId,
+          startTime: match.startTime,
+          endTime: match.endTime,
+          matchType: match.matchTypeRef?.matchName || 'HOF Play',
+          slotPrice: match.slotPrice,
+          offerPrice: match.offerPrice,
+          playerCapacity: match.playerCapacity,
+          bookedSlots: match.bookedSlots,
+          footballChief: {
+            id: match.footballChief?.id || null,
+            name: match.footballChief?.firstName || '',
+            number: match.footballChief?.phoneNumber || '',
+            email: match.footballChief?.email || ''
+          }
+        });
+      }
+    });
+
+    // Convert to array and sort by distance
+    return Array.from(venueMap.values())
+      .sort((a, b) => a.venue.distance - b.venue.distance)
+      .slice(0, 10);
+  }
+
+  async getCriticalBookingInfo(matchId: number): Promise<any> {
+    const match = await this.findOne(matchId);
+
+    // Get locked slots count directly from database to ensure accuracy
+    const lockedSlotsResult = await this.matchRepository.query(`
+      SELECT locked_slots FROM matches WHERE match_id = $1
+    `, [matchId]);
+
+    const lockedSlots = lockedSlotsResult[0]?.locked_slots || {};
+    const lockedSlotsCount: number = typeof lockedSlots === 'object' && lockedSlots !== null
+      ? Object.values(lockedSlots as any).reduce((count: number, item: any) => {
+        return count + (item as any).slots.length;
+      }, 0) as number
+      : 0;
+    console.log("lockedSlotsCount", lockedSlotsCount);
+
+    // Query confirmed booked slots using raw SQL to avoid relationship issues
+    const confirmedBookedSlotsResult = await this.bookingSlotRepository.query(`
+      SELECT COUNT(*) as count 
+      FROM booking_slots bs 
+      JOIN bookings b ON bs.booking_id = b.id 
+      WHERE b.match_id = $1 AND bs.status = $2
+    `, [matchId.toString(), BookingSlotStatus.ACTIVE]);
+
+    const confirmedBookedSlots = parseInt(confirmedBookedSlotsResult[0]?.count || '0');
+    // Query waitlisted slots using raw SQL
+    const waitlistedSlotsResult = await this.waitlistRepository.query(`
+      SELECT COALESCE(SUM(slots_required), 0) as total_slots 
+      FROM waitlist_entries 
+      WHERE match_id = $1 AND status = $2
+    `, [matchId.toString(), WaitlistStatus.ACTIVE]);
+
+    const waitlistedSlotsCount = parseInt(waitlistedSlotsResult[0]?.total_slots || '0');
+    // Calculate available regular slots
+    const availableRegularSlots = Math.max(0, match.playerCapacity - confirmedBookedSlots - lockedSlotsCount);
+
+    // Calculate available waitlist slots
+    const totalCapacity = match.playerCapacity + match.bufferCapacity;
+    const usedSlots = confirmedBookedSlots + lockedSlotsCount + waitlistedSlotsCount;
+    const availableWaitlistSlots = Math.max(0, totalCapacity - usedSlots);
+
+    // Debug logging
+    console.log(`🔍 Match ${matchId} slot calculation:`, {
+      playerCapacity: match.playerCapacity,
+      bufferCapacity: match.bufferCapacity,
+      confirmedBookedSlots,
+      lockedSlotsCount,
+      waitlistedSlotsCount,
+      availableRegularSlots,
+      availableWaitlistSlots,
+      totalCapacity,
+      usedSlots
+    });
+
+    return {
+      playerCapacity: match.playerCapacity,
+      bufferCapacity: match.bufferCapacity,
+      bookedSlots: confirmedBookedSlots,
+      lockedSlots: lockedSlotsCount,
+      waitlistedSlots: waitlistedSlotsCount,
+      availableRegularSlots,
+      availableWaitlistSlots,
+      offerPrice: match.offerPrice,
+      slotPrice: match.slotPrice,
+      isLocked: lockedSlotsCount > 0
+    };
+  }
+
+  async calculateBookingPrice(matchId: number, numSlots: number): Promise<{ finalPrice: number }> {
+    const match = await this.findOne(matchId);
+
+    if (!match) {
+      throw new HttpException('Match not found', HttpStatus.NOT_FOUND);
+    }
+
+    // Calculate final price based on match pricing
+    const basePrice = match.offerPrice || match.slotPrice;
+    const finalPrice = basePrice * numSlots;
+
+    // You can add additional pricing logic here:
+    // - Discounts for multiple slots
+    // - Special pricing for certain match types
+    // - Dynamic pricing based on demand
+    // - Tax calculations if needed
+
+    return {
+      finalPrice: Math.round(finalPrice)
+    };
+  }
 } 

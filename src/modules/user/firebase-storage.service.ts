@@ -142,4 +142,71 @@ export class FirebaseStorageService {
     // Keep this method for backward compatibility, but now it calls archive
     await this.archiveUserImages(userId);
   }
+
+  async generateSignedUploadUrl(
+    fileName: string, 
+    contentType: string, 
+    expiresIn: number = 15 * 60 * 1000 // 15 minutes default
+  ): Promise<{ uploadUrl: string; downloadUrl: string }> {
+    try {
+      const bucket = this.firebaseConfig.getBucket();
+      const filePath = `playernation_temp/${fileName}`;
+      const file = bucket.file(filePath);
+
+      // Generate signed URL for upload (PUT)
+      const [uploadUrl] = await file.getSignedUrl({
+        action: 'write',
+        expires: Date.now() + expiresIn,
+        contentType: contentType,
+      });
+
+      // Generate signed URL for download (GET) - valid for 48 hours
+      const [downloadUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + (48 * 60 * 60 * 1000), // 48 hours
+      });
+
+      return { uploadUrl, downloadUrl };
+    } catch (error) {
+      console.error('Firebase Storage signed URL generation error:', error);
+      throw new Error(`Failed to generate signed URL: ${error.message}`);
+    }
+  }
+
+  async deletePlayerNationFile(fileName: string): Promise<void> {
+    try {
+      const bucket = this.firebaseConfig.getBucket();
+      const filePath = `playernation_temp/${fileName}`;
+      const file = bucket.file(filePath);
+
+      await file.delete();
+    } catch (error) {
+      console.error('Firebase Storage delete error:', error);
+      throw new Error(`Failed to delete file: ${error.message}`);
+    }
+  }
+
+  async uploadPlayerNationVideo(fileName: string, buffer: Buffer, contentType: string): Promise<string> {
+    try {
+      const bucket = this.firebaseConfig.getBucket();
+      const filePath = `playernation_temp/${fileName}`;
+      const file = bucket.file(filePath);
+
+      // Upload the file
+      await file.save(buffer, {
+        metadata: {
+          contentType: contentType,
+        },
+      });
+
+      // Make the file publicly accessible
+      await file.makePublic();
+
+      // Return the public URL
+      return `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+    } catch (error) {
+      console.error('Firebase Storage upload error:', error);
+      throw new Error(`Failed to upload video: ${error.message}`);
+    }
+  }
 } 

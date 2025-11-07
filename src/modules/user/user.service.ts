@@ -8,7 +8,7 @@ export class UserService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
-  ) {}
+  ) { }
 
   async create(data: Partial<User>) {
     const user = this.userRepository.create(data);
@@ -34,29 +34,29 @@ export class UserService {
   async update(id: number, data: Partial<User>) {
     // First update with the provided data
     await this.userRepository.update({ id }, data);
-    
+
     // Get the updated user to check if all mandatory fields are filled
     const updatedUser = await this.userRepository.findOne({
       where: { id },
       relations: ['city', 'preferredTeam']
     });
-    
+
     if (updatedUser) {
       // Check if all mandatory onboarding fields are filled
       const mandatoryFieldsFilled = updatedUser.firstName &&
-                                   updatedUser.lastName &&
-                                   updatedUser.city &&
-                                   updatedUser.gender &&
-                                   updatedUser.profilePicture &&
-                                   updatedUser.playerCategory && 
-                                   updatedUser.preferredTeam;
-      
+        updatedUser.lastName &&
+        updatedUser.city &&
+        updatedUser.gender &&
+        updatedUser.profilePicture &&
+        updatedUser.playerCategory &&
+        updatedUser.preferredTeam;
+
       // If all mandatory fields are filled and onboarding is not already complete, mark it as complete
       if (mandatoryFieldsFilled && !updatedUser.onboardingComplete) {
         await this.userRepository.update({ id }, { onboardingComplete: true });
       }
     }
-    
+
     return this.userRepository.findOne({
       where: { id },
       relations: ['city', 'preferredTeam']
@@ -68,14 +68,14 @@ export class UserService {
   }
 
   async findByMobile(mobile: string) {
-    return this.userRepository.findOne({ 
+    return this.userRepository.findOne({
       where: { phoneNumber: mobile },
       relations: ['city', 'preferredTeam']
     });
   }
 
   async findByEmail(email: string) {
-    return this.userRepository.findOne({ 
+    return this.userRepository.findOne({
       where: { email },
       relations: ['city', 'preferredTeam']
     });
@@ -86,7 +86,7 @@ export class UserService {
       where: { id: userId },
       relations: ['city', 'preferredTeam']
     });
-    
+
     if (!user) {
       throw new Error('User not found');
     }

@@ -21,6 +21,21 @@ import { MatchType } from '../../common/enums/match-type.enum';
 export class MatchesController {
   constructor(private readonly matchesService: MatchesService) { }
 
+  @Get(':id/availability')
+  async checkSlotAvailability(
+    @Param('id', ParseIntPipe) matchId: number,
+    @Query('slots', ParseIntPipe) slots: number
+  ) {
+    return await this.matchesService.checkSlotAvailability(matchId, slots);
+  }
+
+  @Post('nearby')
+  async findNearbyMatches(
+    @Body() location: { latitude: number; longitude: number }
+  ) {
+    return await this.matchesService.findNearbyMatches(location);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   async create(@Body() createMatchDto: any): Promise<Match> {
@@ -52,9 +67,9 @@ export class MatchesController {
     return await this.matchesService.searchMatches(query.trim(), limitNum);
   }
 
-  @Get('type/:matchType')
-  async findByMatchType(@Param('matchType') matchType: MatchType): Promise<Match[]> {
-    return await this.matchesService.findByMatchType(matchType);
+  @Get('type/:matchTypeId')
+  async findByMatchType(@Param('matchType', ParseIntPipe) matchTypeId: number): Promise<Match[]> {
+    return await this.matchesService.findByMatchType(matchTypeId);
   }
 
   @Get('football-chief/:footballChiefId')
@@ -171,6 +186,19 @@ export class MatchesController {
   async getMatchRecap(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ matchRecap: string | null }> {
     const match = await this.matchesService.findOne(matchId);
     return { matchRecap: match.matchRecap || null };
+  }
+
+  @Get(':matchId/booking-info')
+  async getBookingInfo(@Param('matchId', ParseIntPipe) matchId: number) {
+    return this.matchesService.getCriticalBookingInfo(matchId);
+  }
+
+  @Post(':matchId/calculate-price')
+  async calculatePrice(
+    @Param('matchId', ParseIntPipe) matchId: number,
+    @Body() body: { numSlots: number }
+  ) {
+    return this.matchesService.calculateBookingPrice(matchId, body.numSlots);
   }
 
   @Delete(':matchId')

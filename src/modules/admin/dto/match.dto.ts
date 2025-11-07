@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsDateString, IsBoolean, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsDateString, IsBoolean, IsEnum, Min } from 'class-validator';
 import { MatchType } from '../../../common/enums/match-type.enum';
 
 export class CreateMatchDto {
@@ -8,6 +8,9 @@ export class CreateMatchDto {
 
     @IsEnum(MatchType)
     matchType: MatchType;
+
+    @IsNumber()
+    matchTypeId: number;
 
     @IsDateString()
     startTime: string;
@@ -45,6 +48,22 @@ export class CreateMatchDto {
     @IsNumber()
     @IsOptional()
     venue?: number;
+
+    @IsNumber()
+    @Min(-1)
+    slotPrice?: number;
+
+    @IsNumber()
+    @Min(-1)
+    offerPrice?: number;
+
+  @IsString()
+  @IsOptional()
+  teamAName?: string;
+
+  @IsString()
+  @IsOptional()
+  teamBName?: string;
 }
 
 export class UpdateMatchDto {
@@ -55,6 +74,10 @@ export class UpdateMatchDto {
     @IsEnum(MatchType)
     @IsOptional()
     matchType?: MatchType;
+
+    @IsNumber()
+    @IsOptional()
+    matchTypeId?: number;
 
     @IsDateString()
     @IsOptional()
@@ -95,6 +118,24 @@ export class UpdateMatchDto {
     @IsNumber()
     @IsOptional()
     venue?: number;
+
+    @IsNumber()
+    @IsOptional()
+    @Min(0)
+    slotPrice?: number;
+
+    @IsNumber()
+    @IsOptional()
+    @Min(0)
+    offerPrice?: number;
+
+  @IsString()
+  @IsOptional()
+  teamAName?: string;
+
+  @IsString()
+  @IsOptional()
+  teamBName?: string;
 }
 
 export class MatchFilterDto {
@@ -113,6 +154,15 @@ export class MatchFilterDto {
     @IsOptional()
     @IsDateString()
     endDate?: string;
+
+    // New generic date range filters
+    @IsOptional()
+    @IsDateString()
+    dateFrom?: string;
+
+    @IsOptional()
+    @IsDateString()
+    dateTo?: string;
 
     @IsOptional()
     @IsNumber()

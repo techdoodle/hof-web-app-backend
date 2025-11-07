@@ -1,12 +1,12 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Put, 
-  Delete, 
-  Param, 
-  Body, 
-  Query, 
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
   ParseIntPipe,
   UseGuards,
   HttpStatus,
@@ -18,7 +18,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 
 @Controller('cities')
 export class CitiesController {
-  constructor(private readonly citiesService: CitiesService) {}
+  constructor(private readonly citiesService: CitiesService) { }
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -46,7 +46,7 @@ export class CitiesController {
     if (!query || query.trim().length === 0) {
       return [];
     }
-    
+
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return await this.citiesService.searchCities(query.trim(), limitNum);
   }

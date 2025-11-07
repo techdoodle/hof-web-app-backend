@@ -3,7 +3,6 @@ import { AppService } from './app.service';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { SkipThrottle } from '@nestjs/throttler';
 
-@UseGuards(JwtAuthGuard)
 @SkipThrottle()
 @Controller()
 export class AppController {

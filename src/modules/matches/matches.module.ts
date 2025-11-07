@@ -3,11 +3,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { MatchesController } from './matches.controller';
 import { MatchesService } from './matches.service';
 import { Match } from './matches.entity';
+import { Venue } from '../venue/venue.entity';
+import { BookingSlotEntity } from '../booking/booking-slot.entity';
+import { WaitlistEntry } from '../waitlist/entities/waitlist-entry.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Match])],
+  imports: [TypeOrmModule.forFeature([Match, Venue, BookingSlotEntity, WaitlistEntry])],
   controllers: [MatchesController],
   providers: [MatchesService],
   exports: [MatchesService],
 })
-export class MatchesModule {} 
+export class MatchesModule { } 

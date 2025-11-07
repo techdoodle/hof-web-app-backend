@@ -7,17 +7,47 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { UserFilterDto, CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { AdminService } from './admin.service';
 import { CreateMatchDto, UpdateMatchDto, MatchFilterDto } from './dto/match.dto';
+import { PlayerNationSubmitDto } from './dto/playernation-submit.dto';
+import { SaveMappingsDto } from './dto/playernation-mapping.dto';
+import { PlayerNationService } from './services/playernation.service';
+import { FirebaseStorageService } from '../user/firebase-storage.service';
+import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminController {
-    constructor(private readonly adminService: AdminService) { }
+    constructor(
+        private readonly adminService: AdminService,
+        private readonly playerNationService: PlayerNationService,
+        private readonly firebaseStorageService: FirebaseStorageService,
+    ) { }
 
     // User Management - Admin and Super Admin only
     @Get('users')
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async getAllUsers(@Query() filters: UserFilterDto) {
-        return this.adminService.getAllUsers(filters);
+    async getAllUsers(@Query() raw: any) {
+        let filters: any = { ...raw };
+        if (raw && typeof raw.filter === 'string') {
+            try {
+                filters = { ...filters, ...JSON.parse(raw.filter) };
+            } catch (_) {}
+        }
+        // Normalize common keys if sent as nested
+        if (filters['city.id'] && !filters.city) filters.city = filters['city.id'];
+        console.log('[AdminController] GET /admin/users merged filters:', filters);
+        return this.adminService.getAllUsers(filters as UserFilterDto);
+    }
+
+    @Get('chiefs')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getChiefs(@Query() raw: any) {
+        console.log('[AdminController] GET /admin/chiefs raw:', raw);
+        const result = this.adminService.getChiefs();
+        // Log after promise resolves as well
+        Promise.resolve(result).then(r => {
+            console.log('[AdminController] /admin/chiefs response meta:', { total: r.total, sample: r.data?.[0] });
+        });
+        return result;
     }
 
     @Get('users/:id')
@@ -50,8 +80,47 @@ export class AdminController {
     // Match Management - Football Chief, Academy Admin, Admin, Super Admin
     @Get('matches')
     @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async getAllMatches(@Query() filters: MatchFilterDto) {
-        return this.adminService.getAllMatches(filters);
+    async getAllMatches(@Query() raw: any) {
+        // React Admin passes filters under a `filter` query param (JSON string)
+        let filters: any = { ...raw };
+        if (raw && typeof raw.filter === 'string') {
+            try {
+                const parsed = JSON.parse(raw.filter);
+                filters = { ...filters, ...parsed };
+            } catch (_) {
+                // ignore parse errors
+            }
+        }
+
+        // Normalize common aliases from UI
+        // Map startTime/endTime -> startDate/endDate for backward compatibility
+        if (filters.startTime && !filters.startDate) filters.startDate = filters.startTime;
+        if (filters.endTime && !filters.endDate) filters.endDate = filters.endTime;
+
+        // Normalize nested filter keys that RA may send (e.g., 'venue.id')
+        if (filters['venue.id'] && !filters.venue) filters.venue = filters['venue.id'];
+        if (filters['city.id'] && !filters.city) filters.city = filters['city.id'];
+        if (filters['footballChief.id'] && !filters.footballChief) filters.footballChief = filters['footballChief.id'];
+
+        // Coerce possible object-valued filters to primitive IDs
+        const coerceId = (val: any) => {
+            if (!val) return val;
+            // Drop stringified object placeholders
+            if (val === '[object Object]') return null;
+            if (typeof val === 'object') return val.id ?? val.value ?? null;
+            if (typeof val === 'string' && /^\d+$/.test(val)) return Number(val);
+            return val;
+        };
+        filters.venue = coerceId(filters.venue);
+        filters.city = coerceId(filters.city);
+        filters.footballChief = coerceId(filters.footballChief);
+
+        // Remove empty/invalid ids so they don't trigger 500s
+        if (filters.venue === null || filters.venue === undefined || Number.isNaN(filters.venue)) delete filters.venue;
+        if (filters.city === null || filters.city === undefined || Number.isNaN(filters.city)) delete filters.city;
+        if (filters.footballChief === null || filters.footballChief === undefined || Number.isNaN(filters.footballChief)) delete filters.footballChief;
+
+        return this.adminService.getAllMatches(filters as MatchFilterDto);
     }
 
     @Get('matches/:id')
@@ -189,5 +258,194 @@ export class AdminController {
     @Roles(UserRole.SUPER_ADMIN)
     async deleteVenue(@Param('id', ParseIntPipe) id: number) {
         return this.adminService.deleteVenue(id);
+    }
+
+    // Match Types
+    @Get('match_types')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getMatchTypes(@Query() query: any) {
+        console.log('inside getMatchTypes', query);
+        return this.adminService.getMatchTypes(query);
+    }
+
+    @Get('match_types/:id')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getMatchType(@Param('id', ParseIntPipe) id: number) {
+        console.log('inside getMatchType', id);
+        return this.adminService.getMatchType(id);
+    }
+
+    // PlayerNation Integration - Football Chief, Academy Admin, Admin, Super Admin
+    @Post('playernation/submit/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async submitToPlayerNation(
+        @Param('matchId', ParseIntPipe) matchId: number,
+        @Body() payload: PlayerNationSubmitDto
+    ) {
+        console.log('=== PLAYERNATION SUBMIT ===', { 
+            matchId, 
+            teamAPlayerCount: payload.players?.teamA?.length || 0,
+            teamBPlayerCount: payload.players?.teamB?.length || 0,
+            totalPlayerCount: (payload.players?.teamA?.length || 0) + (payload.players?.teamB?.length || 0)
+        });
+        
+        try {
+            const result = await this.playerNationService.submitMatch(matchId, payload);
+            console.log('PlayerNation submit success:', result);
+            return result;
+        } catch (error) {
+            console.error('PlayerNation submit error:', error.message);
+            throw error;
+        }
+    }
+
+    @Get('playernation/status/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getPlayerNationStatus(@Param('matchId', ParseIntPipe) matchId: number) {
+        return this.playerNationService.getMatchStatus(matchId);
+    }
+
+    @Post('playernation/poll-now/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async pollNow(@Param('matchId', ParseIntPipe) matchId: number) {
+        await this.playerNationService.pollMatchStats(matchId);
+        return { message: 'Poll initiated successfully' };
+    }
+
+    // Support GET for clients that invoke poll via GET
+    @Get('playernation/poll-now/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async pollNowGet(@Param('matchId', ParseIntPipe) matchId: number) {
+        await this.playerNationService.pollMatchStats(matchId);
+        return { message: 'Poll initiated successfully' };
+    }
+
+    @Post('playernation/process-stats/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async processMatchedStats(@Param('matchId', ParseIntPipe) matchId: number) {
+        const result = await this.playerNationService.processMatchedPlayerStats(matchId);
+        return { message: 'Stats processed', ...result };
+    }
+
+    @Get('playernation/unmapped-count/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getUnmappedCount(@Param('matchId', ParseIntPipe) matchId: number) {
+        const count = await this.playerNationService.getUnmappedPlayers(matchId);
+        return { count: (count || []).length };
+    }
+
+    @Get('playernation/unmapped/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getUnmappedPlayers(@Param('matchId', ParseIntPipe) matchId: number): Promise<PlayerNationPlayerMapping[]> {
+        return this.playerNationService.getUnmappedPlayers(matchId);
+    }
+
+    @Post('playernation/mappings/purge-all')
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+    async purgeAllMappings() {
+        return this.playerNationService.purgeAllMappings();
+    }
+
+    @Post('playernation/save-mappings/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async saveMappings(
+        @Param('matchId', ParseIntPipe) matchId: number,
+        @Body() mappings: SaveMappingsDto['mappings']
+    ) {
+        await this.playerNationService.saveMappings(matchId, mappings);
+        return { message: 'Mappings saved successfully' };
+    }
+
+    @Post('playernation/signed-url')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getSignedUploadUrl(@Body() body: { fileName: string; contentType: string }) {
+        const { uploadUrl, downloadUrl } = await this.firebaseStorageService.generateSignedUploadUrl(
+            body.fileName,
+            body.contentType
+        );
+        
+        return {
+            uploadUrl,
+            downloadUrl,
+            fileName: body.fileName,
+            contentType: body.contentType
+        };
+    }
+
+    @Post('playernation/upload-video')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async uploadVideo(@Body() body: { fileName: string; contentType: string; base64Data: string; participantId: number; matchId: number }) {
+        try {
+            // Convert base64 to buffer
+            const buffer = Buffer.from(body.base64Data, 'base64');
+            
+            // Upload to Firebase Storage
+            const downloadUrl = await this.firebaseStorageService.uploadPlayerNationVideo(
+                body.fileName,
+                buffer,
+                body.contentType
+            );
+            
+            // Save video URL to database
+            await this.adminService.updateParticipantVideoUrl(body.participantId, body.matchId, downloadUrl);
+            
+            return {
+                downloadUrl,
+                fileName: body.fileName,
+                contentType: body.contentType
+            };
+        } catch (error) {
+            console.error('Video upload error:', error);
+            throw new Error('Failed to upload video');
+        }
+    }
+
+    @Post('playernation/clear-video')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async clearVideo(@Body() body: { participantId: number; matchId: number }) {
+        try {
+            await this.adminService.updateParticipantVideoUrl(body.participantId, body.matchId, null);
+            return { message: 'Video cleared successfully' };
+        } catch (error) {
+            console.error('Clear video error:', error);
+            throw new Error('Failed to clear video');
+        }
+    }
+
+    @Get('test')
+    async testEndpoint() {
+        return { message: 'Test endpoint working' };
+    }
+
+    @Get('public-test')
+    @UseGuards() // No guards for this endpoint
+    async publicTestEndpoint() {
+        return { 
+            message: 'Public test endpoint working',
+            timestamp: new Date().toISOString(),
+            playerNationServiceAvailable: !!this.playerNationService
+        };
+    }
+
+    @Get('playernation/test')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async testPlayerNation() {
+        console.log('=== PLAYERNATION TEST ENDPOINT CALLED ===');
+        console.log('PlayerNationService available:', !!this.playerNationService);
+        
+        try {
+            const token = await this.playerNationService.getValidToken();
+            return { 
+                message: 'PlayerNation service working', 
+                tokenLength: token ? token.length : 0,
+                hasToken: !!token
+            };
+        } catch (error) {
+            console.error('PlayerNation test error:', error);
+            return { 
+                message: 'PlayerNation service error', 
+                error: error.message 
+            };
+        }
     }
 }
