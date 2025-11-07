@@ -1,5 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
 import { City } from '../cities/cities.entity';
+import { VenueFormatEntity } from './venue-formats.entity';
 
 @Entity('venues')
 export class Venue {
@@ -27,6 +28,9 @@ export class Venue {
 
   @Column({ name: 'longitude', type: 'decimal', precision: 11, scale: 8, nullable: true })
   longitude: number;
+
+  @OneToMany(() => VenueFormatEntity, (venueFormat) => venueFormat.venue, { cascade: true })
+  venueFormats: VenueFormatEntity[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
