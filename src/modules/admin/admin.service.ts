@@ -16,6 +16,7 @@ import { BookingEntity } from '../booking/booking.entity';
 import { BookingSlotEntity, BookingSlotStatus } from '../booking/booking-slot.entity';
 import { BookingStatus, PaymentStatus } from '../../common/types/booking.types';
 import { generateBookingReference } from '../../common/utils/reference.util';
+import { parseGoogleMapsUrl } from '../../common/utils/google-maps.util';
 import * as csv from 'csv-parser';
 import { Readable } from 'stream';
 import { CreateUserDto, UpdateUserDto, UserFilterDto } from './dto/user.dto';
@@ -240,7 +241,7 @@ export class AdminService {
             // Get participant counts for all matches
             const matchIds = finalMatches.map(m => m.matchId);
             const countMap = new Map<number, number>();
-            
+
             if (matchIds.length > 0) {
                 // Use raw SQL query for more reliable column names
                 const participantCounts = await this.dataSource.query(
@@ -311,14 +312,14 @@ export class AdminService {
         // Extract matchStatsId to exclude it from match creation
         // Also filter out any empty strings or null values that might be sent by the frontend
         const { matchStatsId, ...matchData } = createMatchDto;
-        
+
         // Filter out empty strings and null values
         Object.keys(matchData).forEach(key => {
             if (matchData[key] === '' || matchData[key] === null) {
                 delete matchData[key];
             }
         });
-        
+
         const match = this.matchRepository.create({
             ...matchData,
             slotPrice,
@@ -529,7 +530,7 @@ export class AdminService {
      */
     private async hasOnlineBooking(matchId: number, userId: number, queryRunner?: any): Promise<boolean> {
         const repository = queryRunner ? queryRunner.manager.getRepository(BookingEntity) : this.bookingRepository;
-        
+
         const existingBooking = await repository.findOne({
             where: {
                 matchId,
@@ -553,7 +554,7 @@ export class AdminService {
     ): Promise<{ booking: BookingEntity; slot: BookingSlotEntity }> {
         // Get next available slot
         const slotNumber = await this.getNextAvailableSlotNumber(matchId, queryRunner);
-        
+
         if (!slotNumber) {
             throw new ConflictException('No available slots for this match');
         }
@@ -644,8 +645,8 @@ export class AdminService {
             }
 
             // Get cash amount from participant data (default to 0 if not provided)
-            const cashAmount = participantData.cashAmount !== undefined 
-                ? parseFloat(participantData.cashAmount) 
+            const cashAmount = participantData.cashAmount !== undefined
+                ? parseFloat(participantData.cashAmount)
                 : 0;
 
             // Create booking and slot for cash payment
@@ -1035,8 +1036,21 @@ export class AdminService {
             const name: string = (createVenueDto.name || '').toString().trim();
             const phoneNumber: string = (createVenueDto.phoneNumber || '').toString().trim();
             const address: string = (createVenueDto.address || '').toString().trim();
-            const latitude = createVenueDto.latitude ? Number(createVenueDto.latitude) : null;
-            const longitude = createVenueDto.longitude ? Number(createVenueDto.longitude) : null;
+
+            // Parse Google Maps URL if provided, otherwise use direct lat/lng
+            let latitude = createVenueDto.latitude ? Number(createVenueDto.latitude) : null;
+            let longitude = createVenueDto.longitude ? Number(createVenueDto.longitude) : null;
+
+            // Check for Google Maps URL in various possible field names
+            const googleMapsUrl = createVenueDto.googleMapsUrl || createVenueDto.mapsUrl || createVenueDto.googleMaps || createVenueDto.mapUrl;
+            if (googleMapsUrl && (!latitude || !longitude)) {
+                const coords = parseGoogleMapsUrl(googleMapsUrl);
+                if (coords) {
+                    latitude = coords.latitude;
+                    longitude = coords.longitude;
+                }
+            }
+
             const displayBanner = createVenueDto.displayBanner || null;
             const venueFormats = createVenueDto.venueFormats || [];
 
@@ -1114,6 +1128,21 @@ export class AdminService {
         const venueFormats = updateVenueDto.venueFormats;
         delete updateVenueDto.venueFormats;
 
+        // Parse Google Maps URL if provided
+        const googleMapsUrl = updateVenueDto.googleMapsUrl || updateVenueDto.mapsUrl || updateVenueDto.googleMaps || updateVenueDto.mapUrl;
+        if (googleMapsUrl) {
+            const coords = parseGoogleMapsUrl(googleMapsUrl);
+            if (coords) {
+                updateVenueDto.latitude = coords.latitude;
+                updateVenueDto.longitude = coords.longitude;
+            }
+            // Remove the URL field from DTO to avoid trying to save it
+            delete updateVenueDto.googleMapsUrl;
+            delete updateVenueDto.mapsUrl;
+            delete updateVenueDto.googleMaps;
+            delete updateVenueDto.mapUrl;
+        }
+
         // Update venue basic fields
         Object.assign(venue, updateVenueDto);
 
@@ -1185,7 +1214,7 @@ export class AdminService {
 
     async updateParticipantVideoUrl(participantId: number, matchId: number, videoUrl: string | null): Promise<void> {
         console.log(`Updating participant ${participantId} for match ${matchId} with video URL:`, videoUrl);
-        
+
         const participant = await this.matchParticipantRepository.findOne({
             where: {
                 matchParticipantId: participantId,
@@ -1206,7 +1235,7 @@ export class AdminService {
         } else {
             updateData.playernationVideoUrl = videoUrl;
         }
-        
+
         console.log('Update data:', updateData);
         await this.matchParticipantRepository.update(participantId, updateData);
         console.log('Video URL updated successfully');
