@@ -225,6 +225,19 @@ export class MatchesService {
   }
 
   async findNearbyMatches(location: { latitude: number; longitude: number }) {
+    // Calculate bounding box (approximately 50km radius)
+    // 1 degree latitude ≈ 111 km, so 50km ≈ 0.45 degrees
+    // Longitude varies by latitude, using approximate value
+    const latDelta = 0.45; // ~50km
+    const lonDelta = 0.45 / Math.cos(location.latitude * Math.PI / 180); // Adjust for latitude
+
+    const minLat = location.latitude - latDelta;
+    const maxLat = location.latitude + latDelta;
+    const minLon = location.longitude - lonDelta;
+    const maxLon = location.longitude + lonDelta;
+
+    // First, get matches within bounding box using raw SQL for better performance
+    // This significantly reduces the dataset before calculating exact distances
     const matches = await this.matchRepository
       .createQueryBuilder('match')
       .leftJoinAndSelect('match.venue', 'venue')
@@ -234,10 +247,12 @@ export class MatchesService {
       .andWhere('venue.longitude IS NOT NULL')
       .andWhere('venue.latitude != 0')
       .andWhere('venue.longitude != 0')
+      .andWhere('venue.latitude BETWEEN :minLat AND :maxLat', { minLat, maxLat })
+      .andWhere('venue.longitude BETWEEN :minLon AND :maxLon', { minLon, maxLon })
       .andWhere('match.start_time > :currentTime', { currentTime: new Date() })
       .getMany();
 
-    // Group matches by venue
+    // Group matches by venue and calculate exact distance
     const venueMap = new Map();
 
     matches.forEach(match => {
@@ -248,14 +263,15 @@ export class MatchesService {
         match.venue.longitude
       );
 
-      if (distance <= 100) {
+      // Filter by exact distance (50km = 50000 meters)
+      if (distance <= 50) { // distance is already in km from calculateDistance
         const venueId = match.venue.id;
 
         if (!venueMap.has(venueId)) {
           venueMap.set(venueId, {
             venue: {
               ...match.venue,
-              distance
+              distance: Math.round(distance * 100) / 100 // Round to 2 decimal places
             },
             matches: []
           });
