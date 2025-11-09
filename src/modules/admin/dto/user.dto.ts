@@ -112,6 +112,9 @@ export class UserFilterDto {
     city?: number;
 
     @IsOptional()
+    id?: number | number[];
+
+    @IsOptional()
     @IsNumber()
     limit?: number;
 

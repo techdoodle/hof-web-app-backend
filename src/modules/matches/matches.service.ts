@@ -304,7 +304,7 @@ export class MatchesService {
     const endTime = Date.now();
     console.log("query ends here", endTime, "time taken", endTime - startTime);
 
-    // Group matches by venue
+    // Group matches by venue and calculate exact distance
     const venueMap = new Map();
     const startTime2 = Date.now();
     console.log("venueMap query starts here", startTime2);

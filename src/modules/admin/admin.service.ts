@@ -76,9 +76,19 @@ export class AdminService {
             queryBuilder.andWhere('city.id = :cityId', { cityId: filters.city });
         }
 
+        if (filters.id) {
+            // Handle both single ID and array of IDs
+            const ids = Array.isArray(filters.id) ? filters.id : [filters.id];
+            // Convert to numbers in case they come as strings
+            const numericIds = ids.map(id => Number(id)).filter(id => !isNaN(id));
+            if (numericIds.length > 0) {
+                queryBuilder.andWhere('user.id IN (:...ids)', { ids: numericIds });
+            }
+        }
+
         const [users, total] = await queryBuilder
             .orderBy('user.createdAt', 'DESC')
-            .limit(filters.limit || 50)
+            .limit(filters.id ? 1000 : filters.limit || 50)
             .offset(filters.offset || 0)
             .getManyAndCount();
 
