@@ -235,67 +235,120 @@ export class MatchesService {
     const maxLat = location.latitude + latDelta;
     const minLon = location.longitude - lonDelta;
     const maxLon = location.longitude + lonDelta;
+    const currentTime = new Date();
 
-    // First, get matches within bounding box using raw SQL for better performance
-    // This significantly reduces the dataset before calculating exact distances
-    const matches = await this.matchRepository
-      .createQueryBuilder('match')
-      .leftJoinAndSelect('match.venue', 'venue')
-      .leftJoinAndSelect('match.matchTypeRef', 'matchType')
-      .leftJoinAndSelect('match.footballChief', 'footballChief')
-      .where('venue.latitude IS NOT NULL')
-      .andWhere('venue.longitude IS NOT NULL')
-      .andWhere('venue.latitude != 0')
-      .andWhere('venue.longitude != 0')
-      .andWhere('venue.latitude BETWEEN :minLat AND :maxLat', { minLat, maxLat })
-      .andWhere('venue.longitude BETWEEN :minLon AND :maxLon', { minLon, maxLon })
-      .andWhere('match.start_time > :currentTime', { currentTime: new Date() })
-      .getMany();
+    const startTime = Date.now();
+    console.log("findNearbyMatches query starts here", location, startTime);
 
-    // Group matches by venue and calculate exact distance
+    // Optimized: Use raw SQL with distance calculation in database
+    // This reduces data transfer and calculates distance efficiently
+    // Using CTE to avoid duplicate distance calculation
+    const matches = await this.connection.query(`
+      WITH matches_with_distance AS (
+        SELECT 
+          m.match_id as id,
+          m.start_time as "startTime",
+          m.end_time as "endTime",
+          m.slot_price as "slotPrice",
+          m.offer_price as "offerPrice",
+          m.player_capacity as "playerCapacity",
+          m.booked_slots as "bookedSlots",
+          v.id as "venueId",
+          v.name as "venueName",
+          v.latitude as "venueLatitude",
+          v.longitude as "venueLongitude",
+          v.address as "venueAddress",
+          v.display_banner as "venueDisplayBanner",
+          v.phone_number as "venuePhoneNumber",
+          mt.match_name as "matchTypeName",
+          u.id as "footballChiefId",
+          u.first_name as "footballChiefFirstName",
+          u.phone_number as "footballChiefPhoneNumber",
+          u.email as "footballChiefEmail",
+          -- Calculate distance using Haversine formula (in km)
+          (
+            6371 * acos(
+              cos(radians($1)) * 
+              cos(radians(v.latitude::numeric)) * 
+              cos(radians(v.longitude::numeric) - radians($2)) + 
+              sin(radians($1)) * 
+              sin(radians(v.latitude::numeric))
+            )
+          ) as distance
+        FROM matches m
+        INNER JOIN venues v ON m.venue = v.id
+        LEFT JOIN match_types mt ON m.match_type_id = mt.id
+        LEFT JOIN users u ON m.football_chief = u.id
+        WHERE v.latitude IS NOT NULL
+          AND v.longitude IS NOT NULL
+          AND v.latitude != 0
+          AND v.longitude != 0
+          AND v.latitude BETWEEN $3 AND $4
+          AND v.longitude BETWEEN $5 AND $6
+          AND m.start_time > $7
+      )
+      SELECT * FROM matches_with_distance
+      WHERE distance <= 50
+      ORDER BY distance ASC
+      LIMIT 100
+    `, [
+      location.latitude,
+      location.longitude,
+      minLat,
+      maxLat,
+      minLon,
+      maxLon,
+      currentTime
+    ]);
+
+    const endTime = Date.now();
+    console.log("query ends here", endTime, "time taken", endTime - startTime);
+
+    // Group matches by venue
     const venueMap = new Map();
+    const startTime2 = Date.now();
+    console.log("venueMap query starts here", startTime2);
 
-    matches.forEach(match => {
-      const distance = this.calculateDistance(
-        location.latitude,
-        location.longitude,
-        match.venue.latitude,
-        match.venue.longitude
-      );
+    matches.forEach((row: any) => {
+      const venueId = row.venueId;
+      const distance = Math.round(parseFloat(row.distance) * 100) / 100;
 
-      // Filter by exact distance (50km = 50000 meters)
-      if (distance <= 50) { // distance is already in km from calculateDistance
-        const venueId = match.venue.id;
-
-        if (!venueMap.has(venueId)) {
-          venueMap.set(venueId, {
-            venue: {
-              ...match.venue,
-              distance: Math.round(distance * 100) / 100 // Round to 2 decimal places
-            },
-            matches: []
-          });
-        }
-
-        venueMap.get(venueId).matches.push({
-          id: match.matchId,
-          startTime: match.startTime,
-          endTime: match.endTime,
-          matchType: match.matchTypeRef?.matchName || 'HOF Play',
-          slotPrice: match.slotPrice,
-          offerPrice: match.offerPrice,
-          playerCapacity: match.playerCapacity,
-          bookedSlots: match.bookedSlots,
-          footballChief: {
-            id: match.footballChief?.id || null,
-            name: match.footballChief?.firstName || '',
-            number: match.footballChief?.phoneNumber || '',
-            email: match.footballChief?.email || ''
-          }
+      if (!venueMap.has(venueId)) {
+        venueMap.set(venueId, {
+          venue: {
+            id: venueId,
+            name: row.venueName,
+            latitude: parseFloat(row.venueLatitude),
+            longitude: parseFloat(row.venueLongitude),
+            address: row.venueAddress,
+            displayBanner: row.venueDisplayBanner,
+            phoneNumber: row.venuePhoneNumber,
+            distance: distance
+          },
+          matches: []
         });
       }
+
+      venueMap.get(venueId).matches.push({
+        id: row.id,
+        startTime: row.startTime,
+        endTime: row.endTime,
+        matchType: row.matchTypeName || 'HOF Play',
+        slotPrice: parseFloat(row.slotPrice || 0),
+        offerPrice: parseFloat(row.offerPrice || 0),
+        playerCapacity: parseInt(row.playerCapacity || 0),
+        bookedSlots: parseInt(row.bookedSlots || 0),
+        footballChief: {
+          id: row.footballChiefId || null,
+          name: row.footballChiefFirstName || '',
+          number: row.footballChiefPhoneNumber || '',
+          email: row.footballChiefEmail || ''
+        }
+      });
     });
 
+    const endTime2 = Date.now();
+    console.log("venueMap query ends here", endTime2, "time taken", endTime2 - startTime2);
     // Convert to array and sort by distance
     return Array.from(venueMap.values())
       .sort((a, b) => a.venue.distance - b.venue.distance)
