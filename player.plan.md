@@ -1,268 +1,157 @@
-# PlayerNation Integration Plan
+# Google Maps URL Integration for Venues - Updated Plan
 
 ## Overview
 
-Add admin workflow to submit match + per-player 360 videos to PlayerNation, persist external matchId, and poll for stats to ingest into our compact stats system.
+Replace direct latitude/longitude inputs with Google Maps URL fields in both Excel upload and frontend forms. Automatically extract coordinates using the existing `parseGoogleMapsUrl` utility function. Track and display specific venue rows that fail URL parsing while still saving successful venues.
 
-## Existing Infrastructure (Leveraged)
+## Backend Changes
 
-✅ **Matches entity**: `matchStatsId` already nullable, `matchType` enum (RECORDED/NON_RECORDED) exists  
-✅ **Admin module**: Existing with DTO structure, controllers, and services  
-✅ **Guards**: `RolesGuard` and `JwtAuthGuard` for RBAC  
-✅ **Notifications**: `NotificationService` and `EmailService` for alerts  
-✅ **GCS**: Firebase Storage integration via `FirebaseStorageService`  
-✅ **Config pattern**: `registerAs` pattern established  
+### 1. Update Excel Upload Service (`venue-excel-upload.service.ts`)
 
-## Scope
+- **Update `ExcelVenueRow` interface**: 
+  - Remove `latitude?: number` and `longitude?: number`
+  - Add `googleMapsUrl?: string`
 
-- Admin UI to submit a match to PlayerNation with per-player 360 URLs and full match video URL.
-- Backend endpoint to validate, call PlayerNation, store `externalMatchId` against our match.
-- Background job to poll `/hof/getStats` by `externalMatchId`, map to compact stats (10), upsert into `match_participant_stats`.
-- JWT-based auth, retries, and admin access control.
+- **Update `validateVenueData` method**: 
+  - Remove latitude/longitude validation (lines 98-111)
+  - Add validation for Google Maps URL format (optional field)
+  - Validate that URL can be parsed if provided (warn but don't fail)
 
-## Backend
+- **Update `processVenueUpload` method**:
+  - Import `parseGoogleMapsUrl` from `../../common/utils/google-maps.util`
+  - Create `failedVenues` array to track venues with parsing failures: `{ row: number, venueName: string, phoneNumber: string, reason: string }`
+  - For each row, check if `googleMapsUrl` is provided
+  - Parse the URL to extract coordinates using `parseGoogleMapsUrl`
+  - If parsing fails and URL is provided, add to `failedVenues` array with row number, venue name, phone number, and reason
+  - Continue processing the venue (save with null coordinates if parsing fails)
+  - Return `failedVenues` array in addition to `created`, `updated`, and `errors`
 
-### API Reference
+- **Update `generateExcelTemplate` method**:
+  - Replace `'latitude'` and `'longitude'` headers with `'googleMapsUrl'` (lines 237-238)
+  - Update sample row to include example Google Maps URL instead of coordinates (lines 254-255)
+  - Example URL: `https://www.google.com/maps/place/Example+Venue/@19.0760,72.8777,15z`
 
-Follow the official PlayerNation HOF docs: [PlayerNation HOF API](https://www.theplayernation.com/apidocs/hof)
+### 2. Update Admin Controller (`admin.controller.ts`)
 
-- **Base URL**: `https://api.theplayernation.com`
-- **Endpoints**:
-  - POST `/hof/verify` → `{ phone, password }` → returns `{ success, message, accessToken }` (valid 30 days)
-  - POST `/hof/uploadGame` (not uploadMatch) → returns `{ success, message, matchId }`
-  - POST `/hof/getStats` → `{ matchId }` → returns `{ status, matchNotes, playerStats }`
+- **Update `uploadVenuesExcel` endpoint** (line 283-298):
+  - Include `failedVenues` in the response object
+  - Response structure: `{ message, created, updated, errors, failedVenues }`
 
-### Authentication (JWT-based)
+### 3. Verify Admin Service (`admin.service.ts`)
 
-- One-time: obtain password from PlayerNation team.
-- Verify: POST `/hof/verify` with `{ phone, password }` → store `accessToken`.
-- Use: `Authorization: Bearer <accessToken>` header on all requests.
-- Token valid 30 days; refresh on 401.
+- Ensure `createVenue` and `updateVenue` methods already handle `googleMapsUrl` (verify lines 1088-1096 and 1175-1188)
+- The existing code should already handle this correctly
+
+## Frontend Changes
+
+### 4. Update VenueExcelUpload Component (`VenueExcelUpload.tsx`)
+
+- **Update `UploadResult` interface**:
+  - Add `failedVenues?: Array<{ row: number; venueName: string; phoneNumber: string; reason: string }>`
+
+- **Update results display section** (lines 213-247):
+  - Add a new section to display failed venues clearly
+  - Show failed venues in a table or list format with:
+    - Row number
+    - Venue name
+    - Phone number
+    - Reason for failure (e.g., "Failed to parse Google Maps URL")
+  - Use Material-UI `Table` or `List` component for better readability
+  - Style failed venues section with error/warning color scheme
+  - Display message: "X venue(s) failed Google Maps URL parsing but were saved without coordinates"
+
+### 5. Update VenueCreate Component (`VenueCreate.tsx`)
+
+- **Remove**: Direct latitude/longitude `TextInput` fields (lines 130-147)
+- **Add**: Google Maps URL `TextInput` field
+  - Label: "Google Maps URL"
+  - Placeholder: "https://www.google.com/maps/place/..."
+  - Optional field (no `required()` validation)
+- **Add**: Read-only display of extracted coordinates
+  - Use `TextInput` with `disabled` prop or `Typography` component
+  - Show latitude and longitude as read-only fields
+  - Update coordinates when Google Maps URL changes (client-side parsing or API call)
+  - Label: "Latitude (auto-extracted)" and "Longitude (auto-extracted)"
+- **Update `transform` function**: 
+  - Ensure `googleMapsUrl` is passed to backend
+  - Remove any latitude/longitude transformation logic
+
+### 6. Update VenueEdit Component (`VenueEdit.tsx`)
+
+- **Remove**: Direct latitude/longitude `TextInput` fields (lines 128-145)
+- **Add**: Google Maps URL `TextInput` field
+  - Label: "Google Maps URL"
+  - Placeholder: "https://www.google.com/maps/place/..."
+  - Optional field
+  - Pre-populate with existing URL if venue has one (may need backend support)
+- **Add**: Display current coordinates as read-only
+  - Show existing latitude and longitude as read-only fields
+  - Label: "Latitude (read-only)" and "Longitude (read-only)"
+  - If venue has lat/lng but no URL, show them as read-only
+- **Update `transform` function**: 
+  - Ensure `googleMapsUrl` is passed to backend
+  - Remove any latitude/longitude transformation logic
+
+### 7. Optional: Create Google Maps URL Input Component
+
+- Create reusable component `GoogleMapsUrlInput.tsx` that:
+  - Accepts URL input
+  - Parses URL on change (client-side using same utility logic or API call)
+  - Shows extracted coordinates as read-only preview
+  - Handles validation and error states
+  - Use this component in both VenueCreate and VenueEdit
+
+## Implementation Details
+
+### Excel Template Format
+
+- Column name: `googleMapsUrl`
+- Example value: `https://www.google.com/maps/place/Example+Venue/@19.0760,72.8777,15z`
+- Supports all formats handled by `parseGoogleMapsUrl` utility
 
 ### Error Handling
 
-- 201 (uploadGame success), 200 (getStats success/analyzing/cancelled), 400 (validation), 401 (auth), 404 (not found), 429 (rate limit), 5xx (server).
-- Retry 5xx with exponential backoff; never retry 4xx.
-- getStats status: "success", "analyzing", "cancelled"; matchNotes provides context.
+- Excel upload: If URL parsing fails, add to `failedVenues` array and continue (coordinates will be null)
+- Frontend: Show validation error if URL format is invalid (optional client-side validation)
+- Backend: Return clear error messages in `failedVenues` array with specific row numbers and venue details
 
-### Payload (uploadGame)
+### Failed Venues Response Structure
 
-**Required**: `teamA`, `teamB`, `matchDate` (ISO), `matchLink` (URL), `players.teamA[]`, `players.teamB[]`.
-
-**Optional per player**: `name`, `hofPlayerId`, `jerseyNumber`, `playerVideo`, `playerImages[]`, `goal`, `ownGoal`.
-
-**Optional match**: `matchFormat` (enum), `matchDuration` (number), `matchName`, `teamAScore`, `teamBScore`, `matchMetaDataJson` (JSON).
-
-### Configuration
-
-- Create separate `src/config/playernation.config.ts` using `registerAs` pattern (matching existing config structure):
 ```typescript
-import { registerAs } from '@nestjs/config';
-
-export default registerAs('playernation', () => ({
-  baseUrl: process.env.PLAYERNATION_BASE_URL || 'https://api.theplayernation.com',
-  phone: process.env.PLAYERNATION_PHONE,
-  password: process.env.PLAYERNATION_PASSWORD,
-}));
+{
+  created: number;
+  updated: number;
+  errors: string[];
+  failedVenues: Array<{
+    row: number;           // Excel row number (1-indexed, accounting for header)
+    venueName: string;     // Venue name from Excel
+    phoneNumber: string;   // Phone number from Excel
+    reason: string;        // Error reason, e.g., "Failed to parse Google Maps URL"
+  }>;
+}
 ```
-- Import in `app.module.ts` ConfigModule imports array
-- Store JWT token in DB table `playernation_tokens` (30-day TTL); refresh logic in service.
 
-### DTOs
+### Backward Compatibility
 
-- `src/modules/admin/dto/playernation-submit.dto.ts`: mirrors uploadGame payload.
-- `src/modules/admin/dto/playernation-auth.dto.ts`: `{ phone, password }`.
-- **Note**: Admin module already exists with DTO structure - extend the existing `admin/dto/` directory.
+- Existing venues with lat/lng but no URL will continue to work
+- Excel upload will update venues, preserving existing coordinates if URL parsing fails
+- Frontend forms will show existing coordinates as read-only even if no URL is provided
 
-### Controller/Service
+## Files to Modify
 
-**POST /admin/playernation/submit/:matchId**:
-- Validate admin role; load `Match`.
-- Ensure JWT token is valid (call verify if expired/missing).
-- Build payload per docs; call `POST https://api.theplayernation.com/hof/uploadGame` with `Authorization: Bearer <token>`.
-- On 201: persist `matchStatsId` (PlayerNation's returned matchId); store payload; audit log.
+1. `hof-web-app-backend/src/modules/admin/services/venue-excel-upload.service.ts`
+2. `hof-web-app-backend/src/modules/admin/admin.controller.ts`
+3. `hof-admin/src/resources/venues/VenueExcelUpload.tsx`
+4. `hof-admin/src/resources/venues/VenueCreate.tsx`
+5. `hof-admin/src/resources/venues/VenueEdit.tsx`
+6. (Optional) `hof-admin/src/components/GoogleMapsUrlInput.tsx` - new component
 
-**GET /admin/playernation/status/:matchId**:
-- Return `matchStatsId`, status, last poll time, mapping completeness.
+## Testing Considerations
 
-**POST /admin/playernation/poll-now/:matchId**:
-- Enqueue immediate poll job.
-
-### Database Changes (Migration)
-
-**`matches` table** (extends existing entity):
-- ✅ `matchStatsId` is **already NULLABLE** (varchar(255), unique, nullable: true) - no migration needed for this!
-- Use existing `matchStatsId` to store PlayerNation's returned `matchId`; only populate for recorded matches.
-- ✅ `matchType` enum already exists (RECORDED/NON_RECORDED) - use this to identify recorded matches.
-- Add new columns:
-  - `playernation_status` VARCHAR (PENDING/PROCESSING/PARTIAL/IMPORTED/TIMEOUT/ERROR)
-  - `playernation_next_poll_at` TIMESTAMPTZ
-  - `playernation_poll_attempts` INT
-  - `playernation_payload` JSONB
-  - `playernation_last_response` JSONB
-
-**New table `playernation_player_mappings`**:
-- `id` (PK)
-- `match_id` (FK to matches)
-- `external_player_id` VARCHAR
-- `external_name` TEXT
-- `external_team` CHAR
-- `thumbnail_urls` TEXT[]
-- `internal_player_id` (FK to users, nullable)
-- `internal_phone` TEXT
-- `status` ENUM (UNMATCHED/MATCHED/IGNORED)
-- `created_by` (FK to users)
-- `updated_at` TIMESTAMPTZ
-
-**New table `playernation_tokens`**:
-- `id` (PK)
-- `access_token` TEXT
-- `expires_at` TIMESTAMPTZ
-- `created_at` TIMESTAMPTZ
-
-### Polling Job
-
-- Queue/cron: poll every 60 minutes for up to 24 hours (12 attempts max) per match with `matchStatsId` and status != IMPORTED.
-- Call `POST https://api.theplayernation.com/hof/getStats` with `{ matchId }` and `Authorization: Bearer <token>`.
-
-**Response handling**:
-- `status: "analyzing"` → set `playernation_status = PROCESSING`; schedule next poll at +60m.
-- `status: "cancelled"` → set `playernation_status = ERROR`; stop polling; alert admins.
-- `status: "success"` → proceed to mapping/ingestion.
-
-**Player mapping**:
-- If `playerVideo` was NOT provided in uploadGame, PlayerNation returns `thumbnail[]` in `playerInfo`.
-- Upsert into `playernation_player_mappings` with status UNMATCHED; block ingestion until admin maps.
-- If `hofPlayerId` present or mapping is MATCHED, join to internal user (by phoneNumber).
-
-**Stats ingestion (once MATCHED)**:
-
-Map PlayerNation stats to compact (10):
-- `goal.totalCount` → goals
-- `assist.totalCount` → assists
-- `pass.totalCount` → totalPasses
-- `passAccuracy.totalCount` (as decimal) → passingAccuracy
-- `keyPass.totalCount` → keyPasses
-- `shot.totalCount` → totalShots
-- `shotAccuracy.totalCount` (as decimal) → shotAccuracy
-- `tackle.totalCount` → tackles
-- `interception.totalCount` → interceptions
-- `save.totalCount` → saves
-
-- Upsert into `match_participant_stats` (phoneNumber join); set `isMvp` from `isMOTM`.
-- Store `hightlightURL` and `thumbnail[]` in match/player media.
-
-**Stop conditions**:
-- All players ingested → `playernation_status = IMPORTED`; stop polling; trigger GCS cleanup.
-- 24h elapsed or 12 attempts with status != success → `playernation_status = TIMEOUT`; alert admins.
-
-### Error Handling
-
-- JWT refresh on 401; retry 5xx with exponential backoff; respect 429 `Retry-After`.
-- Validate URLs (https), ISO dates, enums; rate-limit outbound calls; circuit breaker.
-
-## Frontend (Admin Panel)
-
-### Match Creation Integration
-
-- Use existing `matchType` enum (RECORDED/NON_RECORDED) to identify recorded matches.
-- In match create/edit form, when `matchType === 'RECORDED'` is selected, show "Prepare PlayerNation Upload" CTA on match detail admin page post-creation.
-- Hide PlayerNation section for `matchType === 'NON_RECORDED'` matches.
-
-### Upload Form Route
-
-**Route**: `/admin/playernation/upload?matchId=...`
-
-**Help text & tooltips throughout**:
-- Page header: "Upload match data to PlayerNation for AI-powered stats generation. This process takes up to 24 hours."
-- Match link field: "Provide Google Drive link or full match video URL. Must be accessible."
-- Player video: "⚠️ Click 'Save Video' for each player to avoid loss if page refreshes. Videos are auto-deleted after 48h."
-- hofPlayerId: "Link to registered user for automatic stats mapping. Leave empty if player not in system."
-- Submit button: "Submit to PlayerNation. You can check processing status on this page."
-
-**Form Sections**:
-- Match info: teamA, teamB, matchDate (ISO picker), matchFormat (enum dropdown), matchDuration, matchName, matchLink (full match URL or Google Drive), teamAScore, teamBScore, matchMetaDataJson (JSON editor).
-- Players per team: dynamic list with fields (name, hofPlayerId [search/select], jerseyNumber, playerVideo URL or upload, playerImages[] URLs/upload, goal, ownGoal).
-- 360 capture (optional):
-  - Camera widget per player to record short clips.
-  - Each player row has individual "Save Video" button (not global submit).
-  - On click: immediately upload to GCS via signed URL; store returned URL; show success indicator.
-  - Persist uploaded URLs to draft/session (backend or localStorage) to survive page refresh.
-  - Visual state: show thumbnail/preview + "✓ Saved" once uploaded; "Upload" if pending.
-
-**Actions**:
-- Submit: calls `POST /admin/playernation/submit/:matchId`.
-- Status panel: shows `matchStatsId`, last poll time, status badge, "Poll Now" button.
-
-**Validation**:
-- Required: teamA, teamB, matchDate (ISO), matchLink (URL), players arrays non-empty.
-
-### Thumbnail-based Player Matching (Fallback)
-
-**Route**: `/admin/playernation/match?matchId=...`
-
-**UI**: Two-column layout
-- Left: PlayerNation detected players (thumbnail[], name, team, jerseyNumber).
-- Right: Internal match participants with visible data: name, **phoneNumber** (prominently displayed), jerseyNumber; searchable/filterable by name or phone; phoneNumber is authoritative identifier.
-
-**Features**:
-- Drag-and-drop or select-to-map.
-- Auto-suggest by name similarity; highlight conflicts.
-- One-to-one validation; block finalization if unresolved.
-- Actions: Save Draft, Finalize Mapping.
-- Post-finalize: all future polls auto-apply mapping; stats write via phoneNumber.
-- Audit: who mapped, when, before/after snapshot.
-
-## Security & Access
-
-- Restrict to roles `ADMIN`, `FOOTBALL_CHIEF` using **existing `RolesGuard`** (`src/common/guards/roles.guard.ts`).
-- Use existing `JwtAuthGuard` for authentication.
-- PlayerNation JWT token stored server-side in DB; never exposed to FE.
-
-## Temporary Media Storage (GCS)
-
-- Bucket: Reuse existing Firebase Storage bucket (configured via `FIREBASE_STORAGE_BUCKET` env var).
-- Use prefix `playernation_temp/` for PlayerNation media (separate from existing `profile_pictures/` prefix).
-
-**Upload flow**:
-- FE requests signed URL (PUT) per asset (player 360, images, match video if in-app).
-- BE endpoint: `POST /admin/playernation/signed-url` → returns `{ uploadUrl, filePath }` (15m TTL).
-- Leverage existing `FirebaseStorageService` or extend with `getSignedUploadUrl()` method.
-- FE uploads directly to GCS; BE stores returned `filePath` in form state.
-
-**Retention**:
-- Lifecycle rule: delete objects with prefix `playernation_temp/` after 48h.
-- On successful ingestion: enqueue immediate deletion of match-specific files (don't wait 48h).
-
-**Security**:
-- Private objects; signed URLs only; MIME/size validation (enforce video/image types, max 200MB per file); optional virus scan.
-
-## Observability
-
-- Audit: submit, poll, mapping actions.
-- Metrics: submit success rate, poll success rate, mapping coverage (%), ingestion latency, token refresh rate.
-- Alerts: stuck states, 401 (token issues), timeout, cancelled matches.
-- **Leverage existing `NotificationService` and `EmailService`** for admin alerts on errors/timeouts.
-
-## Deliverables
-
-- BE: endpoints, migrations, polling worker, JWT refresh logic.
-- FE: admin upload page, player mapping UI, status dashboard.
-- Docs: README section for PlayerNation integration, stat mapping table, troubleshooting.
-
-## Implementation Todos
-
-- [ ] Add PlayerNation config (base URL, phone, password, token storage)
-- [ ] Create migrations for matches columns, playernation_player_mappings, playernation_tokens
-- [ ] JWT verify service with token refresh logic
-- [ ] Create DTOs for uploadGame payload and verify
-- [ ] Implement POST submit, GET status, POST poll-now with RBAC
-- [ ] HTTP client for PlayerNation with JWT and retries
-- [ ] Polling job (60m cadence, 24h window) with status handling
-- [ ] Map PlayerNation stats to compact stats; upsert to DB
-- [ ] Player matching service for thumbnail-based flow
-- [ ] Admin UI to submit match and per-player 360 URLs
-- [ ] 360 capture widget with GCS upload
-- [ ] Player matching UI for thumbnail fallback
-- [ ] GCS bucket lifecycle and signed URL generation
-- [ ] README docs, stat mapping table, admin guide
+- Test with various Google Maps URL formats
+- Test with invalid URLs (should add to failedVenues but still save venue)
+- Test Excel upload with mixed valid/invalid URLs
+- Verify coordinates are correctly extracted and saved for valid URLs
+- Verify failed venues are clearly displayed in the frontend
+- Verify existing venues continue to work after update
+- Test with empty googleMapsUrl (should not fail, just skip coordinate extraction)
