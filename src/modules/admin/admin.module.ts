@@ -15,7 +15,7 @@ import { VenueFormatEntity } from '../venue/venue-formats.entity';
 import { MatchType } from '../match-types/match-types.entity';
 import { CsvUploadService } from '../match-participant-stats/csv-upload.service';
 import { PlayerNationService } from './services/playernation.service';
-import { VenueExcelUploadService } from './services/venue-excel-upload.service';
+import { VenueCsvUploadService } from './services/venue-excel-upload.service';
 import { PlayerNationPollingJob } from './jobs/playernation-polling.job';
 import { FirebaseStorageService } from '../user/firebase-storage.service';
 import { FirebaseConfig } from '../../config/firebase.config';
@@ -44,7 +44,7 @@ import { BookingSlotEntity } from '../booking/booking-slot.entity';
         ]),
     ],
     controllers: [AdminController, TestController],
-    providers: [AdminService, CsvUploadService, PlayerNationService, PlayerNationPollingJob, FirebaseStorageService, FirebaseConfig, VenueExcelUploadService],
+    providers: [AdminService, CsvUploadService, PlayerNationService, PlayerNationPollingJob, FirebaseStorageService, FirebaseConfig, VenueCsvUploadService],
     exports: [AdminService, PlayerNationService],
 })
 export class AdminModule { }

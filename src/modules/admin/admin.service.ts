@@ -444,19 +444,62 @@ export class AdminService {
                 .offset(query.offset || 0)
                 .getManyAndCount();
 
+            // Fetch all booking slots and bookings for these participants in one query
+            const participantIds = participants
+                .filter(p => p.match?.matchId && p.user?.id)
+                .map(p => ({ matchId: p.match!.matchId, userId: p.user!.id }));
+
+            let paymentMap = new Map<string, string>();
+            if (participantIds.length > 0) {
+                const matchIds = [...new Set(participantIds.map(p => p.matchId))];
+                const userIds = [...new Set(participantIds.map(p => p.userId))];
+
+                const bookingSlots = await this.bookingSlotRepository
+                    .createQueryBuilder('bs')
+                    .innerJoinAndSelect('bs.booking', 'booking')
+                    .where('booking.matchId IN (:...matchIds)', { matchIds })
+                    .andWhere('bs.playerId IN (:...userIds)', { userIds })
+                    .andWhere('bs.status = :status', { status: BookingSlotStatus.ACTIVE })
+                    .getMany();
+
+                bookingSlots.forEach(slot => {
+                    const key = `${slot.booking.matchId}-${slot.playerId}`;
+                    paymentMap.set(key, slot.booking.paymentStatus === PaymentStatus.PAID_CASH 
+                        ? 'Cash' 
+                        : 'Online/Razorpay');
+                });
+            }
+
             // Map data for React Admin's ReferenceField compatibility
-            const mappedParticipants = participants.map(participant => ({
+            // Include user data directly so football_chief can see it without accessing users endpoint
+            const mappedParticipants = participants.map(participant => {
+                const key = participant.match?.matchId && participant.user?.id 
+                    ? `${participant.match.matchId}-${participant.user.id}` 
+                    : null;
+                const paymentType = key ? paymentMap.get(key) || 'N/A' : 'N/A';
+
+                return {
                 id: participant.matchParticipantId,
                 teamName: participant.teamName,
                 paidStatsOptIn: participant.paidStatsOptIn,
-                playernationVideoUrl: participant.playernationVideoUrl, // Add video URL field
+                    playernationVideoUrl: participant.playernationVideoUrl,
+                    paymentType: paymentType,
                 // Reference IDs for React Admin
-                matchId: participant.match?.matchId,  // Just the ID for ReferenceField
-                user: participant.user?.id,         // Just the ID for ReferenceField
+                    matchId: participant.match?.matchId,
+                    user: participant.user?.id,
+                // Include user data directly for display (so football_chief can see it)
+                    userData: participant.user ? {
+                        id: participant.user.id,
+                        firstName: (participant.user as any).firstName,
+                        lastName: (participant.user as any).lastName,
+                        phoneNumber: (participant.user as any).phoneNumber,
+                        email: (participant.user as any).email,
+                    } : null,
                 // Keep creation/update timestamps
                 createdAt: participant.createdAt,
                 updatedAt: participant.updatedAt
-            }));
+                };
+            });
 
             return {
                 data: mappedParticipants,
@@ -486,10 +529,22 @@ export class AdminService {
     }
 
     async getMatchParticipants(matchId: number) {
-        return this.matchParticipantRepository.find({
+        const participants = await this.matchParticipantRepository.find({
             where: { match: { matchId } },
             relations: ['user', 'match'],
         });
+        
+        // Include user data directly so football_chief can see it without accessing users endpoint
+        return participants.map(participant => ({
+            ...participant,
+            userData: participant.user ? {
+                id: participant.user.id,
+                firstName: (participant.user as any).firstName,
+                lastName: (participant.user as any).lastName,
+                phoneNumber: (participant.user as any).phoneNumber,
+                email: (participant.user as any).email,
+            } : null,
+        }));
     }
 
     /**
@@ -621,15 +676,15 @@ export class AdminService {
             );
 
             if (!match || match.length === 0) {
-                throw new NotFoundException(`Match with ID ${matchId} not found`);
-            }
+            throw new NotFoundException(`Match with ID ${matchId} not found`);
+        }
 
             const matchData = match[0];
 
-            const user = await this.userRepository.findOne({ where: { id: participantData.userId } });
-            if (!user) {
-                throw new NotFoundException(`User with ID ${participantData.userId} not found`);
-            }
+        const user = await this.userRepository.findOne({ where: { id: participantData.userId } });
+        if (!user) {
+            throw new NotFoundException(`User with ID ${participantData.userId} not found`);
+        }
 
             // Check if user already has online booking (within transaction)
             const hasOnline = await this.hasOnlineBooking(matchId, participantData.userId, queryRunner);
@@ -641,12 +696,12 @@ export class AdminService {
 
             // Check if participant already exists (within transaction)
             const existingParticipant = await queryRunner.manager.findOne(MatchParticipant, {
-                where: { match: { matchId }, user: { id: participantData.userId } },
-            });
+            where: { match: { matchId }, user: { id: participantData.userId } },
+        });
 
-            if (existingParticipant) {
-                throw new BadRequestException('User is already a participant in this match');
-            }
+        if (existingParticipant) {
+            throw new BadRequestException('User is already a participant in this match');
+        }
 
             // Check slot availability
             const availableSlot = await this.getNextAvailableSlotNumber(matchId, queryRunner);
@@ -663,7 +718,7 @@ export class AdminService {
             const { booking, slot } = await this.createBookingSlotForCashPayment(
                 matchId,
                 participantData.userId,
-                user,
+            user,
                 cashAmount,
                 queryRunner
             );
@@ -672,9 +727,9 @@ export class AdminService {
             const participant = queryRunner.manager.create(MatchParticipant, {
                 match: { matchId },
                 user: { id: participantData.userId },
-                teamName: participantData.teamName,
-                paidStatsOptIn: participantData.paidStatsOptIn || false,
-            });
+            teamName: participantData.teamName,
+            paidStatsOptIn: participantData.paidStatsOptIn || false,
+        });
 
             const savedParticipant = await queryRunner.manager.save(MatchParticipant, participant);
 
@@ -701,12 +756,12 @@ export class AdminService {
         try {
             // Find participant within transaction
             const participant = await queryRunner.manager.findOne(MatchParticipant, {
-                where: { match: { matchId }, user: { id: userId } },
-            });
+            where: { match: { matchId }, user: { id: userId } },
+        });
 
-            if (!participant) {
-                throw new NotFoundException('Match participant not found');
-            }
+        if (!participant) {
+            throw new NotFoundException('Match participant not found');
+        }
 
             // Find associated booking slot using transaction manager
             const bookingSlot = await queryRunner.manager
@@ -760,7 +815,7 @@ export class AdminService {
 
             this.logger.log(`Removed participant ${userId} from match ${matchId} and associated booking slot`);
 
-            return { message: 'Match participant removed successfully' };
+        return { message: 'Match participant removed successfully' };
         } catch (error) {
             await queryRunner.rollbackTransaction();
             throw error;
@@ -945,16 +1000,16 @@ export class AdminService {
     // Venue Management
     async getVenues(query: any) {
         try {
-            const venues = await this.venueRepository.find({
+        const venues = await this.venueRepository.find({
                 relations: ['city', 'venueFormats'],
-                order: { name: 'ASC' }
-            });
+            order: { name: 'ASC' }
+        });
 
-            const total = await this.venueRepository.count();
+        const total = await this.venueRepository.count();
 
-            return {
-                data: venues,
-                total: total
+        return {
+            data: venues,
+            total: total
             };
         } catch (error: any) {
             // If venue_formats table doesn't exist yet, fetch without the relation
@@ -1019,14 +1074,14 @@ export class AdminService {
             // If venue_formats table doesn't exist yet, fetch without the relation
             if (error.message?.includes('venue_formats') || error.message?.includes('does not exist')) {
                 this.logger.warn('venue_formats table does not exist, fetching venue without format relations');
-                const venue = await this.venueRepository.findOne({
-                    where: { id },
-                    relations: ['city']
-                });
+        const venue = await this.venueRepository.findOne({
+            where: { id },
+            relations: ['city']
+        });
 
-                if (!venue) {
-                    throw new NotFoundException(`Venue with ID ${id} not found`);
-                }
+        if (!venue) {
+            throw new NotFoundException(`Venue with ID ${id} not found`);
+        }
 
                 return {
                     ...venue,
@@ -1054,7 +1109,7 @@ export class AdminService {
             // Check for Google Maps URL in various possible field names
             const googleMapsUrl = createVenueDto.googleMapsUrl || createVenueDto.mapsUrl || createVenueDto.googleMaps || createVenueDto.mapUrl;
             if (googleMapsUrl && (!latitude || !longitude)) {
-                const coords = parseGoogleMapsUrl(googleMapsUrl);
+                const coords = await parseGoogleMapsUrl(googleMapsUrl);
                 if (coords) {
                     latitude = coords.latitude;
                     longitude = coords.longitude;
@@ -1075,12 +1130,12 @@ export class AdminService {
             }
 
             // Check uniqueness of phone number
-            const existingVenue = await this.venueRepository.findOne({
+        const existingVenue = await this.venueRepository.findOne({
                 where: { phoneNumber }
-            });
-            if (existingVenue) {
-                throw new BadRequestException('Phone number already exists');
-            }
+        });
+        if (existingVenue) {
+            throw new BadRequestException('Phone number already exists');
+        }
 
             // Create venue with formats in a transaction
             return await this.dataSource.transaction(async (manager) => {
@@ -1141,7 +1196,7 @@ export class AdminService {
         // Parse Google Maps URL if provided
         const googleMapsUrl = updateVenueDto.googleMapsUrl || updateVenueDto.mapsUrl || updateVenueDto.googleMaps || updateVenueDto.mapUrl;
         if (googleMapsUrl) {
-            const coords = parseGoogleMapsUrl(googleMapsUrl);
+            const coords = await parseGoogleMapsUrl(googleMapsUrl);
             if (coords) {
                 updateVenueDto.latitude = coords.latitude;
                 updateVenueDto.longitude = coords.longitude;

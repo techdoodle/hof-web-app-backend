@@ -11,7 +11,7 @@ import { CreateMatchDto, UpdateMatchDto, MatchFilterDto } from './dto/match.dto'
 import { PlayerNationSubmitDto } from './dto/playernation-submit.dto';
 import { SaveMappingsDto } from './dto/playernation-mapping.dto';
 import { PlayerNationService } from './services/playernation.service';
-import { VenueExcelUploadService } from './services/venue-excel-upload.service';
+import { VenueCsvUploadService } from './services/venue-excel-upload.service';
 import { FirebaseStorageService } from '../user/firebase-storage.service';
 import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
 
@@ -21,7 +21,7 @@ export class AdminController {
     constructor(
         private readonly adminService: AdminService,
         private readonly playerNationService: PlayerNationService,
-        private readonly venueExcelUploadService: VenueExcelUploadService,
+        private readonly venueCsvUploadService: VenueCsvUploadService,
         private readonly firebaseStorageService: FirebaseStorageService,
     ) { }
 
@@ -236,20 +236,20 @@ export class AdminController {
         return this.adminService.getVenues(query);
     }
 
-    @Get('venues/excel-template')
+    @Get('venues/csv-template')
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN)
-    async getVenuesExcelTemplate(@Res() res: Response) {
+    async getVenuesCsvTemplate(@Res() res: Response) {
         try {
-            const buffer = this.venueExcelUploadService.generateExcelTemplate();
+            const buffer = this.venueCsvUploadService.generateCsvTemplate();
             if (!buffer || buffer.length === 0) {
-                return res.status(500).json({ message: 'Failed to generate Excel template: empty buffer' });
+                return res.status(500).json({ message: 'Failed to generate CSV template: empty buffer' });
             }
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', 'attachment; filename=venue_template.xlsx');
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', 'attachment; filename=venue_template.csv');
             res.send(buffer);
         } catch (error: any) {
-            console.error('Error generating Excel template:', error);
-            res.status(500).json({ message: 'Failed to generate Excel template', error: error?.message || String(error) });
+            console.error('Error generating CSV template:', error);
+            res.status(500).json({ message: 'Failed to generate CSV template', error: error?.message || String(error) });
         }
     }
 
@@ -280,22 +280,23 @@ export class AdminController {
         return this.adminService.deleteVenue(id);
     }
 
-    @Post('venues/upload-excel')
+    @Post('venues/upload-csv')
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     @UseInterceptors(FileInterceptor('file'))
-    async uploadVenuesExcel(@UploadedFile() file: Express.Multer.File) {
+    async uploadVenuesCsv(@UploadedFile() file: Express.Multer.File) {
         if (!file) {
             throw new Error('No file uploaded');
         }
 
-        const data = await this.venueExcelUploadService.parseExcelFile(file);
-        const result = await this.venueExcelUploadService.processVenueUpload(data);
+        const data = await this.venueCsvUploadService.parseCsvFile(file);
+        const result = await this.venueCsvUploadService.processVenueUpload(data);
 
         return {
             message: `Successfully processed ${result.created + result.updated} venues (${result.created} created, ${result.updated} updated)`,
             created: result.created,
             updated: result.updated,
             errors: result.errors,
+            failedVenues: result.failedVenues,
         };
     }
 

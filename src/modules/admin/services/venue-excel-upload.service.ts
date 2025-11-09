@@ -1,20 +1,21 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import * as XLSX from 'xlsx';
+import * as csv from 'csv-parser';
+import { Readable } from 'stream';
 import { Venue } from '../../venue/venue.entity';
 import { VenueFormatEntity } from '../../venue/venue-formats.entity';
 import { VenueFormat } from '../../venue/venue-format.enum';
 import { City } from '../../cities/cities.entity';
+import { parseGoogleMapsUrl } from '../../../common/utils/google-maps.util';
 
-interface ExcelVenueRow {
+interface CsvVenueRow {
   name: string;
   phoneNumber: string;
   address?: string;
   cityName: string;
   stateName: string;
-  latitude?: number;
-  longitude?: number;
+  googleMapsUrl?: string;
   '5v5_Cost'?: number;
   '6v6_Cost'?: number;
   '7v7_Cost'?: number;
@@ -25,8 +26,8 @@ interface ExcelVenueRow {
 }
 
 @Injectable()
-export class VenueExcelUploadService {
-  private readonly logger = new Logger(VenueExcelUploadService.name);
+export class VenueCsvUploadService {
+  private readonly logger = new Logger(VenueCsvUploadService.name);
 
   constructor(
     @InjectRepository(Venue)
@@ -38,37 +39,58 @@ export class VenueExcelUploadService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async parseExcelFile(file: Express.Multer.File): Promise<ExcelVenueRow[]> {
+  async parseCsvFile(file: Express.Multer.File): Promise<CsvVenueRow[]> {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
 
-    const validExtensions = ['.xlsx', '.xls'];
-    const fileExtension = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
-    
-    if (!validExtensions.includes(fileExtension)) {
-      throw new BadRequestException('File must be an Excel file (.xlsx or .xls)');
+    if (!file.originalname.toLowerCase().endsWith('.csv')) {
+      throw new BadRequestException('File must be a CSV file (.csv)');
     }
 
     try {
-      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const data = XLSX.utils.sheet_to_json<ExcelVenueRow>(worksheet);
-
-      return data;
+      return await this.parseCsv(file.buffer);
     } catch (error) {
-      this.logger.error('Error parsing Excel file', error);
-      throw new BadRequestException('Failed to parse Excel file: ' + error.message);
+      this.logger.error('Error parsing CSV file', error);
+      throw new BadRequestException('Failed to parse CSV file: ' + error.message);
     }
   }
 
-  validateVenueData(data: ExcelVenueRow[]): void {
+  private async parseCsv(buffer: Buffer): Promise<CsvVenueRow[]> {
+    return new Promise((resolve, reject) => {
+      const results: CsvVenueRow[] = [];
+      const stream = Readable.from(buffer.toString());
+
+      stream
+        .pipe(csv({
+          mapHeaders: ({ header }) => header.trim(),
+        }))
+        .on('data', (data) => {
+          // Convert empty strings to null for optional fields
+          const cleanedData = Object.fromEntries(
+            Object.entries(data).map(([key, value]) => [
+              key,
+              value === '' || value === undefined ? null : value
+            ])
+          ) as Record<string, any>;
+
+          // Skip empty rows (rows where all required fields are null/empty)
+          const hasRequiredData = cleanedData.name || cleanedData.cityName || cleanedData.stateName;
+          if (hasRequiredData) {
+            results.push(cleanedData as unknown as CsvVenueRow);
+          }
+        })
+        .on('end', () => resolve(results))
+        .on('error', (error) => reject(error));
+    });
+  }
+
+  validateVenueData(data: CsvVenueRow[]): void {
     if (!data || data.length === 0) {
-      throw new BadRequestException('Excel file is empty or contains no data');
+      throw new BadRequestException('CSV file is empty or contains no data');
     }
 
-    const requiredColumns = ['name', 'phoneNumber', 'cityName', 'stateName'];
+    const requiredColumns = ['name', 'cityName', 'stateName'];
     const formatColumns = ['5v5_Cost', '6v6_Cost', '7v7_Cost', '8v8_Cost', '9v9_Cost', '10v10_Cost', '11v11_Cost'];
 
     data.forEach((row, index) => {
@@ -79,10 +101,12 @@ export class VenueExcelUploadService {
         }
       }
 
-      // Validate phone number format (basic check)
-      const phoneNumber = String(row.phoneNumber).trim();
-      if (phoneNumber.length < 10) {
-        throw new BadRequestException(`Row ${index + 2}: Invalid phone number`);
+      // Validate phone number format if provided (optional field)
+      if (row.phoneNumber !== undefined && row.phoneNumber !== null && String(row.phoneNumber).trim() !== '') {
+        const phoneNumber = String(row.phoneNumber).trim();
+        if (phoneNumber.length < 10) {
+          throw new BadRequestException(`Row ${index + 2}: Invalid phone number (must be at least 10 digits if provided)`);
+        }
       }
 
       // Validate format costs if provided
@@ -95,18 +119,13 @@ export class VenueExcelUploadService {
         }
       }
 
-      // Validate coordinates if provided
-      if (row.latitude !== undefined && row.latitude !== null && String(row.latitude).trim() !== '') {
-        const lat = Number(row.latitude);
-        if (isNaN(lat) || lat < -90 || lat > 90) {
-          throw new BadRequestException(`Row ${index + 2}: Invalid latitude value`);
-        }
-      }
-
-      if (row.longitude !== undefined && row.longitude !== null && String(row.longitude).trim() !== '') {
-        const lon = Number(row.longitude);
-        if (isNaN(lon) || lon < -180 || lon > 180) {
-          throw new BadRequestException(`Row ${index + 2}: Invalid longitude value`);
+      // Validate Google Maps URL if provided (optional field)
+      if (row.googleMapsUrl !== undefined && row.googleMapsUrl !== null && String(row.googleMapsUrl).trim() !== '') {
+        const url = String(row.googleMapsUrl).trim();
+        // Basic URL format check - actual parsing will happen in processVenueUpload
+        if (!url.startsWith('http://') && !url.startsWith('https://') && !url.match(/^-?\d+\.?\d*,-?\d+\.?\d*$/)) {
+          // Warn but don't fail - parsing will handle it
+          this.logger.warn(`Row ${index + 2}: Google Maps URL format may be invalid: ${url}`);
         }
       }
     });
@@ -125,10 +144,11 @@ export class VenueExcelUploadService {
     return mapping[column] || null;
   }
 
-  async processVenueUpload(data: ExcelVenueRow[]): Promise<{ created: number; updated: number; errors: string[] }> {
+  async processVenueUpload(data: CsvVenueRow[]): Promise<{ created: number; updated: number; errors: string[]; failedVenues: Array<{ row: number; venueName: string; phoneNumber: string; reason: string }> }> {
     this.validateVenueData(data);
 
     const errors: string[] = [];
+    const failedVenues: Array<{ row: number; venueName: string; phoneNumber: string; reason: string }> = [];
     let created = 0;
     let updated = 0;
 
@@ -151,45 +171,90 @@ export class VenueExcelUploadService {
             continue;
           }
 
-          // Find existing venue by phone number (unique identifier)
-          const phoneNumber = String(row.phoneNumber).trim();
+          // Find existing venue by name (unique identifier)
+          const venueName = String(row.name).trim();
+          const phoneNumber = row.phoneNumber ? String(row.phoneNumber).trim() : null;
           let venue = await manager.findOne(Venue, {
-            where: { phoneNumber },
+            where: { name: venueName },
             relations: ['venueFormats'],
           });
 
+          // Parse Google Maps URL if provided
+          let latitude: number | null = null;
+          let longitude: number | null = null;
+          
+          if (row.googleMapsUrl !== undefined && row.googleMapsUrl !== null && String(row.googleMapsUrl).trim() !== '') {
+            const googleMapsUrl = String(row.googleMapsUrl).trim();
+            this.logger.log(`[processVenueUpload] Row ${i + 2} - Parsing Google Maps URL for venue "${venueName}": ${googleMapsUrl}`);
+            
+            try {
+              const coords = await parseGoogleMapsUrl(googleMapsUrl);
+              if (coords) {
+                latitude = coords.latitude;
+                longitude = coords.longitude;
+                this.logger.log(`[processVenueUpload] Row ${i + 2} - Successfully parsed coordinates for "${venueName}": ${latitude}, ${longitude}`);
+              } else {
+                this.logger.warn(`[processVenueUpload] Row ${i + 2} - Failed to parse Google Maps URL for "${venueName}": ${googleMapsUrl}`);
+                // URL parsing failed - add to failedVenues but continue processing
+                failedVenues.push({
+                  row: i + 2, // CSV row number (1-indexed, accounting for header)
+                  venueName: venueName,
+                  phoneNumber: phoneNumber || 'N/A',
+                  reason: 'Failed to parse Google Maps URL'
+                });
+              }
+            } catch (error) {
+              this.logger.error(`[processVenueUpload] Row ${i + 2} - Error parsing Google Maps URL for "${venueName}": ${googleMapsUrl}`, error);
+              failedVenues.push({
+                row: i + 2,
+                venueName: venueName,
+                phoneNumber: phoneNumber || 'N/A',
+                reason: `Error parsing Google Maps URL: ${error instanceof Error ? error.message : String(error)}`
+              });
+            }
+          } else {
+            this.logger.log(`[processVenueUpload] Row ${i + 2} - No Google Maps URL provided for venue "${venueName}"`);
+          }
+
           if (venue) {
             // UPDATE existing venue (preserves ID, maintains foreign key references)
-            venue.name = String(row.name).trim();
+            this.logger.log(`[processVenueUpload] Row ${i + 2} - Updating existing venue "${venueName}" (ID: ${venue.id})`);
+            venue.name = venueName;
+            if (phoneNumber) venue.phoneNumber = phoneNumber;
             if (row.address) venue.address = String(row.address).trim();
             venue.city = city;
-            if (row.latitude !== undefined && row.latitude !== null && String(row.latitude).trim() !== '') {
-              venue.latitude = Number(row.latitude);
-            }
-            if (row.longitude !== undefined && row.longitude !== null && String(row.longitude).trim() !== '') {
-              venue.longitude = Number(row.longitude);
+            if (latitude !== null && longitude !== null) {
+              venue.latitude = latitude;
+              venue.longitude = longitude;
+              this.logger.log(`[processVenueUpload] Row ${i + 2} - Setting coordinates for "${venueName}": ${latitude}, ${longitude}`);
+            } else {
+              this.logger.warn(`[processVenueUpload] Row ${i + 2} - No coordinates to set for "${venueName}" (latitude: ${latitude}, longitude: ${longitude})`);
             }
             
             await manager.save(Venue, venue);
+            this.logger.log(`[processVenueUpload] Row ${i + 2} - Saved venue "${venueName}" with coordinates: lat=${venue.latitude}, lng=${venue.longitude}`);
             
             // Delete existing formats and recreate (to handle updates/removals)
             await manager.delete(VenueFormatEntity, { venue: { id: venue.id } });
             updated++;
           } else {
             // CREATE new venue
+            this.logger.log(`[processVenueUpload] Row ${i + 2} - Creating new venue "${venueName}"`);
             venue = new Venue();
-            venue.name = String(row.name).trim();
-            venue.phoneNumber = phoneNumber;
+            venue.name = venueName;
+            if (phoneNumber) venue.phoneNumber = phoneNumber;
             if (row.address) venue.address = String(row.address).trim();
             venue.city = city;
-            if (row.latitude !== undefined && row.latitude !== null && String(row.latitude).trim() !== '') {
-              venue.latitude = Number(row.latitude);
-            }
-            if (row.longitude !== undefined && row.longitude !== null && String(row.longitude).trim() !== '') {
-              venue.longitude = Number(row.longitude);
+            if (latitude !== null && longitude !== null) {
+              venue.latitude = latitude;
+              venue.longitude = longitude;
+              this.logger.log(`[processVenueUpload] Row ${i + 2} - Setting coordinates for new venue "${venueName}": ${latitude}, ${longitude}`);
+            } else {
+              this.logger.warn(`[processVenueUpload] Row ${i + 2} - No coordinates to set for new venue "${venueName}" (latitude: ${latitude}, longitude: ${longitude})`);
             }
             
             venue = await manager.save(Venue, venue);
+            this.logger.log(`[processVenueUpload] Row ${i + 2} - Created venue "${venueName}" (ID: ${venue.id}) with coordinates: lat=${venue.latitude}, lng=${venue.longitude}`);
             created++;
           }
 
@@ -223,10 +288,10 @@ export class VenueExcelUploadService {
       }
     });
 
-    return { created, updated, errors };
+    return { created, updated, errors, failedVenues };
   }
 
-  generateExcelTemplate(): Buffer {
+  generateCsvTemplate(): Buffer {
     try {
       const headers = [
         'name',
@@ -234,8 +299,7 @@ export class VenueExcelUploadService {
         'address',
         'cityName',
         'stateName',
-        'latitude',
-        'longitude',
+        'googleMapsUrl',
         '5v5_Cost',
         '6v6_Cost',
         '7v7_Cost',
@@ -251,8 +315,7 @@ export class VenueExcelUploadService {
         '123 Main Street',
         'Mumbai',
         'Maharashtra',
-        '19.0760',
-        '72.8777',
+        'https://www.google.com/maps/place/Example+Venue/@19.0760,72.8777,15z',
         '5000',
         '6000',
         '7000',
@@ -262,19 +325,29 @@ export class VenueExcelUploadService {
         '',
       ];
 
-      const worksheet = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Venues');
+      // Create CSV content
+      const csvContent = [
+        headers.join(','),
+        sampleRow.map(cell => {
+          // Escape commas and quotes in CSV cells
+          if (cell === null || cell === undefined) return '';
+          const cellStr = String(cell);
+          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+            return `"${cellStr.replace(/"/g, '""')}"`;
+          }
+          return cellStr;
+        }).join(',')
+      ].join('\n');
 
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+      const buffer = Buffer.from(csvContent, 'utf-8');
       if (!buffer || buffer.length === 0) {
-        this.logger.error('Generated Excel buffer is empty');
-        throw new Error('Failed to generate Excel template: empty buffer');
+        this.logger.error('Generated CSV buffer is empty');
+        throw new Error('Failed to generate CSV template: empty buffer');
       }
       
-      return Buffer.from(buffer);
+      return buffer;
     } catch (error) {
-      this.logger.error('Error in generateExcelTemplate:', error);
+      this.logger.error('Error in generateCsvTemplate:', error);
       throw error;
     }
   }

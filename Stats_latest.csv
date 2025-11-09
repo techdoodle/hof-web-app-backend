@@ -1,4 +1,4 @@
-Name,Team Name,phoneNumber,Date,goals,assists,totalPasses,passingAccuracy,keyPasses,totalShots,shotAccuracy,tackles,interceptions,saves
+Name,teamName,phoneNumber,Date,goals,assists,totalPasses,passingAccuracy,keyPasses,totalShots,shotAccuracy,tackles,interceptions,saves
 A2,teamA,"7701969691","Oct 10, 2025",2,2,64,0.81,7,5,0.29,4,4,2
 A3,teamA,"7701969691","Oct 10, 2025",3,0,40,0.62,2,5,0.88,5,3,2
 B3,teamB,"7204888969","Oct 10, 2025",1,0,48,0.75,2,9,0.3,3,6,1
