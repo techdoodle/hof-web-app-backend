@@ -44,11 +44,9 @@ async function bootstrap() {
       }
 
       console.log(`Incoming request from origin: ${origin}`);
-      console.log('Allowed origins:', allowedOrigins);
 
       // Check if origin is in allowed list
       if (allowedOrigins.includes(origin)) {
-        console.log(`Origin ${origin} is in allowed list`);
         return callback(null, true);
       }
 
