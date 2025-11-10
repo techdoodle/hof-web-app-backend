@@ -189,12 +189,14 @@ export class VenueCsvUploadService {
             
             try {
               const coords = await parseGoogleMapsUrl(googleMapsUrl);
+              this.logger.log(`[processVenueUpload] Row ${i + 2} - Google Maps URL parser returned: ${JSON.stringify(coords)}`);
+              
               if (coords) {
                 latitude = coords.latitude;
                 longitude = coords.longitude;
-                this.logger.log(`[processVenueUpload] Row ${i + 2} - Successfully parsed coordinates for "${venueName}": ${latitude}, ${longitude}`);
+                this.logger.log(`[processVenueUpload] Row ${i + 2} - Successfully parsed coordinates for "${venueName}": latitude=${latitude}, longitude=${longitude}`);
               } else {
-                this.logger.warn(`[processVenueUpload] Row ${i + 2} - Failed to parse Google Maps URL for "${venueName}": ${googleMapsUrl}`);
+                this.logger.warn(`[processVenueUpload] Row ${i + 2} - Failed to parse Google Maps URL for "${venueName}": ${googleMapsUrl}. Parser returned: ${coords}`);
                 // URL parsing failed - add to failedVenues but continue processing
                 failedVenues.push({
                   row: i + 2, // CSV row number (1-indexed, accounting for header)
@@ -205,6 +207,7 @@ export class VenueCsvUploadService {
               }
             } catch (error) {
               this.logger.error(`[processVenueUpload] Row ${i + 2} - Error parsing Google Maps URL for "${venueName}": ${googleMapsUrl}`, error);
+              this.logger.error(`[processVenueUpload] Row ${i + 2} - Error details: ${error instanceof Error ? error.message : String(error)}`);
               failedVenues.push({
                 row: i + 2,
                 venueName: venueName,
@@ -232,7 +235,20 @@ export class VenueCsvUploadService {
             }
             
             await manager.save(Venue, venue);
-            this.logger.log(`[processVenueUpload] Row ${i + 2} - Saved venue "${venueName}" with coordinates: lat=${venue.latitude}, lng=${venue.longitude}`);
+            // Reload venue to get all fields including relations
+            const savedVenue = await manager.findOne(Venue, { 
+              where: { id: venue.id },
+              relations: ['city']
+            });
+            this.logger.log(`[processVenueUpload] Row ${i + 2} - Saved venue details: ${JSON.stringify({
+              id: savedVenue?.id,
+              name: savedVenue?.name,
+              phoneNumber: savedVenue?.phoneNumber,
+              address: savedVenue?.address,
+              city: savedVenue?.city ? `${savedVenue.city.cityName}, ${savedVenue.city.stateName}` : null,
+              latitude: savedVenue?.latitude,
+              longitude: savedVenue?.longitude,
+            }, null, 2)}`);
             
             // Delete existing formats and recreate (to handle updates/removals)
             await manager.delete(VenueFormatEntity, { venue: { id: venue.id } });
@@ -254,7 +270,20 @@ export class VenueCsvUploadService {
             }
             
             venue = await manager.save(Venue, venue);
-            this.logger.log(`[processVenueUpload] Row ${i + 2} - Created venue "${venueName}" (ID: ${venue.id}) with coordinates: lat=${venue.latitude}, lng=${venue.longitude}`);
+            // Reload venue to get all fields including relations
+            const savedVenue = await manager.findOne(Venue, { 
+              where: { id: venue.id },
+              relations: ['city']
+            });
+            this.logger.log(`[processVenueUpload] Row ${i + 2} - Created venue details: ${JSON.stringify({
+              id: savedVenue?.id,
+              name: savedVenue?.name,
+              phoneNumber: savedVenue?.phoneNumber,
+              address: savedVenue?.address,
+              city: savedVenue?.city ? `${savedVenue.city.cityName}, ${savedVenue.city.stateName}` : null,
+              latitude: savedVenue?.latitude,
+              longitude: savedVenue?.longitude,
+            }, null, 2)}`);
             created++;
           }
 
