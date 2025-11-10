@@ -181,9 +181,8 @@ export class BookingCleanupService {
 
             this.logger.log(`🔒 Reconciliation lock acquired. Proceeding. [Instance: ${this.instanceId}]`);
 
-            // ✅ Find bookings with Razorpay orders in the 7-17 minute window
-            // This checks expired bookings (older than 7 min) but not too old (within 17 min)
-            // Gives a 10-minute window for reconciliation
+            // ✅ Find bookings with Razorpay orders older than 7 minutes
+            // This checks expired bookings (older than 7 min) for reconciliation
             const query = `
                 SELECT 
                     b.id AS booking_id,
@@ -204,7 +203,7 @@ export class BookingCleanupService {
                 WHERE b.status NOT IN ('CONFIRMED', 'CANCELLED', 'PARTIALLY_CANCELLED', 'PAYMENT_FAILED_VERIFIED')
                 AND b.metadata->>'razorpayOrderId' IS NOT NULL
                 AND b.created_at < NOW() - INTERVAL '7 minutes'   -- Older than 7 minutes (expired)
-                AND b.created_at > NOW() - INTERVAL '22 minutes'  -- Not older than 22 minutes (15 mins window)
+                -- AND b.created_at > NOW() - INTERVAL '22 minutes'  -- Not older than 22 minutes (15 mins window) - COMMENTED OUT
                 ORDER BY b.created_at DESC
             `;
 
@@ -435,10 +434,11 @@ export class BookingCleanupService {
             // ✅ COORDINATION: Double-check booking age to ensure it's in reconciliation window
             // Use the minutes_old calculated in SQL (UTC) instead of recalculating in JavaScript
             const bookingAge = bookingData.minutes_old;
-            if (bookingAge < 7 || bookingAge > 22) {
+            if (bookingAge < 7) {
+                // if (bookingAge < 7 || bookingAge > 22) {  // COMMENTED OUT: Removed 22 min upper limit
                 this.logger.log(
                     `⏭️ Skipping booking ${bookingId} - outside reconciliation window ` +
-                    `(${Math.round(bookingAge)} min old, should be 7-22 min)`
+                    `(${Math.round(bookingAge)} min old, should be at least 7 min)`
                 );
                 await queryRunner.rollbackTransaction();
                 return false;
