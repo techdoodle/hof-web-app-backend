@@ -1091,11 +1091,11 @@ export class AdminService {
                 });
             }
 
-            // Transform the response to include city ID for react-admin ReferenceInput
+            // Transform the response - keep full city object for display, but also provide cityId for forms
             return {
                 ...venue,
-                city: venue.city?.id || venue.city, // Ensure city is the ID for react-admin
-                cityData: venue.city, // Keep full city data for display purposes
+                cityId: venue.city?.id || null, // Provide city ID separately for react-admin ReferenceInput
+                // Keep full city object for display in Show page
                 ...costFields // Add flat cost fields for form
             };
         } catch (error: any) {
@@ -1113,8 +1113,8 @@ export class AdminService {
 
                 return {
                     ...venue,
-                    city: venue.city?.id || venue.city,
-                    cityData: venue.city,
+                    cityId: venue.city?.id || null, // Provide city ID separately for react-admin ReferenceInput
+                    // Keep full city object for display in Show page
                     venueFormats: []
                 };
             }
@@ -1137,10 +1137,15 @@ export class AdminService {
             // Check for Google Maps URL in various possible field names
             const googleMapsUrl = createVenueDto.googleMapsUrl || createVenueDto.mapsUrl || createVenueDto.googleMaps || createVenueDto.mapUrl;
             if (googleMapsUrl && (!latitude || !longitude)) {
+                this.logger.log(`[createVenue] Parsing Google Maps URL: ${googleMapsUrl}`);
                 const coords = await parseGoogleMapsUrl(googleMapsUrl);
+                this.logger.log(`[createVenue] Google Maps URL parser returned: ${JSON.stringify(coords)}`);
                 if (coords) {
                     latitude = coords.latitude;
                     longitude = coords.longitude;
+                    this.logger.log(`[createVenue] Extracted coordinates: latitude=${latitude}, longitude=${longitude}`);
+                } else {
+                    this.logger.warn(`[createVenue] Failed to parse Google Maps URL: ${googleMapsUrl}`);
                 }
             }
 
@@ -1177,6 +1182,22 @@ export class AdminService {
                 venue.city = { id: Number(cityId) } as City;
 
                 const savedVenue = await manager.save(Venue, venue);
+                
+                // Reload venue to get all fields including relations
+                const venueWithRelations = await manager.findOne(Venue, {
+                    where: { id: savedVenue.id },
+                    relations: ['city']
+                });
+                
+                this.logger.log(`[createVenue] Created venue details: ${JSON.stringify({
+                    id: venueWithRelations?.id,
+                    name: venueWithRelations?.name,
+                    phoneNumber: venueWithRelations?.phoneNumber,
+                    address: venueWithRelations?.address,
+                    city: venueWithRelations?.city ? `${venueWithRelations.city.cityName}, ${venueWithRelations.city.stateName}` : null,
+                    latitude: venueWithRelations?.latitude,
+                    longitude: venueWithRelations?.longitude,
+                }, null, 2)}`);
 
                 // Create venue formats if provided
                 if (venueFormats && venueFormats.length > 0) {
@@ -1224,10 +1245,15 @@ export class AdminService {
         // Parse Google Maps URL if provided
         const googleMapsUrl = updateVenueDto.googleMapsUrl || updateVenueDto.mapsUrl || updateVenueDto.googleMaps || updateVenueDto.mapUrl;
         if (googleMapsUrl) {
+            this.logger.log(`[updateVenue] Parsing Google Maps URL for venue ID ${venue.id}: ${googleMapsUrl}`);
             const coords = await parseGoogleMapsUrl(googleMapsUrl);
+            this.logger.log(`[updateVenue] Google Maps URL parser returned: ${JSON.stringify(coords)}`);
             if (coords) {
                 updateVenueDto.latitude = coords.latitude;
                 updateVenueDto.longitude = coords.longitude;
+                this.logger.log(`[updateVenue] Extracted coordinates: latitude=${coords.latitude}, longitude=${coords.longitude}`);
+            } else {
+                this.logger.warn(`[updateVenue] Failed to parse Google Maps URL: ${googleMapsUrl}`);
             }
             // Remove the URL field from DTO to avoid trying to save it
             delete updateVenueDto.googleMapsUrl;
@@ -1242,6 +1268,22 @@ export class AdminService {
         // Handle venue formats update in transaction
         return await this.dataSource.transaction(async (manager) => {
             const savedVenue = await manager.save(Venue, venue);
+            
+            // Reload venue to get all fields including relations
+            const venueWithRelations = await manager.findOne(Venue, {
+                where: { id: savedVenue.id },
+                relations: ['city']
+            });
+            
+            this.logger.log(`[updateVenue] Updated venue details: ${JSON.stringify({
+                id: venueWithRelations?.id,
+                name: venueWithRelations?.name,
+                phoneNumber: venueWithRelations?.phoneNumber,
+                address: venueWithRelations?.address,
+                city: venueWithRelations?.city ? `${venueWithRelations.city.cityName}, ${venueWithRelations.city.stateName}` : null,
+                latitude: venueWithRelations?.latitude,
+                longitude: venueWithRelations?.longitude,
+            }, null, 2)}`);
 
             // If venueFormats is provided, replace all existing formats
             if (venueFormats !== undefined) {

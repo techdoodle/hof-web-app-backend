@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { Venue } from './venue.entity';
@@ -6,6 +6,8 @@ import { parseGoogleMapsUrl } from '../../common/utils/google-maps.util';
 
 @Injectable()
 export class VenueService {
+  private readonly logger = new Logger(VenueService.name);
+
   constructor(
     @InjectRepository(Venue)
     private readonly venueRepository: Repository<Venue>,
@@ -15,10 +17,15 @@ export class VenueService {
     // Parse Google Maps URL if provided
     const googleMapsUrl = createVenueDto.googleMapsUrl || createVenueDto.mapsUrl || createVenueDto.googleMaps || createVenueDto.mapUrl;
     if (googleMapsUrl && (!createVenueDto.latitude || !createVenueDto.longitude)) {
-      const coords = parseGoogleMapsUrl(googleMapsUrl);
+      this.logger.log(`[create] Parsing Google Maps URL: ${googleMapsUrl}`);
+      const coords = await parseGoogleMapsUrl(googleMapsUrl);
+      this.logger.log(`[create] Google Maps URL parser returned: ${JSON.stringify(coords)}`);
       if (coords) {
         createVenueDto.latitude = coords.latitude;
         createVenueDto.longitude = coords.longitude;
+        this.logger.log(`[create] Extracted coordinates: latitude=${coords.latitude}, longitude=${coords.longitude}`);
+      } else {
+        this.logger.warn(`[create] Failed to parse Google Maps URL: ${googleMapsUrl}`);
       }
     }
 
@@ -29,7 +36,25 @@ export class VenueService {
     delete (createVenueDto as any).mapUrl;
 
     const venue = this.venueRepository.create(createVenueDto);
-    return await this.venueRepository.save(venue);
+    const savedVenue = await this.venueRepository.save(venue);
+    
+    // Reload to get relations
+    const venueWithRelations = await this.venueRepository.findOne({
+      where: { id: savedVenue.id },
+      relations: ['city']
+    });
+    
+    this.logger.log(`[create] Created venue details: ${JSON.stringify({
+      id: venueWithRelations?.id,
+      name: venueWithRelations?.name,
+      phoneNumber: venueWithRelations?.phoneNumber,
+      address: venueWithRelations?.address,
+      city: venueWithRelations?.city ? `${venueWithRelations.city.cityName}, ${venueWithRelations.city.stateName}` : null,
+      latitude: venueWithRelations?.latitude,
+      longitude: venueWithRelations?.longitude,
+    }, null, 2)}`);
+    
+    return savedVenue;
   }
 
   async findAll(): Promise<Venue[]> {
@@ -52,10 +77,15 @@ export class VenueService {
     // Parse Google Maps URL if provided
     const googleMapsUrl = updateVenueDto.googleMapsUrl || updateVenueDto.mapsUrl || updateVenueDto.googleMaps || updateVenueDto.mapUrl;
     if (googleMapsUrl) {
-      const coords = parseGoogleMapsUrl(googleMapsUrl);
+      this.logger.log(`[update] Parsing Google Maps URL for venue ID ${id}: ${googleMapsUrl}`);
+      const coords = await parseGoogleMapsUrl(googleMapsUrl);
+      this.logger.log(`[update] Google Maps URL parser returned: ${JSON.stringify(coords)}`);
       if (coords) {
         updateVenueDto.latitude = coords.latitude;
         updateVenueDto.longitude = coords.longitude;
+        this.logger.log(`[update] Extracted coordinates: latitude=${coords.latitude}, longitude=${coords.longitude}`);
+      } else {
+        this.logger.warn(`[update] Failed to parse Google Maps URL: ${googleMapsUrl}`);
       }
     }
 
@@ -66,7 +96,25 @@ export class VenueService {
     delete (updateVenueDto as any).mapUrl;
 
     Object.assign(venue, updateVenueDto);
-    return await this.venueRepository.save(venue);
+    const savedVenue = await this.venueRepository.save(venue);
+    
+    // Reload to get relations
+    const venueWithRelations = await this.venueRepository.findOne({
+      where: { id: savedVenue.id },
+      relations: ['city']
+    });
+    
+    this.logger.log(`[update] Updated venue details: ${JSON.stringify({
+      id: venueWithRelations?.id,
+      name: venueWithRelations?.name,
+      phoneNumber: venueWithRelations?.phoneNumber,
+      address: venueWithRelations?.address,
+      city: venueWithRelations?.city ? `${venueWithRelations.city.cityName}, ${venueWithRelations.city.stateName}` : null,
+      latitude: venueWithRelations?.latitude,
+      longitude: venueWithRelations?.longitude,
+    }, null, 2)}`);
+    
+    return savedVenue;
   }
 
   async remove(id: number): Promise<void> {
