@@ -528,6 +528,34 @@ export class AdminService {
         };
     }
 
+    // Booking Slots Management
+    async getActiveBookingSlots(filters?: { matchId?: number; bookingId?: number; userId?: number }) {
+        const queryBuilder = this.bookingSlotRepository.createQueryBuilder('slot')
+            .leftJoinAndSelect('slot.booking', 'booking')
+            .where('slot.status = :status', { status: BookingSlotStatus.ACTIVE });
+
+        if (filters?.matchId) {
+            queryBuilder.andWhere('booking.matchId = :matchId', { matchId: filters.matchId });
+        }
+
+        if (filters?.bookingId) {
+            queryBuilder.andWhere('booking.id = :bookingId', { bookingId: filters.bookingId });
+        }
+
+        if (filters?.userId) {
+            queryBuilder.andWhere('booking.userId = :userId', { userId: filters.userId });
+        }
+
+        const slots = await queryBuilder
+            .orderBy('slot.createdAt', 'DESC')
+            .getMany();
+
+        return {
+            data: slots,
+            total: slots.length
+        };
+    }
+
     async getMatchParticipants(matchId: number) {
         const participants = await this.matchParticipantRepository.find({
             where: { match: { matchId } },
@@ -600,7 +628,7 @@ export class AdminService {
             where: {
                 matchId,
                 userId,
-                paymentStatus: In([PaymentStatus.INITIATED, PaymentStatus.PROCESSING, PaymentStatus.COMPLETED]),
+                status: In([BookingStatus.CONFIRMED]),
             },
         });
 

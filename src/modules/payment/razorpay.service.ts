@@ -60,6 +60,15 @@ export class RazorpayService {
         }
     }
 
+    async getOrderDetails(orderId: string) {
+        try {
+            const order = await this.razorpay.orders.fetch(orderId);
+            return order;
+        } catch (error) {
+            throw new Error(`Failed to fetch order details: ${error.message}`);
+        }
+    }
+
     async createRefund(params: { paymentId: string; amount: number; notes?: Record<string, any> }) {
         try {
             const refund = await this.razorpay.payments.refund(params.paymentId, {

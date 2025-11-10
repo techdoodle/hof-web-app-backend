@@ -4,6 +4,9 @@ import { Repository, QueryRunner } from 'typeorm';
 import { RefundEntity } from './refund.entity';
 import { RefundStatus } from '../../common/types/booking.types';
 import { RazorpayService } from './razorpay.service';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../notification/interfaces/notification.interface';
+import { BookingEntity } from '../booking/booking.entity';
 
 interface InitiateRefundParams {
     bookingId: string | number;
@@ -21,7 +24,10 @@ export class RefundService {
     constructor(
         @InjectRepository(RefundEntity)
         private refundRepository: Repository<RefundEntity>,
+        @InjectRepository(BookingEntity)
+        private bookingRepository: Repository<BookingEntity>,
         private razorpayService: RazorpayService,
+        private notificationService: NotificationService,
     ) { }
 
     async initiateRefund(params: InitiateRefundParams, queryRunner: QueryRunner) {
@@ -67,6 +73,13 @@ export class RefundService {
             await queryRunner.manager.save(refund);
             this.logger.log(`Refund initiated successfully: ${refund.id}`);
 
+            // ✅ Send email notification to user after refund initiation (fire-and-forget)
+            // Note: Email is sent asynchronously and won't block the transaction
+            this.sendRefundNotification(params, refund).catch((emailError) => {
+                this.logger.warn(`⚠️ Failed to send refund notification email: ${emailError.message}`);
+                // Don't fail the refund - email is non-critical
+            });
+
         } catch (error) {
             // Mark refund as failed
             refund.status = RefundStatus.FAILED;
@@ -82,6 +95,43 @@ export class RefundService {
         }
 
         return refund;
+    }
+
+    private async sendRefundNotification(params: InitiateRefundParams, refund: RefundEntity): Promise<void> {
+        try {
+            const booking = await this.bookingRepository.findOne({
+                where: { id: Number(params.bookingId) },
+                relations: ['slots']
+            });
+
+            if (!booking) {
+                this.logger.warn(`⚠️ Booking ${params.bookingId} not found for refund notification`);
+                return;
+            }
+
+            await this.notificationService.sendNotification({
+                type: NotificationType.REFUND_INITIATED,
+                recipient: {
+                    email: booking.email,
+                    name: booking.slots?.[0]?.playerName || 'User'
+                },
+                templateData: {
+                    bookingReference: booking.bookingReference,
+                    refundAmount: params.amount,
+                    refundId: refund.id,
+                    razorpayRefundId: refund.razorpayRefundId || 'Processing',
+                    reason: params.reason || `Your payment of ₹${params.amount} has been refunded and will be processed shortly.`,
+                    matchId: booking.matchId,
+                    refundStatus: refund.status,
+                    requestedSlots: params.metadata?.requestedSlots,
+                    availableSlots: params.metadata?.availableSlots
+                }
+            });
+            this.logger.log(`✅ Refund initiation notification email sent for booking ${params.bookingId}`);
+        } catch (error) {
+            this.logger.error(`Failed to send refund notification email for booking ${params.bookingId}: ${error.message}`, error.stack);
+            throw error; // Re-throw to be caught by caller
+        }
     }
 
     async updateRefundStatus(refundId: string, status: RefundStatus, razorpayData?: any) {

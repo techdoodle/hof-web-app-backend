@@ -122,15 +122,20 @@ export class BookingService {
             // Create or find users for each player
             const playerUsers: User[] = [];
             // Determine whether it's valid to auto-use the token user's phone for the first slot
+            // Only prevent if user has an ACTIVE slot from a CONFIRMED booking
+            // Allow booking again if previous bookings are failed/cancelled
             let canUseTokenUserAsFirst = true;
             if (tokenUser?.id) {
                 const rows: Array<{ exists: number }> = await queryRunner.query(
                     `SELECT 1 as exists 
                      FROM booking_slots bs 
                      JOIN bookings b ON bs.booking_id = b.id 
-                     WHERE b.match_id = $1 AND bs.player_id = $2 AND bs.status = $3 
+                     WHERE b.match_id = $1 
+                       AND bs.player_id = $2 
+                       AND bs.status = $3 
+                       AND b.status = $4
                      LIMIT 1`,
-                    [Number(dto.matchId), Number(tokenUser.id), 'ACTIVE']
+                    [Number(dto.matchId), Number(tokenUser.id), 'ACTIVE', BookingStatus.CONFIRMED]
                 );
                 canUseTokenUserAsFirst = rows.length === 0;
             }
@@ -979,6 +984,33 @@ export class BookingService {
             }
 
             const slotNumbers = bookingSlots.map(row => row.slot_number);
+
+            // ✅ CRITICAL FIX: Clean up old lock before trying to re-lock
+            // This ensures we can retry even if the old lock wasn't properly released
+            const oldLockKey = booking.metadata?.lockKey;
+            if (oldLockKey) {
+                const matchResult = await queryRunner.query(
+                    `SELECT locked_slots, version FROM matches WHERE match_id = $1 FOR UPDATE`,
+                    [booking.matchId]
+                );
+
+                if (matchResult?.length) {
+                    const match = matchResult[0];
+                    const lockedSlots = match.locked_slots || {};
+
+                    // Remove old lock if it exists
+                    if (lockedSlots[oldLockKey]) {
+                        delete lockedSlots[oldLockKey];
+                        await queryRunner.query(
+                            `UPDATE matches 
+                             SET locked_slots = $1, version = version + 1
+                             WHERE match_id = $2 AND version = $3`,
+                            [JSON.stringify(lockedSlots), booking.matchId, match.version]
+                        );
+                        this.logger.log(`🧹 Cleaned up old lock ${oldLockKey} for retry booking ${booking.id}`);
+                    }
+                }
+            }
 
             // Try to re-lock the slots
             const lockResult = await this.slotLockService.tryLockSlots(
