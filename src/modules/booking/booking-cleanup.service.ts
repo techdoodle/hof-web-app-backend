@@ -433,7 +433,8 @@ export class BookingCleanupService {
             }
 
             // ✅ COORDINATION: Double-check booking age to ensure it's in reconciliation window
-            const bookingAge = (Date.now() - new Date(booking.createdAt).getTime()) / (1000 * 60);
+            // Use the minutes_old calculated in SQL (UTC) instead of recalculating in JavaScript
+            const bookingAge = bookingData.minutes_old;
             if (bookingAge < 7 || bookingAge > 22) {
                 this.logger.log(
                     `⏭️ Skipping booking ${bookingId} - outside reconciliation window ` +
