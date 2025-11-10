@@ -537,21 +537,6 @@ export class BookingCleanupService {
             // ✅ Slots are available - proceed with confirmation
             this.logger.log(`✅ Sufficient slots available. Confirming booking ${bookingId}`);
 
-            // Get available slot numbers
-            const availableSlotNumbers = await this.getAvailableSlotNumbers(
-                booking.matchId,
-                booking.totalSlots,
-                queryRunner
-            );
-
-            if (availableSlotNumbers.length < booking.totalSlots) {
-                this.logger.error(
-                    `❌ Race condition: Slots became unavailable during reconciliation for booking ${bookingId}`
-                );
-                await queryRunner.rollbackTransaction();
-                return false;
-            }
-
             // ✅ Update booking to CONFIRMED
             await queryRunner.query(
                 `UPDATE bookings 
@@ -560,7 +545,7 @@ export class BookingCleanupService {
                 [BookingStatus.CONFIRMED, 'COMPLETED', bookingId]
             );
 
-            // ✅ Update booking slots: assign slot numbers and set to ACTIVE
+            // ✅ Get existing booking slots with their current slot numbers
             const bookingSlots = await queryRunner.query(
                 `SELECT id, slot_number FROM booking_slots WHERE booking_id = $1 ORDER BY id`,
                 [bookingId]
@@ -575,15 +560,83 @@ export class BookingCleanupService {
                 return false;
             }
 
-            // Update each slot with assigned slot number and ACTIVE status
-            for (let i = 0; i < bookingSlots.length; i++) {
+            // ✅ Get all currently taken slot numbers (ACTIVE slots from other bookings)
+            const takenSlots = await queryRunner.query(
+                `SELECT DISTINCT bs.slot_number 
+                 FROM booking_slots bs 
+                 JOIN bookings b ON bs.booking_id = b.id 
+                 WHERE b.match_id = $1 
+                   AND bs.status = $2 
+                   AND b.id != $3
+                   AND bs.slot_number IS NOT NULL`,
+                [booking.matchId, BookingSlotStatus.ACTIVE, bookingId]
+            );
+            const takenSlotNumbers = new Set(takenSlots.map((row: any) => row.slot_number));
+
+            // ✅ Determine which slot numbers to assign
+            // First, check if existing slot numbers are still available
+            const slotsToAssign: Array<{ id: number; slotNumber: number | null }> = [];
+            const usedSlotNumbers = new Set<number>();
+
+            // Try to reuse existing slot numbers if they're still available
+            for (const slot of bookingSlots) {
+                if (slot.slot_number && !takenSlotNumbers.has(slot.slot_number)) {
+                    // Existing slot number is still available, reuse it
+                    slotsToAssign.push({ id: slot.id, slotNumber: slot.slot_number });
+                    usedSlotNumbers.add(slot.slot_number);
+                } else {
+                    // Need to assign a new slot number
+                    slotsToAssign.push({ id: slot.id, slotNumber: null });
+                }
+            }
+
+            // Get available slot numbers for slots that need new assignments
+            const slotsNeedingAssignment = slotsToAssign.filter(s => s.slotNumber === null);
+            if (slotsNeedingAssignment.length > 0) {
+                const availableSlotNumbers = await this.getAvailableSlotNumbersExcluding(
+                    booking.matchId,
+                    slotsNeedingAssignment.length,
+                    usedSlotNumbers,
+                    queryRunner
+                );
+
+                if (availableSlotNumbers.length < slotsNeedingAssignment.length) {
+                    this.logger.error(
+                        `❌ Not enough available slots for booking ${bookingId}. ` +
+                        `Need ${slotsNeedingAssignment.length}, found ${availableSlotNumbers.length}`
+                    );
+                    await queryRunner.rollbackTransaction();
+                    return false;
+                }
+
+                // Assign new slot numbers
+                for (let i = 0; i < slotsNeedingAssignment.length; i++) {
+                    slotsNeedingAssignment[i].slotNumber = availableSlotNumbers[i];
+                }
+            }
+
+            // ✅ Update each slot with assigned slot number and ACTIVE status
+            for (const slotAssignment of slotsToAssign) {
+                if (slotAssignment.slotNumber === null) {
+                    this.logger.error(
+                        `❌ Slot ${slotAssignment.id} has no slot number assigned for booking ${bookingId}`
+                    );
+                    await queryRunner.rollbackTransaction();
+                    return false;
+                }
+
                 await queryRunner.query(
                     `UPDATE booking_slots 
                      SET slot_number = $1, status = $2, updated_at = NOW()
                      WHERE id = $3`,
-                    [availableSlotNumbers[i], BookingSlotStatus.ACTIVE, bookingSlots[i].id]
+                    [slotAssignment.slotNumber, BookingSlotStatus.ACTIVE, slotAssignment.id]
                 );
             }
+
+            this.logger.log(
+                `✅ Assigned slot numbers to booking ${bookingId}: ` +
+                slotsToAssign.map(s => s.slotNumber).filter(n => n !== null).join(', ')
+            );
 
             // ✅ Increment booked_slots in matches table
             await queryRunner.query(
@@ -660,9 +713,13 @@ export class BookingCleanupService {
             }
 
             await queryRunner.commitTransaction();
+            const assignedSlotNumbers = slotsToAssign
+                .map(s => s.slotNumber)
+                .filter((n): n is number => n !== null)
+                .join(', ');
             this.logger.log(
                 `✅ Successfully reconciled and confirmed booking ${bookingId} ` +
-                `(order: ${razorpayOrderId}, amount: ₹${bookingData.amount}, slots: ${availableSlotNumbers.join(', ')})`
+                `(order: ${razorpayOrderId}, amount: ₹${bookingData.amount}, slots: ${assignedSlotNumbers})`
             );
 
             // Notify waitlist if needed
@@ -696,11 +753,11 @@ export class BookingCleanupService {
             `SELECT bs.slot_number 
              FROM booking_slots bs 
              JOIN bookings b ON bs.booking_id = b.id 
-             WHERE b.match_id = $1 AND bs.status = $2`,
+             WHERE b.match_id = $1 AND bs.status = $2 AND bs.slot_number IS NOT NULL`,
             [matchId, BookingSlotStatus.ACTIVE]
         );
 
-        const bookedSlotNumbers = activeSlots.map(row => row.slot_number);
+        const bookedSlotNumbers = new Set(activeSlots.map((row: any) => row.slot_number));
 
         // Get match capacity
         const match = await queryRunner.query(
@@ -714,7 +771,53 @@ export class BookingCleanupService {
         const allSlots = Array.from({ length: totalCapacity }, (_, i) => i + 1);
 
         // Find available slots
-        const availableSlots = allSlots.filter(slot => !bookedSlotNumbers.includes(slot));
+        const availableSlots = allSlots.filter(slot => !bookedSlotNumbers.has(slot));
+
+        // Return only the requested number of slots
+        return availableSlots.slice(0, requestedSlots);
+    }
+
+    /**
+     * Get available slot numbers for a match, excluding specific slot numbers
+     * Used when we need to assign new slots but want to exclude ones already used in the current booking
+     * @param matchId - The match ID
+     * @param requestedSlots - Number of slots needed
+     * @param excludeSlotNumbers - Set of slot numbers to exclude (e.g., already assigned to this booking)
+     * @param queryRunner - Query runner for the transaction
+     */
+    private async getAvailableSlotNumbersExcluding(
+        matchId: number,
+        requestedSlots: number,
+        excludeSlotNumbers: Set<number>,
+        queryRunner: any
+    ): Promise<number[]> {
+        // Get all currently active slot numbers for this match (from other bookings)
+        const activeSlots = await queryRunner.query(
+            `SELECT bs.slot_number 
+             FROM booking_slots bs 
+             JOIN bookings b ON bs.booking_id = b.id 
+             WHERE b.match_id = $1 AND bs.status = $2 AND bs.slot_number IS NOT NULL`,
+            [matchId, BookingSlotStatus.ACTIVE]
+        );
+
+        const bookedSlotNumbers = new Set(activeSlots.map((row: any) => row.slot_number));
+
+        // Combine booked slots with excluded slots
+        const unavailableSlots = new Set([...bookedSlotNumbers, ...excludeSlotNumbers]);
+
+        // Get match capacity
+        const match = await queryRunner.query(
+            `SELECT player_capacity FROM matches WHERE match_id = $1`,
+            [matchId]
+        );
+
+        const totalCapacity = match[0]?.player_capacity || 0;
+
+        // Generate all possible slot numbers
+        const allSlots = Array.from({ length: totalCapacity }, (_, i) => i + 1);
+
+        // Find available slots (not in unavailable set)
+        const availableSlots = allSlots.filter(slot => !unavailableSlots.has(slot));
 
         // Return only the requested number of slots
         return availableSlots.slice(0, requestedSlots);
