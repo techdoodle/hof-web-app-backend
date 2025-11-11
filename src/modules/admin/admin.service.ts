@@ -15,6 +15,7 @@ import { CsvUploadService } from '../match-participant-stats/csv-upload.service'
 import { BookingEntity } from '../booking/booking.entity';
 import { BookingSlotEntity, BookingSlotStatus } from '../booking/booking-slot.entity';
 import { BookingStatus, PaymentStatus } from '../../common/types/booking.types';
+import { RefundService } from '../payment/refund.service';
 import { generateBookingReference } from '../../common/utils/reference.util';
 import { parseGoogleMapsUrl } from '../../common/utils/google-maps.util';
 import * as csv from 'csv-parser';
@@ -51,6 +52,7 @@ export class AdminService {
         private readonly bookingSlotRepository: Repository<BookingSlotEntity>,
         private readonly csvUploadService: CsvUploadService,
         private readonly dataSource: DataSource,
+        private readonly refundService: RefundService,
     ) { }
 
     // User Management
@@ -401,15 +403,6 @@ export class AdminService {
         }
     }
 
-    async deleteMatch(id: number) {
-        const match = await this.matchRepository.findOne({ where: { matchId: id } });
-        if (!match) {
-            throw new NotFoundException(`Match with ID ${id} not found`);
-        }
-
-        await this.matchRepository.remove(match);
-        return { message: 'Match deleted successfully' };
-    }
 
     // Match Participants Management
     async getAllMatchParticipants(query: any) {
@@ -1374,6 +1367,288 @@ export class AdminService {
         console.log('Update data:', updateData);
         await this.matchParticipantRepository.update(participantId, updateData);
         console.log('Video URL updated successfully');
+    }
+
+    async cancelMatchWithRefunds(matchId: number): Promise<{
+        success: boolean;
+        matchId: number;
+        refundsProcessed: number;
+        refundsFailed: number;
+        bookingsCancelled: number;
+        totalRefundAmount: number;
+        refundDetails: Array<{ bookingId: number; amount: number; status: string; error?: string }>;
+    }> {
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            // Get match details
+            const match = await this.matchRepository.findOne({
+                where: { matchId },
+                relations: ['venue', 'city', 'footballChief']
+            });
+
+            if (!match) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+
+            if (match.status === 'CANCELLED') {
+                throw new BadRequestException(`Match ${matchId} is already cancelled`);
+            }
+
+            // Query all bookings for this match
+            const allBookings = await queryRunner.query(
+                `SELECT 
+                    b.id,
+                    b.booking_reference,
+                    b.status,
+                    b.payment_status,
+                    b.total_amount,
+                    b.email,
+                    b.metadata
+                FROM bookings b
+                WHERE b.match_id = $1
+                AND b.status NOT IN ('CANCELLED', 'PARTIALLY_CANCELLED')
+                ORDER BY b.created_at DESC`,
+                [matchId]
+            );
+
+            // Separate bookings into confirmed (with payments) and non-confirmed
+            const confirmedBookings = allBookings.filter(
+                (b: any) => b.status === BookingStatus.CONFIRMED && b.payment_status === PaymentStatus.COMPLETED
+            );
+            const nonConfirmedBookings = allBookings.filter(
+                (b: any) => b.status !== BookingStatus.CONFIRMED || b.payment_status !== PaymentStatus.COMPLETED
+            );
+
+            const refundDetails: Array<{ bookingId: number; amount: number; status: string; error?: string }> = [];
+            let refundsProcessed = 0;
+            let refundsFailed = 0;
+            let totalRefundAmount = 0;
+
+            // Process refunds for confirmed bookings with payments
+            for (const booking of confirmedBookings) {
+                try {
+                    // Get payment ID from booking metadata
+                    const paymentId = booking.metadata?.razorpayPaymentId ||
+                        booking.metadata?.paymentId;
+
+                    if (!paymentId) {
+                        this.logger.warn(
+                            `⚠️ Cannot process refund for booking ${booking.id} - no payment ID found in metadata`
+                        );
+                        refundDetails.push({
+                            bookingId: booking.id,
+                            amount: parseFloat(booking.total_amount) || 0,
+                            status: 'FAILED',
+                            error: 'No payment ID found in metadata'
+                        });
+                        refundsFailed++;
+                        continue;
+                    }
+
+                    const refundAmount = parseFloat(booking.total_amount) || 0;
+
+                    // Initiate refund
+                    const refund = await this.refundService.initiateRefund({
+                        bookingId: booking.id,
+                        amount: refundAmount,
+                        reason: `Match ${matchId} has been cancelled`,
+                        razorpayPaymentId: paymentId,
+                        metadata: {
+                            matchId: matchId,
+                            matchCancellation: true,
+                            cancelledAt: new Date()
+                        }
+                    }, queryRunner);
+
+                    // Update booking status to CANCELLED
+                    await queryRunner.query(
+                        `UPDATE bookings 
+                         SET status = $1, updated_at = NOW()
+                         WHERE id = $2`,
+                        [BookingStatus.CANCELLED, booking.id]
+                    );
+
+                    // Update booking slots to CANCELLED
+                    await queryRunner.query(
+                        `UPDATE booking_slots 
+                         SET status = $1, updated_at = NOW()
+                         WHERE booking_id = $2`,
+                        [BookingSlotStatus.CANCELLED, booking.id]
+                    );
+
+                    refundDetails.push({
+                        bookingId: booking.id,
+                        amount: refundAmount,
+                        status: 'SUCCESS'
+                    });
+                    refundsProcessed++;
+                    totalRefundAmount += refundAmount;
+
+                    this.logger.log(
+                        `✅ Refund initiated for booking ${booking.id} (amount: ₹${refundAmount}) due to match cancellation`
+                    );
+                } catch (error: any) {
+                    this.logger.error(
+                        `❌ Failed to process refund for booking ${booking.id}: ${error.message}`,
+                        error.stack
+                    );
+                    refundDetails.push({
+                        bookingId: booking.id,
+                        amount: parseFloat(booking.total_amount) || 0,
+                        status: 'FAILED',
+                        error: error.message
+                    });
+                    refundsFailed++;
+                    // Continue with other bookings even if one fails
+                }
+            }
+
+            // Cancel non-confirmed bookings (no refunds)
+            for (const booking of nonConfirmedBookings) {
+                try {
+                    // Update booking status to CANCELLED
+                    await queryRunner.query(
+                        `UPDATE bookings 
+                         SET status = $1, updated_at = NOW()
+                         WHERE id = $2`,
+                        [BookingStatus.CANCELLED, booking.id]
+                    );
+
+                    // Update booking slots to CANCELLED
+                    await queryRunner.query(
+                        `UPDATE booking_slots 
+                         SET status = $1, updated_at = NOW()
+                         WHERE booking_id = $2`,
+                        [BookingSlotStatus.CANCELLED, booking.id]
+                    );
+
+                    this.logger.log(`✅ Cancelled booking ${booking.id} (no refund - non-confirmed booking)`);
+                } catch (error: any) {
+                    this.logger.error(
+                        `❌ Failed to cancel booking ${booking.id}: ${error.message}`,
+                        error.stack
+                    );
+                    // Continue with other bookings
+                }
+            }
+
+            // Mark match as CANCELLED
+            await queryRunner.query(
+                `UPDATE matches 
+                 SET status = $1, updated_at = NOW()
+                 WHERE match_id = $2`,
+                ['CANCELLED', matchId]
+            );
+
+            await queryRunner.commitTransaction();
+
+            this.logger.log(
+                `✅ Match ${matchId} cancelled successfully. ` +
+                `Refunds: ${refundsProcessed} processed, ${refundsFailed} failed. ` +
+                `Bookings cancelled: ${nonConfirmedBookings.length}`
+            );
+
+            return {
+                success: true,
+                matchId,
+                refundsProcessed,
+                refundsFailed,
+                bookingsCancelled: nonConfirmedBookings.length,
+                totalRefundAmount,
+                refundDetails
+            };
+        } catch (error: any) {
+            await queryRunner.rollbackTransaction();
+            this.logger.error(`❌ Failed to cancel match ${matchId}: ${error.message}`, error.stack);
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    async getMatchCancellationPreview(matchId: number): Promise<{
+        match: any;
+        confirmedBookings: Array<{ id: number; bookingReference: string; email: string; amount: number; razorpayOrderId?: string | null }>;
+        nonConfirmedBookings: Array<{ id: number; bookingReference: string; email: string; amount: number; razorpayOrderId?: string | null }>;
+        totalRefundAmount: number;
+    }> {
+        // Get match details
+        const match = await this.matchRepository.findOne({
+            where: { matchId },
+            relations: ['venue', 'city', 'footballChief']
+        });
+
+        if (!match) {
+            throw new NotFoundException(`Match with ID ${matchId} not found`);
+        }
+
+        if (match.status === 'CANCELLED') {
+            throw new BadRequestException(`Match ${matchId} is already cancelled`);
+        }
+
+        // Query all bookings for this match
+        const allBookings = await this.dataSource.query(
+            `SELECT 
+                b.id,
+                b.booking_reference,
+                b.status,
+                b.payment_status,
+                b.total_amount,
+                b.email,
+                b.metadata
+            FROM bookings b
+            WHERE b.match_id = $1
+            AND b.status NOT IN ('CANCELLED', 'PARTIALLY_CANCELLED')
+            ORDER BY b.created_at DESC`,
+            [matchId]
+        );
+
+        // Separate bookings into confirmed (with payments) and non-confirmed
+        const confirmedBookings = allBookings
+            .filter((b: any) => b.status === BookingStatus.CONFIRMED && b.payment_status === PaymentStatus.COMPLETED)
+            .map((b: any) => {
+                const metadata = typeof b.metadata === 'string' ? JSON.parse(b.metadata) : b.metadata;
+                const razorpayOrderId = metadata?.razorpayOrderId || metadata?.razorpay_order_id || null;
+                return {
+                    id: b.id,
+                    bookingReference: b.booking_reference,
+                    email: b.email,
+                    amount: parseFloat(b.total_amount) || 0,
+                    razorpayOrderId: razorpayOrderId
+                };
+            });
+
+        const nonConfirmedBookings = allBookings
+            .filter((b: any) => b.status !== BookingStatus.CONFIRMED || b.payment_status !== PaymentStatus.COMPLETED)
+            .map((b: any) => {
+                const metadata = typeof b.metadata === 'string' ? JSON.parse(b.metadata) : b.metadata;
+                const razorpayOrderId = metadata?.razorpayOrderId || metadata?.razorpay_order_id || null;
+                return {
+                    id: b.id,
+                    bookingReference: b.booking_reference,
+                    email: b.email,
+                    amount: parseFloat(b.total_amount) || 0,
+                    razorpayOrderId: razorpayOrderId
+                };
+            });
+
+        const totalRefundAmount = confirmedBookings.reduce((sum, b) => sum + b.amount, 0);
+
+        return {
+            match: {
+                matchId: match.matchId,
+                startTime: match.startTime,
+                endTime: match.endTime,
+                venue: match.venue?.name || 'N/A',
+                city: match.city ? `${match.city.cityName}, ${match.city.stateName}` : 'N/A'
+            },
+            confirmedBookings,
+            nonConfirmedBookings,
+            totalRefundAmount
+        };
     }
 
 }

@@ -63,10 +63,6 @@ export class MatchesService {
     return await this.matchRepository.save(match);
   }
 
-  async remove(matchId: number): Promise<void> {
-    const match = await this.findOne(matchId);
-    await this.matchRepository.remove(match);
-  }
 
   async findByMatchType(matchTypeId: number): Promise<Match[]> {
     return await this.matchRepository.find({

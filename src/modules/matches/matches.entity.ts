@@ -13,6 +13,9 @@ export class Match {
   @Column({ name: 'match_stats_id', type: 'varchar', length: 255, unique: true, nullable: true })
   matchStatsId: string;
 
+  @Column({ name: 'status', type: 'varchar', length: 20, default: 'ACTIVE' })
+  status: string;
+
   @Column({ name: 'match_type', type: 'enum', enum: MatchType, default: MatchType.NON_RECORDED })
   matchType: MatchType;
 

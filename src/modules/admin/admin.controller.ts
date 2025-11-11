@@ -147,10 +147,16 @@ export class AdminController {
         return this.adminService.updateMatch(id, updateMatchDto);
     }
 
-    @Delete('matches/:id')
-    @Roles(UserRole.SUPER_ADMIN) // Only super admin can delete matches
-    async deleteMatch(@Param('id', ParseIntPipe) id: number) {
-        return this.adminService.deleteMatch(id);
+    @Get('matches/:id/cancel-preview')
+    @Roles(UserRole.SUPER_ADMIN) // Only super admin can preview match cancellation
+    async getMatchCancellationPreview(@Param('id', ParseIntPipe) id: number) {
+        return this.adminService.getMatchCancellationPreview(id);
+    }
+
+    @Delete('matches/:id/cancel')
+    @Roles(UserRole.SUPER_ADMIN) // Only super admin can cancel matches
+    async cancelMatch(@Param('id', ParseIntPipe) id: number) {
+        return this.adminService.cancelMatchWithRefunds(id);
     }
 
     // Match Participants Management

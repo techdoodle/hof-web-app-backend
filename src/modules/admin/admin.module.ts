@@ -23,6 +23,7 @@ import { PlayerNationToken } from './entities/playernation-token.entity';
 import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
 import { BookingEntity } from '../booking/booking.entity';
 import { BookingSlotEntity } from '../booking/booking-slot.entity';
+import { PaymentModule } from '../payment/payment.module';
 
 @Module({
     imports: [
@@ -42,6 +43,7 @@ import { BookingSlotEntity } from '../booking/booking-slot.entity';
             BookingEntity,
             BookingSlotEntity,
         ]),
+        PaymentModule,
     ],
     controllers: [AdminController, TestController],
     providers: [AdminService, CsvUploadService, PlayerNationService, PlayerNationPollingJob, FirebaseStorageService, FirebaseConfig, VenueCsvUploadService],

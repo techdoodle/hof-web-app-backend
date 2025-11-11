@@ -31,6 +31,6 @@ import { NotificationModule } from '../notification/notification.module';
         RazorpayGateway,
         RazorpayService
     ],
-    exports: [PaymentService]
+    exports: [PaymentService, RefundService]
 })
 export class PaymentModule { }

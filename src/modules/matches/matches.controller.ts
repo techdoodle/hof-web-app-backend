@@ -3,7 +3,6 @@ import {
   Get,
   Post,
   Put,
-  Delete,
   Param,
   Body,
   Query,
@@ -201,10 +200,4 @@ export class MatchesController {
     return this.matchesService.calculateBookingPrice(matchId, body.numSlots);
   }
 
-  @Delete(':matchId')
-  @UseGuards(JwtAuthGuard)
-  async remove(@Param('matchId', ParseIntPipe) matchId: number): Promise<{ message: string }> {
-    await this.matchesService.remove(matchId);
-    return { message: 'Match deleted successfully' };
-  }
 } 
