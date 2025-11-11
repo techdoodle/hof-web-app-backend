@@ -6,12 +6,21 @@ import {
     CreateBookingDto,
     CancelBookingDto,
     InitiatePaymentDto,
-    PaymentCallbackDto
+    PaymentCallbackDto,
+    VerifySlotsDto
 } from '../../common/types/booking.types';
 
 @Controller('bookings')
 export class BookingController {
     constructor(private readonly bookingService: BookingService) { }
+
+    @Post('verify-slots')
+    @HttpCode(HttpStatus.OK)
+    @UseGuards(JwtAuthGuard)
+    verifySlots(@Body() dto: VerifySlotsDto, @Request() req) {
+        const tokenUser = req.user;
+        return this.bookingService.verifySlots(dto, tokenUser);
+    }
 
     @Post()
     @HttpCode(HttpStatus.CREATED)
@@ -65,13 +74,13 @@ export class BookingController {
         return this.bookingService.handlePaymentCallback(bookingId, dto);
     }
 
-    @Post('webhook/payment')
+    @Post('webhook')
     @Public()
     @HttpCode(HttpStatus.OK)
-    handlePaymentWebhook(@Body() webhookData: any, @Headers() headers: any) {
-        // Add signature from headers to webhook data
-        webhookData.signature = headers['x-razorpay-signature'];
-        return this.bookingService.handlePaymentWebhook(webhookData);
+    handlePaymentWebhook(@Body() webhookData: any, @Headers() headers: any, @Req() req: any) {
+        const signature = headers['x-razorpay-signature'];
+        const rawBody = (req && req.rawBody) ? req.rawBody : JSON.stringify(webhookData);
+        return this.bookingService.handlePaymentWebhook(webhookData, signature, rawBody);
     }
 
     @Delete(':bookingId/slots')

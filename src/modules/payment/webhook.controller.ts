@@ -1,19 +1,45 @@
-import { Controller, Post, Body, Headers, Logger, HttpStatus, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Headers, Logger, HttpStatus, HttpCode, BadRequestException, Req } from '@nestjs/common';
 import { RefundService } from './refund.service';
 import { RefundStatus } from '../../common/types/booking.types';
+import { createHmac } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('webhooks')
 export class WebhookController {
     private readonly logger = new Logger(WebhookController.name);
 
-    constructor(private refundService: RefundService) { }
+    constructor(
+        private refundService: RefundService,
+        private readonly configService: ConfigService
+    ) { }
 
     @Post('razorpay')
     @HttpCode(HttpStatus.OK)
-    async handleRazorpayWebhook(@Body() body: any, @Headers() headers: any) {
+    async handleRazorpayWebhook(
+        @Body() body: any,
+        @Headers() headers: any,
+        @Req() req: any
+    ) {
         this.logger.log('Received Razorpay webhook', { event: body.event, entity: body.entity });
 
         try {
+            // Verify signature
+            const signature = headers['x-razorpay-signature'];
+            if (!signature) {
+                throw new BadRequestException('Missing signature header');
+            }
+            const secret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET');
+            if (!secret) {
+                throw new BadRequestException('RAZORPAY_WEBHOOK_SECRET not configured');
+            }
+            const rawBody = (req && req.rawBody) ? req.rawBody : JSON.stringify(body);
+            const hmac = createHmac('sha256', secret);
+            hmac.update(rawBody);
+            const generated = hmac.digest('hex');
+            if (generated !== signature) {
+                throw new BadRequestException('Invalid webhook signature');
+            }
+
             // Handle refund events
             if (body.event && body.entity === 'refund') {
                 await this.handleRefundEvent(body);

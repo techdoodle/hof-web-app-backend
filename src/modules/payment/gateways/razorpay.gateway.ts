@@ -97,16 +97,15 @@ export class RazorpayGateway implements PaymentGateway {
         }
     }
 
-    async verifyWebhook(payload: any, signature: string): Promise<boolean> {
+    async verifyWebhook(rawBody: string, signature: string): Promise<boolean> {
         try {
-            console.log("payload", payload);
             console.log("signature", signature);
             console.log("webhook secret", this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET'));
             const secret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET');
             if (!secret) throw new Error('RAZORPAY_WEBHOOK_SECRET configuration is missing');
 
             const hmac = createHmac('sha256', secret);
-            hmac.update(JSON.stringify(payload));
+            hmac.update(rawBody);
             const generatedSignature = hmac.digest('hex');
             return generatedSignature === signature;
         } catch (error) {

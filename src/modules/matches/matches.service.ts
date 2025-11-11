@@ -396,19 +396,6 @@ export class MatchesService {
     const usedSlots = confirmedBookedSlots + lockedSlotsCount + waitlistedSlotsCount;
     const availableWaitlistSlots = Math.max(0, totalCapacity - usedSlots);
 
-    // Debug logging
-    console.log(`🔍 Match ${matchId} slot calculation:`, {
-      playerCapacity: match.playerCapacity,
-      bufferCapacity: match.bufferCapacity,
-      confirmedBookedSlots,
-      lockedSlotsCount,
-      waitlistedSlotsCount,
-      availableRegularSlots,
-      availableWaitlistSlots,
-      totalCapacity,
-      usedSlots
-    });
-
     return {
       playerCapacity: match.playerCapacity,
       bufferCapacity: match.bufferCapacity,

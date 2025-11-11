@@ -75,3 +75,11 @@ export interface AddToWaitlistDto {
     slotsRequested: number;
     metadata?: Record<string, any>;
 }
+
+export interface VerifySlotsDto {
+    matchId: string;
+    slots: Array<{
+        phone: string;
+        slotNumber?: number;
+    }>;
+}

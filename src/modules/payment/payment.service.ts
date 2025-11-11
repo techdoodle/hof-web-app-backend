@@ -131,9 +131,9 @@ export class PaymentService {
         }
     }
 
-    async handleWebhook(payload: WebhookEventDto, signature: string) {
+    async handleWebhook(payload: WebhookEventDto, signature: string, rawBody: string) {
         // Verify webhook signature
-        const isValid = await this.paymentGateway.verifyWebhook(payload, signature);
+        const isValid = await this.paymentGateway.verifyWebhook(rawBody, signature);
         if (!isValid) {
             throw new BadRequestException('Invalid webhook signature');
         }
@@ -141,7 +141,7 @@ export class PaymentService {
         const queryRunner = this.connection.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
-
+        console.log("payload", payload,);
         try {
             switch (payload.event) {
                 case 'payment.captured':
@@ -223,6 +223,7 @@ export class PaymentService {
             });
             await queryRunner.manager.save(newPaymentAttempt);
         }
+
     }
 
     async processRefund(

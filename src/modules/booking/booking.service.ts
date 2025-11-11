@@ -11,7 +11,8 @@ import {
     CancelBookingDto,
     InitiatePaymentDto,
     PaymentCallbackDto,
-    RefundStatus
+    RefundStatus,
+    VerifySlotsDto
 } from '../../common/types/booking.types';
 import { RefundService } from '../payment/refund.service';
 import { RazorpayService } from '../payment/razorpay.service';
@@ -145,11 +146,17 @@ export class BookingService {
 
                 // For the first player (main user), get phone from token user
                 // For additional players, use provided phone
-                let phoneToUse = player.phone;
+                let phoneToUse = (player.phone || '').trim();
 
-                if (i === 0 && tokenUser?.phoneNumber && canUseTokenUserAsFirst) {
-                    // First player is the main user - get their phone from JWT token
-                    phoneToUse = tokenUser.phoneNumber;
+                if (
+                    i === 0 &&
+                    tokenUser?.phoneNumber &&
+                    canUseTokenUserAsFirst &&
+                    (!phoneToUse || phoneToUse === String(tokenUser.phoneNumber).trim())
+                ) {
+                    // First player is the main user - use token user's phone only if
+                    // player phone is empty or matches token user's phone
+                    phoneToUse = String(tokenUser.phoneNumber).trim();
                 }
 
                 const user = await this.bookingUserService.findOrCreateUserByPhone(phoneToUse, {
@@ -169,11 +176,21 @@ export class BookingService {
                 const player = dto.players[index] || dto.players[0] || { firstName: '', lastName: '', phone: '' };
                 const playerUser = playerUsers[index] || playerUsers[0];
 
-                // Use phone from token user for first player, provided phone for others
-                let phoneToUse = player?.phone || '';
-                if (index === 0 && tokenUser?.phoneNumber) {
-                    phoneToUse = tokenUser.phoneNumber;
+                // Determine phone number for player_phone column:
+                // - If index 0 AND player phone matches token user's phone (or is empty) → use token user's phone
+                //   (Case 1: User booking for themselves)
+                // - Otherwise → use the provided player phone
+                //   (Case 2: User booking only for friends, or friend slots in any case)
+                let phoneToUse = (player?.phone || '').trim();
+                if (
+                    index === 0 &&
+                    tokenUser?.phoneNumber &&
+                    (!phoneToUse || phoneToUse === String(tokenUser.phoneNumber).trim())
+                ) {
+                    // First slot belongs to the token user (booking for self)
+                    phoneToUse = String(tokenUser.phoneNumber).trim();
                 }
+                // If condition is false, phoneToUse remains as player.phone (friend's phone)
 
                 return this.bookingSlotRepository.create({
                     bookingId: savedBooking.id,
@@ -277,6 +294,158 @@ export class BookingService {
         };
     }
 
+    // Overloads to support calls with or without tokenUser
+    async verifySlots(dto: VerifySlotsDto): Promise<{ isValid: boolean; conflicts: any[]; message: string }>;
+    async verifySlots(dto: VerifySlotsDto, tokenUser?: any): Promise<{ isValid: boolean; conflicts: any[]; message: string }>;
+    async verifySlots(dto: VerifySlotsDto, tokenUser?: any) {
+        const { matchId, slots } = dto;
+
+        if (!slots || slots.length === 0) {
+            throw new BadRequestException('No slots provided for verification');
+        }
+
+        // Extract unique phone numbers from slots
+        const phoneNumbers = Array.from(new Set(slots.map(slot => slot.phone?.trim()).filter(Boolean)));
+
+        if (phoneNumbers.length === 0) {
+            throw new BadRequestException('No valid phone numbers found in slots');
+        }
+
+        // Use Map to track conflicts by phone number (merge duplicates)
+        const conflictsMap = new Map<string, {
+            phone: string;
+            userId?: number;
+            reasons: string[];
+            sources: Array<'match_participant' | 'booking_slot'>;
+        }>();
+
+        // Look up users by phone numbers
+        const users = await this.connection.query(
+            `SELECT id, phone_number, first_name, last_name 
+             FROM users 
+             WHERE phone_number = ANY($1::text[])`,
+            [phoneNumbers]
+        );
+
+        const phoneToUserIdMap = new Map<string, number>();
+        users.forEach((user: any) => {
+            phoneToUserIdMap.set(user.phone_number, user.id);
+        });
+
+        const userIds = Array.from(phoneToUserIdMap.values());
+
+        if (userIds.length === 0) {
+            // No users found with these phone numbers - they're new users, so no conflicts
+            return {
+                isValid: true,
+                conflicts: [],
+                message: 'All users can be cleared for booking'
+            };
+        }
+
+        // Check match_participants table
+        const existingParticipants = await this.matchParticipantRepository.find({
+            where: {
+                match: { matchId: Number(matchId) },
+                user: { id: In(userIds) }
+            },
+            relations: ['user']
+        });
+
+        existingParticipants.forEach(participant => {
+            const phone = users.find((u: any) => u.id === participant.user.id)?.phone_number;
+            if (phone) {
+                if (!conflictsMap.has(phone)) {
+                    conflictsMap.set(phone, {
+                        phone: phone,
+                        userId: participant.user.id,
+                        reasons: [],
+                        sources: []
+                    });
+                }
+                const conflict = conflictsMap.get(phone)!;
+                if (!conflict.sources.includes('match_participant')) {
+                    conflict.sources.push('match_participant');
+                    conflict.reasons.push('User is already a participant in this match');
+                }
+            }
+        });
+
+        // Check booking_slots with ACTIVE status
+        const activeSlots = await this.connection.query(
+            `SELECT DISTINCT bs.player_id as "playerId", bs.player_phone as "playerPhone", b.match_id as "matchId"
+             FROM booking_slots bs
+             INNER JOIN bookings b ON bs.booking_id = b.id
+             WHERE b.match_id = $1 
+             AND bs.status = $2 
+             AND (bs.player_id = ANY($3::int[]) OR bs.player_phone = ANY($4::text[]))
+             AND b.status = $5`,
+            [Number(matchId), BookingSlotStatus.ACTIVE, userIds, phoneNumbers, BookingStatus.CONFIRMED]
+        );
+
+        activeSlots.forEach((slot: any) => {
+            const userId = slot.playerId;
+            const phone = slot.playerPhone;
+
+            // Find the phone number for this conflict
+            let conflictPhone = phone;
+            if (userId && !conflictPhone) {
+                const user = users.find((u: any) => u.id === userId);
+                conflictPhone = user?.phone_number;
+            }
+
+            if (conflictPhone) {
+                if (!conflictsMap.has(conflictPhone)) {
+                    conflictsMap.set(conflictPhone, {
+                        phone: conflictPhone,
+                        userId: userId || undefined,
+                        reasons: [],
+                        sources: []
+                    });
+                }
+                const conflict = conflictsMap.get(conflictPhone)!;
+                if (!conflict.sources.includes('booking_slot')) {
+                    conflict.sources.push('booking_slot');
+                    conflict.reasons.push('User has an active booking slot for this match');
+                }
+                // Update userId if we have it from booking slot
+                if (userId && !conflict.userId) {
+                    conflict.userId = userId;
+                }
+            }
+        });
+
+        // Convert Map to array format
+        let conflicts = Array.from(conflictsMap.values()).map(conflict => ({
+            phone: conflict.phone,
+            userId: conflict.userId,
+            reason: conflict.reasons.join('; '),
+            source: conflict.sources
+        }));
+
+        // Exclude the authenticated user from conflicts ONLY if they're not booking for themselves
+        if (tokenUser?.id || tokenUser?.phoneNumber) {
+            const tokenUserId = Number(tokenUser.id);
+            const tokenUserPhone = (tokenUser.phoneNumber || '').trim();
+            const isBookingForSelf = tokenUserPhone && phoneNumbers.includes(tokenUserPhone);
+
+            if (!isBookingForSelf) {
+                conflicts = conflicts.filter(c =>
+                    (tokenUserId ? c.userId !== tokenUserId : true) &&
+                    (tokenUserPhone ? c.phone !== tokenUserPhone : true)
+                );
+            }
+        }
+
+        return {
+            isValid: conflicts.length === 0,
+            conflicts: conflicts,
+            message: conflicts.length === 0
+                ? 'All users can be cleared for booking'
+                : `${conflicts.length} user(s) already have active slots for this match`
+        };
+    }
+
     async getBookings(filters: { userId?: string; email?: string; status?: string }) {
         // Use raw query to get booking data with match and venue details
         console.log("filters", filters);
@@ -335,17 +504,6 @@ export class BookingService {
         `;
 
         const bookings = await this.connection.query(query, params);
-
-        // Debug: Log the first booking to see what fields are available
-        if (bookings.length > 0) {
-            console.log('🔍 First booking data:', {
-                id: bookings[0].id,
-                metadata: bookings[0].metadata,
-                venue_name: bookings[0].venue_name,
-                venue_address: bookings[0].venue_address,
-                availableFields: Object.keys(bookings[0])
-            });
-        }
 
         // Get booking slots for each booking
         const bookingIds = bookings.map(b => b.id);
@@ -601,8 +759,27 @@ export class BookingService {
             this.logger.log(`[handlePaymentCallback] bookingId=${bookingId}`);
             const booking = await this.getBookingById(bookingId);
 
-            if (booking.status !== BookingStatus.PAYMENT_PENDING) {
-                throw new BadRequestException('Invalid booking status for payment callback');
+            // Check booking status - allow PAYMENT_PENDING or PAYMENT_FAILED (retry), or already CONFIRMED (idempotency)
+            if (booking.status === BookingStatus.CONFIRMED) {
+                this.logger.log(`[handlePaymentCallback] Booking ${bookingId} already confirmed, skipping`);
+                await queryRunner.rollbackTransaction();
+                await this.refundService.initiateRefund({
+                    bookingId: bookingId,
+                    amount: booking.amount,
+                    reason: 'Suucessfully Re-Initiated Payment for Booking',
+                    razorpayPaymentId: booking.metadata?.razorpayPaymentId || booking.metadata?.paymentId,
+                    metadata: {
+                        reInitiatedAt: new Date(),
+                        originalAmount: booking.amount,
+                        reInitiationType: 'WEBHOOK'
+                    }
+                }, queryRunner);
+                return booking;
+            }
+
+            if (booking.status !== BookingStatus.PAYMENT_PENDING && booking.status !== BookingStatus.PAYMENT_FAILED) {
+                this.logger.warn(`[handlePaymentCallback] Booking ${bookingId} is in status ${booking.status}, expected PAYMENT_PENDING or PAYMENT_FAILED`);
+                throw new BadRequestException(`Invalid booking status for payment callback: ${booking.status}`);
             }
 
             // Verify Razorpay signature
@@ -769,9 +946,11 @@ export class BookingService {
         } catch (error) {
             this.logger.error('[handlePaymentCallback] failed', error?.stack || error);
             await queryRunner.rollbackTransaction();
-            const booking = await this.getBookingById(bookingId);
-            booking.status = BookingStatus.PAYMENT_FAILED;
-            await this.bookingRepository.save(booking);
+            // Use update instead of save since getBookingById returns normalized object
+            await this.bookingRepository.update(
+                { id: Number(bookingId) },
+                { status: BookingStatus.PAYMENT_FAILED }
+            );
             throw new BadRequestException(`Payment verification failed: ${error.message}`);
         } finally {
             await queryRunner.release();
@@ -781,12 +960,12 @@ export class BookingService {
     /**
      * Handle Razorpay webhook for payment events
      */
-    async handlePaymentWebhook(webhookData: any) {
+    async handlePaymentWebhook(webhookData: any, signature: string, rawBody: string) {
         try {
-            this.logger.log('🔔 Received Razorpay webhook:', webhookData);
+            this.logger.log('🔔 Received Razorpay BOOKINGGG webhook:', webhookData.event, "for orderID", webhookData?.payload?.payment?.entity?.order_id, "signature", signature);
 
             // Verify webhook signature (implement based on Razorpay webhook verification)
-            const isValidWebhook = await this.verifyWebhookSignature(webhookData);
+            const isValidWebhook = await this.verifyWebhookSignature(signature, rawBody);
             if (!isValidWebhook) {
                 this.logger.warn('❌ Invalid webhook signature');
                 throw new BadRequestException('Invalid webhook signature');
@@ -817,16 +996,13 @@ export class BookingService {
      */
     private async handlePaymentCaptured(payload: any) {
         const { payment } = payload;
-        const orderId = payment.order_id;
-
-        // Find booking by Razorpay order ID
-        const booking = await this.bookingRepository.findOne({
-            where: {
-                metadata: {
-                    razorpayOrderId: orderId
-                }
-            }
-        });
+        const orderId = payment.entity.order_id;
+        console.log("orderId", orderId, "payment", payment);
+        // Find booking by Razorpay order ID (metadata JSONB)
+        const booking = await this.bookingRepository
+            .createQueryBuilder('b')
+            .where("b.metadata ->> 'razorpayOrderId' = :orderId", { orderId })
+            .getOne();
 
         if (!booking) {
             this.logger.warn(`❌ No booking found for order: ${orderId}`);
@@ -853,16 +1029,13 @@ export class BookingService {
      */
     private async handlePaymentFailed(payload: any) {
         const { payment } = payload;
-        const orderId = payment.order_id;
-
-        // Find booking by Razorpay order ID
-        const booking = await this.bookingRepository.findOne({
-            where: {
-                metadata: {
-                    razorpayOrderId: orderId
-                }
-            }
-        });
+        const orderId = payment.entity.order_id;
+        console.log("orderId", orderId, "payment", payment);
+        // Find booking by Razorpay order ID (metadata JSONB)
+        const booking = await this.bookingRepository
+            .createQueryBuilder('b')
+            .where("b.metadata ->> 'razorpayOrderId' = :orderId", { orderId })
+            .getOne();
 
         if (!booking) {
             this.logger.warn(`❌ No booking found for failed payment order: ${orderId}`);
@@ -882,10 +1055,9 @@ export class BookingService {
     /**
      * Verify Razorpay webhook signature
      */
-    private async verifyWebhookSignature(webhookData: any): Promise<boolean> {
+    private async verifyWebhookSignature(signature: string, rawBody: string): Promise<boolean> {
         try {
             const crypto = require('crypto');
-            console.log("webhookData", webhookData);
             console.log("webhookSecret", process.env.RAZORPAY_WEBHOOK_SECRET);
             const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
@@ -894,14 +1066,10 @@ export class BookingService {
                 return false;
             }
 
-            // Extract signature from headers (you'll need to modify the controller to pass headers)
-            const signature = webhookData.signature || '';
-            const payload = JSON.stringify(webhookData);
-
             // Create expected signature
             const expectedSignature = crypto
                 .createHmac('sha256', webhookSecret)
-                .update(payload)
+                .update(rawBody)
                 .digest('hex');
 
             const isValid = signature === expectedSignature;
@@ -1054,9 +1222,12 @@ export class BookingService {
 
         try {
             this.logger.log(`[cancelPayment] bookingId=${bookingId}`);
-            // Update booking status to failed
-            booking.status = BookingStatus.PAYMENT_FAILED;
-            await queryRunner.manager.save(booking);
+            // Update booking status to failed (avoid saving normalized object)
+            await queryRunner.manager.update(
+                BookingEntity,
+                { id: booking.id },
+                { status: BookingStatus.PAYMENT_FAILED }
+            );
 
             // Update booking slots status from PENDING_PAYMENT to CANCELLED
             await queryRunner.manager.update(

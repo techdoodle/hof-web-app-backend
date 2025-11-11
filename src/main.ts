@@ -9,8 +9,20 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Configure body parser with larger limits for image uploads
-  app.use(json({ limit: '50mb' }));
-  app.use(urlencoded({ limit: '50mb', extended: true }));
+  // Capture raw body for webhook signature verification
+  app.use(json({
+    limit: '50mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf?.toString('utf8');
+    }
+  }));
+  app.use(urlencoded({
+    limit: '50mb',
+    extended: true,
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf?.toString('utf8');
+    }
+  }));
 
   // Set request timeout for video uploads
   app.use((req, res, next) => {
