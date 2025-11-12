@@ -37,20 +37,13 @@ export class AdminController {
         }
         // Normalize common keys if sent as nested
         if (filters['city.id'] && !filters.city) filters.city = filters['city.id'];
-        console.log('[AdminController] GET /admin/users merged filters:', filters);
         return this.adminService.getAllUsers(filters as UserFilterDto);
     }
 
     @Get('chiefs')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async getChiefs(@Query() raw: any) {
-        console.log('[AdminController] GET /admin/chiefs raw:', raw);
-        const result = this.adminService.getChiefs();
-        // Log after promise resolves as well
-        Promise.resolve(result).then(r => {
-            console.log('[AdminController] /admin/chiefs response meta:', { total: r.total, sample: r.data?.[0] });
-        });
-        return result;
+        return this.adminService.getChiefs();
     }
 
     @Get('users/:id')
