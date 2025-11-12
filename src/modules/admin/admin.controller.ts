@@ -178,9 +178,11 @@ export class AdminController {
     @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async removeMatchParticipant(
         @Param('matchId', ParseIntPipe) matchId: number,
-        @Param('userId', ParseIntPipe) userId: number
+        @Param('userId', ParseIntPipe) userId: number,
+        @Body() body?: { shouldRefund?: boolean }
     ) {
-        return this.adminService.removeMatchParticipant(matchId, userId);
+        const shouldRefund = body?.shouldRefund ?? false;
+        return this.adminService.removeMatchParticipant(matchId, userId, shouldRefund);
     }
 
     // CSV Upload Preview - doesn't actually save to database

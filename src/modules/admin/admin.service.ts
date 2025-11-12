@@ -788,8 +788,8 @@ export class AdminService {
         }
     }
 
-    async removeMatchParticipant(matchId: number, userId: number) {
-        this.logger.log(`[removeMatchParticipant] Starting removal of participant - Match ID: ${matchId}, User ID: ${userId}`);
+    async removeMatchParticipant(matchId: number, userId: number, shouldRefund: boolean = false) {
+        this.logger.log(`[removeMatchParticipant] Starting removal of participant - Match ID: ${matchId}, User ID: ${userId}, Should Refund: ${shouldRefund}`);
         
         const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
@@ -841,9 +841,9 @@ export class AdminService {
                 
                 this.logger.log(`[removeMatchParticipant] Payment type determined - Online Payment: ${isOnlinePayment}, Cash Payment: ${isCashPayment}`);
 
-                // Process refund for online payments
-                if (isOnlinePayment) {
-                    this.logger.log(`[removeMatchParticipant] Processing refund for online payment - Booking ID: ${booking.id}`);
+                // Process refund for online payments (only if shouldRefund is true)
+                if (isOnlinePayment && shouldRefund) {
+                    this.logger.log(`[removeMatchParticipant] Processing refund for online payment - Booking ID: ${booking.id}, Should Refund: ${shouldRefund}`);
                     try {
                         // Extract payment ID from booking metadata
                         this.logger.log(`[removeMatchParticipant] Extracting payment ID from booking metadata - Booking ID: ${booking.id}`);
@@ -923,6 +923,15 @@ export class AdminService {
                         { status: BookingSlotStatus.CANCELLED }
                     );
                     this.logger.log(`[removeMatchParticipant] Slot status updated to CANCELLED - Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
+                } else if (isOnlinePayment && !shouldRefund) {
+                    // Online payment but refund not requested - just update slot status to CANCELLED
+                    this.logger.log(`[removeMatchParticipant] Online payment but refund not requested - Updating slot status to CANCELLED - Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
+                    await queryRunner.manager.update(
+                        BookingSlotEntity,
+                        { id: bookingSlot.id },
+                        { status: BookingSlotStatus.CANCELLED }
+                    );
+                    this.logger.log(`[removeMatchParticipant] Slot status updated to CANCELLED (no refund) - Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
                 } else if (isCashPayment) {
                     // For cash payments, delete the slot (no refund needed)
                     this.logger.log(`[removeMatchParticipant] Processing cash payment - Deleting slot (no refund needed) - ` +
