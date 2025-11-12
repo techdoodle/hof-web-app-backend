@@ -16,6 +16,7 @@ import { BookingEntity } from '../booking/booking.entity';
 import { BookingSlotEntity, BookingSlotStatus } from '../booking/booking-slot.entity';
 import { BookingStatus, PaymentStatus } from '../../common/types/booking.types';
 import { RefundService } from '../payment/refund.service';
+import { RefundEntity } from '../payment/refund.entity';
 import { generateBookingReference } from '../../common/utils/reference.util';
 import { parseGoogleMapsUrl } from '../../common/utils/google-maps.util';
 import * as csv from 'csv-parser';
@@ -770,21 +771,28 @@ export class AdminService {
     }
 
     async removeMatchParticipant(matchId: number, userId: number) {
+        this.logger.log(`[removeMatchParticipant] Starting removal of participant - Match ID: ${matchId}, User ID: ${userId}`);
+        
         const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
 
         try {
             // Find participant within transaction
+            this.logger.log(`[removeMatchParticipant] Searching for participant - Match ID: ${matchId}, User ID: ${userId}`);
             const participant = await queryRunner.manager.findOne(MatchParticipant, {
             where: { match: { matchId }, user: { id: userId } },
         });
 
         if (!participant) {
+            this.logger.warn(`[removeMatchParticipant] Participant not found - Match ID: ${matchId}, User ID: ${userId}`);
             throw new NotFoundException('Match participant not found');
         }
 
+        this.logger.log(`[removeMatchParticipant] Found participant - Participant ID: ${participant.matchParticipantId}, Match ID: ${matchId}, User ID: ${userId}`);
+
             // Find associated booking slot using transaction manager
+            this.logger.log(`[removeMatchParticipant] Searching for associated booking slot - Match ID: ${matchId}, User ID: ${userId}`);
             const bookingSlot = await queryRunner.manager
                 .createQueryBuilder(BookingSlotEntity, 'bs')
                 .innerJoin('bs.booking', 'b')
@@ -794,54 +802,215 @@ export class AdminService {
                 .getOne();
 
             if (bookingSlot) {
+                this.logger.log(`[removeMatchParticipant] Found booking slot - Slot ID: ${bookingSlot.id}, Booking ID: ${bookingSlot.bookingId}, Slot Number: ${bookingSlot.slotNumber}`);
+                
                 // Get the associated booking using transaction manager
+                this.logger.log(`[removeMatchParticipant] Fetching booking details - Booking ID: ${bookingSlot.bookingId}`);
                 const booking = await queryRunner.manager.findOne(BookingEntity, {
                     where: { id: bookingSlot.bookingId },
                 });
 
                 if (!booking) {
+                    this.logger.error(`[removeMatchParticipant] Associated booking not found - Booking ID: ${bookingSlot.bookingId}`);
                     throw new NotFoundException('Associated booking not found');
                 }
 
-                // Validate: Only allow deletion if payment_status is PAID_CASH (admin-created)
-                if (booking.paymentStatus !== PaymentStatus.PAID_CASH) {
-                    throw new BadRequestException(
-                        'Cannot remove participant with online payment. User must cancel through the frontend.'
+                this.logger.log(`[removeMatchParticipant] Booking details - Booking ID: ${booking.id}, Reference: ${booking.bookingReference}, ` +
+                    `Total Slots: ${booking.totalSlots}, Amount: ₹${booking.amount}, Payment Status: ${booking.paymentStatus}, Booking Status: ${booking.status}`);
+
+                const isOnlinePayment = booking.paymentStatus === PaymentStatus.COMPLETED;
+                const isCashPayment = booking.paymentStatus === PaymentStatus.PAID_CASH;
+                
+                this.logger.log(`[removeMatchParticipant] Payment type determined - Online Payment: ${isOnlinePayment}, Cash Payment: ${isCashPayment}`);
+
+                // Process refund for online payments
+                if (isOnlinePayment) {
+                    this.logger.log(`[removeMatchParticipant] Processing refund for online payment - Booking ID: ${booking.id}`);
+                    try {
+                        // Extract payment ID from booking metadata
+                        this.logger.log(`[removeMatchParticipant] Extracting payment ID from booking metadata - Booking ID: ${booking.id}`);
+                        const metadata = typeof booking.metadata === 'string' 
+                            ? JSON.parse(booking.metadata) 
+                            : booking.metadata;
+                        const paymentId = metadata?.razorpayPaymentId || metadata?.paymentId;
+
+                        this.logger.log(`[removeMatchParticipant] Payment ID extraction result - Booking ID: ${booking.id}, ` +
+                            `Payment ID: ${paymentId || 'NOT FOUND'}, Metadata Keys: ${metadata ? Object.keys(metadata).join(', ') : 'null'}`);
+
+                        if (paymentId) {
+                            // Calculate per-slot refund amount
+                            const perSlotAmount = parseFloat(booking.amount.toString()) / booking.totalSlots;
+                            this.logger.log(`[removeMatchParticipant] Calculated refund amount - Booking ID: ${booking.id}, ` +
+                                `Total Amount: ₹${booking.amount}, Total Slots: ${booking.totalSlots}, Per-Slot Amount: ₹${perSlotAmount.toFixed(2)}`);
+
+                            // Initiate refund
+                            this.logger.log(`[removeMatchParticipant] Initiating refund via RefundService - Booking ID: ${booking.id}, ` +
+                                `Amount: ₹${perSlotAmount.toFixed(2)}, Payment ID: ${paymentId}, Reason: 'Booking slot cancelled'`);
+                            
+                            const refund = await this.refundService.initiateRefund({
+                                bookingId: booking.id.toString(),
+                                amount: perSlotAmount,
+                                reason: 'Booking slot cancelled',
+                                razorpayPaymentId: paymentId,
+                                metadata: {
+                                    adminRemoval: true,
+                                    matchId: matchId,
+                                    userId: userId,
+                                    removedAt: new Date()
+                                }
+                            }, queryRunner);
+
+                            this.logger.log(
+                                `[removeMatchParticipant] ✅ Refund initiated successfully - Booking ID: ${booking.id}, ` +
+                                `Refund ID: ${refund.id}, Amount: ₹${perSlotAmount.toFixed(2)}, ` +
+                                `Razorpay Refund ID: ${refund.razorpayRefundId || 'Pending'}, Status: ${refund.status}, ` +
+                                `Razorpay Payment ID: ${paymentId}`
+                            );
+                            this.logger.log(`[removeMatchParticipant] Refund record saved to database - Refund ID: ${refund.id}, Booking ID: ${booking.id}`);
+                            
+                            // Verify refund was saved in the database
+                            const savedRefund = await queryRunner.manager.findOne(RefundEntity, {
+                                where: { id: refund.id }
+                            });
+                            if (savedRefund) {
+                                this.logger.log(`[removeMatchParticipant] ✅ Refund record verified in database - Refund ID: ${refund.id}, Status: ${savedRefund.status}`);
+                            } else {
+                                this.logger.error(`[removeMatchParticipant] ❌ Refund record NOT found in database after save - Refund ID: ${refund.id}`);
+                            }
+                        } else {
+                            this.logger.warn(
+                                `[removeMatchParticipant] ⚠️ Cannot process refund - Booking ID: ${booking.id}, ` +
+                                `Reason: No payment ID found in metadata. Participant will still be removed. ` +
+                                `Metadata: ${JSON.stringify(metadata)}`
+                            );
+                        }
+                    } catch (refundError: any) {
+                        this.logger.error(
+                            `[removeMatchParticipant] ❌ Failed to process refund - Booking ID: ${booking.id}, ` +
+                            `User ID: ${userId}, Match ID: ${matchId}, Error: ${refundError.message}`,
+                            refundError.stack
+                        );
+                        this.logger.error(`[removeMatchParticipant] Refund error details - Booking ID: ${booking.id}, ` +
+                            `Error Type: ${refundError.constructor.name}, Error Stack: ${refundError.stack}`);
+                        this.logger.warn(`[removeMatchParticipant] ⚠️ Continuing with participant removal despite refund failure - Booking ID: ${booking.id}`);
+                        // Continue with participant removal even if refund fails
+                        // Note: RefundService should have saved a FAILED refund record if it got that far
+                    }
+
+                    // Update slot status to CANCELLED (maintain audit trail for online payments)
+                    this.logger.log(`[removeMatchParticipant] Updating slot status to CANCELLED - Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
+                    await queryRunner.manager.update(
+                        BookingSlotEntity,
+                        { id: bookingSlot.id },
+                        { status: BookingSlotStatus.CANCELLED }
                     );
+                    this.logger.log(`[removeMatchParticipant] Slot status updated to CANCELLED - Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
+                } else if (isCashPayment) {
+                    // For cash payments, delete the slot (no refund needed)
+                    this.logger.log(`[removeMatchParticipant] Processing cash payment - Deleting slot (no refund needed) - ` +
+                        `Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
+                    await queryRunner.manager.remove(BookingSlotEntity, bookingSlot);
+                    this.logger.log(`[removeMatchParticipant] Slot deleted - Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
                 }
 
-                // Delete booking slot
-                await queryRunner.manager.remove(BookingSlotEntity, bookingSlot);
+                // Decrement booked_slots in matches table
+                this.logger.log(`[removeMatchParticipant] Decrementing booked_slots - Match ID: ${matchId}, Decrement by: 1`);
+                const beforeUpdate = await queryRunner.query(
+                    `SELECT booked_slots FROM matches WHERE match_id = $1`,
+                    [matchId]
+                );
+                const bookedSlotsBefore = beforeUpdate?.[0]?.booked_slots || 0;
+                
+                await queryRunner.query(
+                    `UPDATE matches 
+                     SET booked_slots = booked_slots - $1
+                     WHERE match_id = $2`,
+                    [1, matchId]
+                );
+                
+                const afterUpdate = await queryRunner.query(
+                    `SELECT booked_slots FROM matches WHERE match_id = $1`,
+                    [matchId]
+                );
+                const bookedSlotsAfter = afterUpdate?.[0]?.booked_slots || 0;
+                
+                this.logger.log(`[removeMatchParticipant] booked_slots updated - Match ID: ${matchId}, ` +
+                    `Before: ${bookedSlotsBefore}, After: ${bookedSlotsAfter}, Decremented by: 1`);
 
-                // Check if there are other slots for this booking
-                const remainingSlots = await queryRunner.manager.count(BookingSlotEntity, {
-                    where: { bookingId: booking.id },
+                // Check if there are other active slots for this booking
+                this.logger.log(`[removeMatchParticipant] Checking remaining active slots - Booking ID: ${booking.id}`);
+                const remainingActiveSlots = await queryRunner.manager.count(BookingSlotEntity, {
+                    where: { 
+                        bookingId: booking.id,
+                        status: BookingSlotStatus.ACTIVE
+                    },
                 });
 
-                // If no more slots, delete the booking as well
-                if (remainingSlots === 0) {
-                    await queryRunner.manager.remove(BookingEntity, booking);
+                this.logger.log(`[removeMatchParticipant] Remaining active slots - Booking ID: ${booking.id}, ` +
+                    `Remaining: ${remainingActiveSlots}, Original Total: ${booking.totalSlots}, ` +
+                    `Current Booking Status: ${booking.status}`);
+
+                // Update booking status if all slots are cancelled/removed
+                if (remainingActiveSlots === 0) {
+                    this.logger.log(`[removeMatchParticipant] All slots removed - Updating booking status to CANCELLED - Booking ID: ${booking.id}, Payment Type: ${isOnlinePayment ? 'Online' : 'Cash'}`);
+                    // For both online and cash payments, update status to CANCELLED (maintain audit trail)
+                    const updateResult = await queryRunner.manager.update(
+                        BookingEntity,
+                        { id: booking.id },
+                        { status: BookingStatus.CANCELLED }
+                    );
+                    this.logger.log(`[removeMatchParticipant] Booking status update result - Booking ID: ${booking.id}, ` +
+                        `Rows Affected: ${updateResult.affected || 0}, Payment Type: ${isOnlinePayment ? 'Online' : 'Cash'}`);
+                    
+                    // Verify the update
+                    const updatedBooking = await queryRunner.manager.findOne(BookingEntity, {
+                        where: { id: booking.id }
+                    });
+                    this.logger.log(`[removeMatchParticipant] Booking status verification - Booking ID: ${booking.id}, ` +
+                        `Status: ${updatedBooking?.status || 'NOT FOUND'}`);
+                } else if (isOnlinePayment && remainingActiveSlots < booking.totalSlots) {
+                    // Partial cancellation for online payments
+                    this.logger.log(`[removeMatchParticipant] Partial cancellation detected - Updating booking status to PARTIALLY_CANCELLED - ` +
+                        `Booking ID: ${booking.id}, Remaining Slots: ${remainingActiveSlots}, Original Total: ${booking.totalSlots}`);
+                    await queryRunner.manager.update(
+                        BookingEntity,
+                        { id: booking.id },
+                        { status: BookingStatus.PARTIALLY_CANCELLED }
+                    );
+                    this.logger.log(`[removeMatchParticipant] Booking status updated to PARTIALLY_CANCELLED - Booking ID: ${booking.id}`);
+                } else {
+                    this.logger.log(`[removeMatchParticipant] Booking status unchanged - Booking ID: ${booking.id}, ` +
+                        `Remaining Slots: ${remainingActiveSlots}, Original Total: ${booking.totalSlots}`);
                 }
+            } else {
+                this.logger.log(`[removeMatchParticipant] No active booking slot found - Match ID: ${matchId}, User ID: ${userId}`);
             }
 
             // Delete any related match participant stats
-            await queryRunner.manager.delete(MatchParticipantStats, {
+            this.logger.log(`[removeMatchParticipant] Deleting match participant stats - Participant ID: ${participant.matchParticipantId}`);
+            const deletedStats = await queryRunner.manager.delete(MatchParticipantStats, {
                 matchParticipant: { matchParticipantId: participant.matchParticipantId },
             });
+            this.logger.log(`[removeMatchParticipant] Match participant stats deleted - Participant ID: ${participant.matchParticipantId}, Deleted: ${deletedStats.affected || 0} records`);
 
             // Delete the participant
+            this.logger.log(`[removeMatchParticipant] Removing match participant - Participant ID: ${participant.matchParticipantId}, Match ID: ${matchId}, User ID: ${userId}`);
             await queryRunner.manager.remove(MatchParticipant, participant);
+            this.logger.log(`[removeMatchParticipant] Match participant removed - Participant ID: ${participant.matchParticipantId}`);
 
             await queryRunner.commitTransaction();
-
-            this.logger.log(`Removed participant ${userId} from match ${matchId} and associated booking slot`);
+            this.logger.log(`[removeMatchParticipant] ✅ Transaction committed successfully - Match ID: ${matchId}, User ID: ${userId}`);
+            this.logger.log(`[removeMatchParticipant] ✅ Successfully removed participant ${userId} from match ${matchId} and processed associated booking slot/refund`);
 
         return { message: 'Match participant removed successfully' };
         } catch (error) {
+            this.logger.error(`[removeMatchParticipant] ❌ Transaction failed - Rolling back - Match ID: ${matchId}, User ID: ${userId}, Error: ${error instanceof Error ? error.message : String(error)}`, error instanceof Error ? error.stack : undefined);
             await queryRunner.rollbackTransaction();
+            this.logger.error(`[removeMatchParticipant] ❌ Transaction rolled back - Match ID: ${matchId}, User ID: ${userId}`);
             throw error;
         } finally {
             await queryRunner.release();
+            this.logger.log(`[removeMatchParticipant] Query runner released - Match ID: ${matchId}, User ID: ${userId}`);
         }
     }
 

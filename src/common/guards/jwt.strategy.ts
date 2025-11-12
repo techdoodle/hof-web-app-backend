@@ -34,12 +34,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ...user // Include all user data (including role)
     };
 
-    console.log('JWT Strategy validate result:', {
-      userId: result.userId,
-      role: result.role,
-      mobile: result.mobile
-    });
-
     return result;
   }
 }
