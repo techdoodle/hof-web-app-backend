@@ -444,6 +444,7 @@ export class AdminService {
                 .map(p => ({ matchId: p.match!.matchId, userId: p.user!.id }));
 
             let paymentMap = new Map<string, string>();
+            let mvpMap = new Map<string, boolean>();
             if (participantIds.length > 0) {
                 const matchIds = [...new Set(participantIds.map(p => p.matchId))];
                 const userIds = [...new Set(participantIds.map(p => p.userId))];
@@ -462,6 +463,21 @@ export class AdminService {
                         ? 'Cash' 
                         : 'Online/Razorpay');
                 });
+
+                // Fetch MVP status for all participants
+                const mvpStats = await this.matchParticipantStatsRepository
+                    .createQueryBuilder('stats')
+                    .leftJoinAndSelect('stats.match', 'match')
+                    .leftJoinAndSelect('stats.player', 'player')
+                    .where('match.matchId IN (:...matchIds)', { matchIds })
+                    .andWhere('player.id IN (:...userIds)', { userIds })
+                    .andWhere('stats.isMvp = :isMvp', { isMvp: true })
+                    .getMany();
+
+                mvpStats.forEach(stat => {
+                    const key = `${stat.match.matchId}-${stat.player.id}`;
+                    mvpMap.set(key, true);
+                });
             }
 
             // Map data for React Admin's ReferenceField compatibility
@@ -471,6 +487,7 @@ export class AdminService {
                     ? `${participant.match.matchId}-${participant.user.id}` 
                     : null;
                 const paymentType = key ? paymentMap.get(key) || 'N/A' : 'N/A';
+                const isMvp = key ? mvpMap.get(key) || false : false;
 
                 return {
                 id: participant.matchParticipantId,
@@ -478,6 +495,7 @@ export class AdminService {
                 paidStatsOptIn: participant.paidStatsOptIn,
                     playernationVideoUrl: participant.playernationVideoUrl,
                     paymentType: paymentType,
+                    isMvp: isMvp,
                 // Reference IDs for React Admin
                     matchId: participant.match?.matchId,
                     user: participant.user?.id,
