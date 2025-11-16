@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Param, Body } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PlayerNationService } from './services/playernation.service';
 
 @Controller('test')
+@SkipThrottle()
 export class TestController {
     constructor(
         private readonly playerNationService: PlayerNationService,

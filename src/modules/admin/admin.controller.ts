@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query, UploadedFile, UseInterceptors, ParseIntPipe, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -16,6 +17,7 @@ import { FirebaseStorageService } from '../user/firebase-storage.service';
 import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
 
 @Controller('admin')
+@SkipThrottle()
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminController {
     constructor(
