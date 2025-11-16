@@ -836,10 +836,14 @@ export class AdminService {
                 this.logger.log(`[removeMatchParticipant] Booking details - Booking ID: ${booking.id}, Reference: ${booking.bookingReference}, ` +
                     `Total Slots: ${booking.totalSlots}, Amount: ₹${booking.amount}, Payment Status: ${booking.paymentStatus}, Booking Status: ${booking.status}`);
 
-                const isOnlinePayment = booking.paymentStatus === PaymentStatus.COMPLETED;
+                // Fix: Check BookingStatus.CONFIRMED instead of PaymentStatus.COMPLETED
+                // A confirmed booking indicates successful payment, regardless of paymentStatus field
+                const isOnlinePayment = booking.status === BookingStatus.CONFIRMED && 
+                                      booking.paymentStatus !== PaymentStatus.PAID_CASH;
                 const isCashPayment = booking.paymentStatus === PaymentStatus.PAID_CASH;
                 
-                this.logger.log(`[removeMatchParticipant] Payment type determined - Online Payment: ${isOnlinePayment}, Cash Payment: ${isCashPayment}`);
+                this.logger.log(`[removeMatchParticipant] Payment type determined - Online Payment: ${isOnlinePayment}, Cash Payment: ${isCashPayment}, ` +
+                    `Booking Status: ${booking.status}, Payment Status: ${booking.paymentStatus}`);
 
                 // Process refund for online payments (only if shouldRefund is true)
                 if (isOnlinePayment && shouldRefund) {
@@ -938,6 +942,16 @@ export class AdminService {
                         `Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
                     await queryRunner.manager.remove(BookingSlotEntity, bookingSlot);
                     this.logger.log(`[removeMatchParticipant] Slot deleted - Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
+                } else {
+                    // For other payment statuses (e.g., INITIATED, FAILED), still cancel the slot
+                    this.logger.log(`[removeMatchParticipant] Processing non-online/cash payment - Updating slot status to CANCELLED - ` +
+                        `Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}, Payment Status: ${booking.paymentStatus}, Booking Status: ${booking.status}`);
+                    await queryRunner.manager.update(
+                        BookingSlotEntity,
+                        { id: bookingSlot.id },
+                        { status: BookingSlotStatus.CANCELLED }
+                    );
+                    this.logger.log(`[removeMatchParticipant] Slot status updated to CANCELLED - Slot ID: ${bookingSlot.id}, Booking ID: ${booking.id}`);
                 }
 
                 // Decrement booked_slots in matches table
