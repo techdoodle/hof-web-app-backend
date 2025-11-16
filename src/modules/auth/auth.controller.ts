@@ -12,6 +12,7 @@ export class AuthController {
   ) { }
 
   @Post('send-otp')
+  @SkipThrottle()
   async sendOtp(@Body('mobile') mobile: string) {
     // Validate mobile number (10 digits)
     if (!/^\d{10}$/.test(String(mobile))) {
@@ -22,6 +23,7 @@ export class AuthController {
   }
 
   @Post('verify-otp')
+  @SkipThrottle()
   async verifyOtp(
     @Body('encryptedOtp') encryptedOtp: string,
     @Body('iv') iv: string,
@@ -46,6 +48,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @SkipThrottle()
   async refresh(@Body('refreshToken') refreshToken: string) {
     const accessToken = this.authService.regenerateAccessToken(refreshToken);
     return { accessToken };
@@ -53,6 +56,7 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @SkipThrottle()
   async getCurrentUser(@Req() req) {
     const userId = req.user?.userId;
     if (!userId) {
