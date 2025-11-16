@@ -155,7 +155,7 @@ export class PlayerNationService {
   async submitMatch(matchId: number, payload: PlayerNationSubmitDto): Promise<string> {
     const match = await this.matchRepository.findOne({
       where: { matchId },
-      relations: ['footballChief'],
+      relations: ['footballChief', 'venue', 'venue.city', 'city'],
     });
 
     if (!match) {
@@ -222,8 +222,32 @@ export class PlayerNationService {
           playerVideo: p.playerVideo ?? '',
         }));
 
+      // Format matchName as "Venue Name : City Name : Date : Time"
+      const formatDate = (date: Date): string => {
+        return new Date(date).toLocaleDateString('en-US', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        });
+      };
+
+      const formatTime = (date: Date): string => {
+        return new Date(date).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+      };
+
+      const venueName = match.venue?.name || 'Unknown Venue';
+      const cityName = match.venue?.city?.cityName || match.city?.cityName || 'Unknown City';
+      const dateStr = formatDate(match.startTime);
+      const timeStr = formatTime(match.startTime);
+      const matchName = `${venueName} : ${cityName} : ${dateStr} : ${timeStr}`;
+
       const payloadForPN = {
         ...payload,
+        matchName: matchName,
         players: {
           teamA: normalizePlayers(payload.players?.teamA),
           teamB: normalizePlayers(payload.players?.teamB),
