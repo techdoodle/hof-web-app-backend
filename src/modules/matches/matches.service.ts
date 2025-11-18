@@ -39,10 +39,10 @@ export class MatchesService {
 
     const match = this.matchRepository.create(createMatchDto);
     const savedMatch = await this.matchRepository.save(match);
-    
+
     // Ensure status is correct after save (in case of any edge cases)
     await this.updateMatchStatusIfNeeded(savedMatch.matchId);
-    
+
     // Reload to get updated status
     return await this.findOne(savedMatch.matchId);
   }
@@ -272,6 +272,7 @@ export class MatchesService {
           v.address as "venueAddress",
           v.display_banner as "venueDisplayBanner",
           v.phone_number as "venuePhoneNumber",
+          v.maps_url as "venueMapsUrl",
           mt.match_name as "matchTypeName",
           u.id as "footballChiefId",
           u.first_name as "footballChiefFirstName",
@@ -335,6 +336,7 @@ export class MatchesService {
             address: row.venueAddress,
             displayBanner: row.venueDisplayBanner,
             phoneNumber: row.venuePhoneNumber,
+            mapsUrl: row.venueMapsUrl,
             distance: distance
           },
           matches: []
