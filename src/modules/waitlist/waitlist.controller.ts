@@ -41,21 +41,30 @@ export class WaitlistController {
 
     @Post(':waitlistId/initiate-booking')
     @UseGuards(JwtAuthGuard)
-    async initiateWaitlistBooking(@Param('waitlistId') waitlistId: string) {
-        return this.waitlistService.initiateWaitlistBooking(waitlistId);
+    async initiateWaitlistBooking(
+        @Param('waitlistId') waitlistId: string,
+        @Body() body: { teamSelections?: Array<{ phone: string; teamName: string }> }
+    ) {
+        return this.waitlistService.initiateWaitlistBooking(waitlistId, body.teamSelections);
     }
 
     @Post(':waitlistId/confirm-booking')
     @UseGuards(JwtAuthGuard)
     async confirmWaitlistBooking(
         @Param('waitlistId') waitlistId: string,
-        @Body() body: { paymentOrderId: string; paymentId: string; signature: string }
+        @Body() body: {
+            paymentOrderId: string;
+            paymentId: string;
+            signature: string;
+            teamSelections?: Array<{ phone: string; teamName: string }>; // Optional team selections for each player
+        }
     ) {
         return this.waitlistService.confirmWaitlistBooking(
             waitlistId,
             body.paymentOrderId,
             body.paymentId,
-            body.signature
+            body.signature,
+            body.teamSelections
         );
     }
 

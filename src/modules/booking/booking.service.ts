@@ -72,6 +72,68 @@ export class BookingService {
             throw new BadRequestException('Duplicate slot numbers provided');
         }
 
+        // Validate team selections for confirmed bookings (not waitlist)
+        if (!dto.isWaitlist) {
+            // Fetch match details to get team names
+            const matchResult = await this.connection.query(
+                `SELECT team_a_name, team_b_name, player_capacity FROM matches WHERE match_id = $1`,
+                [Number(dto.matchId)]
+            );
+
+            if (!matchResult.length) {
+                throw new BadRequestException('Match not found');
+            }
+
+            const match = matchResult[0];
+            const validTeamNames = [match.team_a_name, match.team_b_name];
+
+            // Ensure each player has a team selection
+            for (let i = 0; i < dto.players.length; i++) {
+                const player = dto.players[i];
+                if (!player.teamName) {
+                    throw new BadRequestException(`Team selection is required for player ${i + 1}`);
+                }
+
+                if (!validTeamNames.includes(player.teamName)) {
+                    throw new BadRequestException(
+                        `Invalid team name "${player.teamName}" for player ${i + 1}. Must be either "${match.team_a_name}" or "${match.team_b_name}"`
+                    );
+                }
+            }
+
+            // Check team capacity limits
+            const perTeamCapacity = Math.floor(match.player_capacity / 2);
+
+            // Get current team counts from match_participants
+            const teamCountsResult = await this.connection.query(
+                `SELECT team_name, COUNT(*) as count
+                 FROM match_participants
+                 WHERE match_id = $1 AND team_name IN ($2, $3)
+                 GROUP BY team_name`,
+                [Number(dto.matchId), match.team_a_name, match.team_b_name]
+            );
+
+            const currentTeamACount = teamCountsResult.find(t => t.team_name === match.team_a_name)?.count || 0;
+            const currentTeamBCount = teamCountsResult.find(t => t.team_name === match.team_b_name)?.count || 0;
+
+            // Count how many slots are being requested for each team
+            const requestedTeamACount = dto.players.filter(p => p.teamName === match.team_a_name).length;
+            const requestedTeamBCount = dto.players.filter(p => p.teamName === match.team_b_name).length;
+
+            // Validate capacity for each team
+            if (parseInt(currentTeamACount) + requestedTeamACount > perTeamCapacity) {
+                throw new BadRequestException(
+                    `Team "${match.team_a_name}" capacity exceeded. Available slots: ${perTeamCapacity - parseInt(currentTeamACount)}`
+                );
+            }
+
+            if (parseInt(currentTeamBCount) + requestedTeamBCount > perTeamCapacity) {
+                throw new BadRequestException(
+                    `Team "${match.team_b_name}" capacity exceeded. Available slots: ${perTeamCapacity - parseInt(currentTeamBCount)}`
+                );
+            }
+        }
+
 
         const queryRunner = this.connection.createQueryRunner();
         await queryRunner.connect();
@@ -105,7 +167,12 @@ export class BookingService {
                 paymentStatus: PaymentStatus.INITIATED,
                 metadata: {
                     ...dto.metadata,
-                    lockKey: lockResult.lockKey
+                    lockKey: lockResult.lockKey,
+                    // Store team selections for each player (phone -> team mapping)
+                    teamSelections: dto.players.map(p => ({
+                        phone: p.phone,
+                        teamName: p.teamName || 'Unassigned'
+                    }))
                 },
             });
 
@@ -871,10 +938,22 @@ export class BookingService {
 
             // Sync match participants for each unique player in activated slots
             try {
-                const activatedSlots: Array<{ slot_number: number; player_id: number }> = await queryRunner.query(
-                    `SELECT slot_number, player_id FROM booking_slots WHERE booking_id = $1 AND status = $2`,
+                const activatedSlots: Array<{ slot_number: number; player_id: number; player_phone: string }> = await queryRunner.query(
+                    `SELECT slot_number, player_id, player_phone FROM booking_slots WHERE booking_id = $1 AND status = $2`,
                     [bookingId, BookingSlotStatus.ACTIVE]
                 );
+
+                // Get team selections from booking metadata
+                const teamSelections = booking.metadata?.teamSelections || [];
+
+                // Create a map of phone -> teamName
+                const phoneTeamMap = new Map();
+                teamSelections.forEach((selection: any) => {
+                    if (selection.phone && selection.teamName) {
+                        phoneTeamMap.set(selection.phone.trim(), selection.teamName);
+                    }
+                });
+
                 const uniquePlayerIds = Array.from(new Set(activatedSlots.map(s => s.player_id).filter(Boolean)));
                 for (const pid of uniquePlayerIds) {
                     if (!pid) continue;
@@ -882,10 +961,17 @@ export class BookingService {
                         where: { match: { matchId: booking.matchId }, user: { id: pid } },
                     });
                     if (!existing) {
+                        // Find the slot for this player to get their phone number
+                        const playerSlot = activatedSlots.find(s => s.player_id === pid);
+                        const playerPhone = playerSlot?.player_phone?.trim() || '';
+
+                        // Get team name from the mapping, default to 'Unassigned'
+                        const teamName = phoneTeamMap.get(playerPhone) || 'Unassigned';
+
                         const participant = queryRunner.manager.create(MatchParticipant, {
                             match: { matchId: booking.matchId },
                             user: { id: pid },
-                            teamName: 'Unassigned',
+                            teamName: teamName,
                         });
                         await queryRunner.manager.save(MatchParticipant, participant);
                     }

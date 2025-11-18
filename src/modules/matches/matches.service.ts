@@ -62,6 +62,46 @@ export class MatchesService {
     if (!match) {
       throw new NotFoundException(`Match with ID ${matchId} not found`);
     }
+
+    // Get confirmed participants grouped by team
+    const participants = await this.connection.query(`
+      SELECT 
+        mp.team_name,
+        u.first_name,
+        u.last_name,
+        u.profile_picture
+      FROM match_participants mp
+      INNER JOIN users u ON mp.user_id = u.id
+      WHERE mp.match_id = $1
+      ORDER BY mp.team_name, mp.created_at
+    `, [matchId]);
+
+    // Group participants by team
+    const teamAParticipants = participants.filter(p => p.team_name === match.teamAName);
+    const teamBParticipants = participants.filter(p => p.team_name === match.teamBName);
+    const unassignedParticipants = participants.filter(p => p.team_name === 'Unassigned');
+
+    // Add participants to match object
+    (match as any).participants = {
+      [match.teamAName]: teamAParticipants.map(p => ({
+        firstName: p.first_name,
+        lastName: p.last_name,
+        profilePicture: p.profile_picture
+      })),
+      [match.teamBName]: teamBParticipants.map(p => ({
+        firstName: p.first_name,
+        lastName: p.last_name,
+        profilePicture: p.profile_picture
+      })),
+      ...(unassignedParticipants.length > 0 ? {
+        'Unassigned': unassignedParticipants.map(p => ({
+          firstName: p.first_name,
+          lastName: p.last_name,
+          profilePicture: p.profile_picture
+        }))
+      } : {})
+    };
+
     return match;
   }
 
@@ -394,6 +434,24 @@ export class MatchesService {
     `, [matchId.toString(), BookingSlotStatus.ACTIVE]);
 
     const confirmedBookedSlots = parseInt(confirmedBookedSlotsResult[0]?.count || '0');
+
+    // Get team-wise slot counts from match_participants
+    const teamSlotsResult = await this.connection.query(`
+      SELECT team_name, COUNT(*) as count
+      FROM match_participants
+      WHERE match_id = $1
+      GROUP BY team_name
+    `, [matchId]);
+
+    // Calculate team-wise availability
+    const perTeamCapacity = Math.floor(match.playerCapacity / 2);
+    const teamASlots = teamSlotsResult.find(t => t.team_name === match.teamAName)?.count || 0;
+    const teamBSlots = teamSlotsResult.find(t => t.team_name === match.teamBName)?.count || 0;
+    const unassignedSlots = teamSlotsResult.find(t => t.team_name === 'Unassigned')?.count || 0;
+
+    const availableTeamASlots = Math.max(0, perTeamCapacity - parseInt(teamASlots));
+    const availableTeamBSlots = Math.max(0, perTeamCapacity - parseInt(teamBSlots));
+
     // Query waitlisted slots using raw SQL
     const waitlistedSlotsResult = await this.waitlistRepository.query(`
       SELECT COALESCE(SUM(slots_required), 0) as total_slots 
@@ -420,7 +478,16 @@ export class MatchesService {
       availableWaitlistSlots,
       offerPrice: match.offerPrice,
       slotPrice: match.slotPrice,
-      isLocked: lockedSlotsCount > 0
+      isLocked: lockedSlotsCount > 0,
+      // Team information
+      teamAName: match.teamAName,
+      teamBName: match.teamBName,
+      perTeamCapacity,
+      teamASlots: parseInt(teamASlots),
+      teamBSlots: parseInt(teamBSlots),
+      unassignedSlots: parseInt(unassignedSlots),
+      availableTeamASlots,
+      availableTeamBSlots
     };
   }
 

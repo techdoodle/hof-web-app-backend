@@ -44,8 +44,10 @@ export interface CreateBookingDto {
         firstName?: string;
         lastName?: string;
         phone: string;
+        teamName?: string; // Team selection for this player (required for confirmed bookings)
     }>;
     metadata?: Record<string, any>;
+    isWaitlist?: boolean; // Flag to indicate if this is a waitlist booking
 }
 
 export interface InitiatePaymentDto {

@@ -162,7 +162,7 @@ export class WaitlistService {
         }
     }
 
-    async initiateWaitlistBooking(waitlistId: string) {
+    async initiateWaitlistBooking(waitlistId: string, teamSelections?: Array<{ phone: string; teamName: string }>) {
         const entry = await this.waitlistRepository.findOne({
             where: {
                 id: Number(waitlistId),
@@ -223,7 +223,7 @@ export class WaitlistService {
         entry.metadata = {
             ...entry.metadata,
             paymentOrderId: orderResponse?.orderId,
-            orderCreatedAt: new Date().toISOString()
+            orderCreatedAt: new Date().toISOString(),
         };
         await this.waitlistRepository.save(entry);
 
@@ -238,7 +238,8 @@ export class WaitlistService {
         waitlistId: string,
         paymentOrderId: string,
         paymentId: string,
-        signature: string
+        signature: string,
+        teamSelections?: Array<{ phone: string; teamName: string }>
     ) {
         const queryRunner = this.connection.createQueryRunner();
         await queryRunner.connect();
@@ -291,6 +292,17 @@ export class WaitlistService {
             // Calculate amount for the booking
             const bookingAmount = entry.metadata?.amount || 0;
 
+            // Get team selections from parameter or metadata
+            const finalTeamSelections = teamSelections || [];
+
+            // Create a map of phone -> teamName
+            const phoneTeamMap = new Map();
+            finalTeamSelections.forEach((selection: any) => {
+                if (selection.phone && selection.teamName) {
+                    phoneTeamMap.set(selection.phone.trim(), selection.teamName);
+                }
+            });
+
             // Use the same booking flow as regular bookings - this will handle slot locking
             const booking = await this.bookingService.createBooking({
                 matchId: entry.matchId.toString(),
@@ -298,15 +310,23 @@ export class WaitlistService {
                 email: entry.email,
                 totalSlots: slotsAllocated, // Use actual slots allocated, not total requested
                 slotNumbers: entry.metadata.availableSlots,
-                players: Array.from({ length: slotsAllocated }, () => ({
-                    firstName: userData.first_name || entry.metadata?.name?.split(' ')[0] || '',
-                    lastName: userData.last_name || entry.metadata?.name?.split(' ')[1] || '',
-                    phone: userData.phone_number || entry.metadata?.phone || ''
-                })),
+                players: Array.from({ length: slotsAllocated }, (_, index) => {
+                    const playerPhone = userData.phone_number || entry.metadata?.phone || '';
+                    const teamName = phoneTeamMap.get(playerPhone.trim()) || undefined;
+
+                    return {
+                        firstName: userData.first_name || entry.metadata?.name?.split(' ')[0] || '',
+                        lastName: userData.last_name || entry.metadata?.name?.split(' ')[1] || '',
+                        phone: playerPhone,
+                        teamName: teamName
+                    };
+                }),
+                isWaitlist: false, // This is a confirmed booking from waitlist
                 metadata: {
                     ...entry.metadata,
                     amount: bookingAmount,
-                    bookingType: 'waitlist_confirmed'
+                    bookingType: 'waitlist_confirmed',
+                    teamSelections: finalTeamSelections
                 }
             }, userData); // Pass userData as tokenUser
 
