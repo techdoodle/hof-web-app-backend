@@ -57,7 +57,7 @@ import { WaitlistModule } from '../waitlist/waitlist.module';
       throttlers: [
         {
           ttl: 60000,
-          limit: 50,
+          limit: 200,
         },
       ],
     }),
