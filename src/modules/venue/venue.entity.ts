@@ -29,6 +29,9 @@ export class Venue {
   @Column({ name: 'longitude', type: 'decimal', precision: 11, scale: 8, nullable: true })
   longitude: number;
 
+  @Column({ name: 'maps_url', type: 'text', nullable: true })
+  mapsUrl: string;
+
   @OneToMany(() => VenueFormatEntity, (venueFormat) => venueFormat.venue, { cascade: true })
   venueFormats: VenueFormatEntity[];
 

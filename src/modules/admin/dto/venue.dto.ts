@@ -41,6 +41,10 @@ export class CreateVenueDto {
   @IsOptional()
   displayBanner?: string;
 
+  @IsString()
+  @IsOptional()
+  mapsUrl?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateVenueFormatDto)
@@ -76,6 +80,10 @@ export class UpdateVenueDto {
   @IsString()
   @IsOptional()
   displayBanner?: string;
+
+  @IsString()
+  @IsOptional()
+  mapsUrl?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
