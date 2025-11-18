@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, DataSource } from 'typeorm';
@@ -12,6 +12,7 @@ import { PlayerNationToken } from '../entities/playernation-token.entity';
 import { PlayerNationPlayerMapping, PlayerMappingStatus } from '../entities/playernation-player-mapping.entity';
 import { PlayerNationSubmitDto } from '../dto/playernation-submit.dto';
 import { SaveMappingsDto } from '../dto/playernation-mapping.dto';
+import { MatchesService } from '../../matches/matches.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -69,6 +70,8 @@ export class PlayerNationService {
     @InjectRepository(PlayerNationPlayerMapping)
     private readonly mappingRepository: Repository<PlayerNationPlayerMapping>,
     private readonly dataSource: DataSource,
+    @Inject(forwardRef(() => MatchesService))
+    private readonly matchesService: MatchesService,
   ) {}
 
   private parseHofPlayerId(value?: string): number | undefined {
@@ -291,6 +294,9 @@ export class PlayerNationService {
         playernationPollAttempts: 0,
       });
 
+      // Update match status based on new state (will set to POLLING_STATS for recorded matches)
+      await this.matchesService.updateMatchStatusIfNeeded(matchId);
+
       this.logger.log(`Match ${matchId} submitted to PlayerNation with matchId: ${response.data.matchId}`);
       return response.data.matchId;
     } catch (error) {
@@ -365,15 +371,21 @@ export class PlayerNationService {
           playernationNextPollAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
           playernationPollAttempts: (match.playernationPollAttempts || 0) + 1,
         });
+        // Update match status (will set to POLLING_STATS for recorded matches)
+        await this.matchesService.updateMatchStatusIfNeeded(matchId);
       } else if (response.data.status === 'cancelled') {
         await this.matchRepository.update({ matchId }, {
           playernationStatus: 'ERROR',
         });
+        // Update match status
+        await this.matchesService.updateMatchStatusIfNeeded(matchId);
       } else if (response.data.status === 'success') {
         await this.processPlayerStats(matchId, response.data);
         // Do not override SUCCESS_WITH_UNMATCHED set by processPlayerStats
         // If all players were matched and ingested, processPlayerStats will set SUCCESS or IMPORTED elsewhere
         this.logger.log(`Match ${matchId} stats processed successfully`);
+        // Update match status (will set to SS_MAPPING_PENDING if unmapped players exist, or keep current)
+        await this.matchesService.updateMatchStatusIfNeeded(matchId);
       }
 
       this.logger.log(`Polled match ${matchId}, status: ${response.data.status}`);
@@ -537,6 +549,8 @@ export class PlayerNationService {
       await this.matchRepository.update({ matchId }, { playernationStatus: 'POLL_SUCCESS_MAPPING_FAILED' });
     } else {
       await this.matchRepository.update({ matchId }, { playernationStatus: 'IMPORTED' });
+      // Update match status to STATS_UPDATED for recorded matches
+      await this.matchesService.updateMatchStatusIfNeeded(matchId);
     }
     return { processed, expected };
   }
@@ -659,11 +673,9 @@ export class PlayerNationService {
       where: { matchId: matchId, status: PlayerMappingStatus.UNMATCHED },
     });
 
-    if (unmappedCount === 0) {
-      await this.matchRepository.update(matchId, {
-        playernationStatus: 'IMPORTED',
-      });
-    }
+    // Note: We don't set playernationStatus to IMPORTED here - that should only happen after stats are processed
+    // Update match status based on current state (will update SS_MAPPING_PENDING if all players are now mapped)
+    await this.matchesService.updateMatchStatusIfNeeded(matchId);
   }
 
   async getMatchStatus(matchId: number): Promise<any> {

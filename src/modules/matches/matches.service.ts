@@ -5,6 +5,7 @@ import { Match } from './matches.entity';
 import { MatchType } from '../../common/enums/match-type.enum';
 import { BookingSlotEntity, BookingSlotStatus } from '../booking/booking-slot.entity';
 import { WaitlistEntry, WaitlistStatus } from '../waitlist/entities/waitlist-entry.entity';
+import { PlayerNationPlayerMapping, PlayerMappingStatus } from '../admin/entities/playernation-player-mapping.entity';
 
 @Injectable()
 export class MatchesService {
@@ -15,6 +16,8 @@ export class MatchesService {
     private readonly bookingSlotRepository: Repository<BookingSlotEntity>,
     @InjectRepository(WaitlistEntry)
     private readonly waitlistRepository: Repository<WaitlistEntry>,
+    @InjectRepository(PlayerNationPlayerMapping)
+    private readonly mappingRepository: Repository<PlayerNationPlayerMapping>,
     private readonly connection: Connection,
   ) { }
 
@@ -27,8 +30,21 @@ export class MatchesService {
     // Validate pricing
     this.validatePricing(createMatchDto.slotPrice ?? 0, createMatchDto.offerPrice ?? 0);
 
+    // For recorded matches without matchStatsId, set status to STATS_SUBMISSION_PENDING
+    if (createMatchDto.matchType === MatchType.RECORDED && !createMatchDto.matchStatsId) {
+      if (!createMatchDto.status || createMatchDto.status === 'ACTIVE') {
+        createMatchDto.status = 'STATS_SUBMISSION_PENDING';
+      }
+    }
+
     const match = this.matchRepository.create(createMatchDto);
-    return await this.matchRepository.save(match);
+    const savedMatch = await this.matchRepository.save(match);
+    
+    // Ensure status is correct after save (in case of any edge cases)
+    await this.updateMatchStatusIfNeeded(savedMatch.matchId);
+    
+    // Reload to get updated status
+    return await this.findOne(savedMatch.matchId);
   }
 
   async findAll(): Promise<Match[]> {
@@ -426,5 +442,66 @@ export class MatchesService {
     return {
       finalPrice: Math.round(finalPrice)
     };
+  }
+
+  /**
+   * Calculate the appropriate status for a match based on its type and stats workflow state.
+   * For recorded matches, determines status based on PlayerNation submission and processing state.
+   * CANCELLED status always takes priority.
+   * 
+   * @param match - The match entity
+   * @returns The calculated status string
+   */
+  async calculateMatchStatus(match: Match): Promise<string> {
+    // CANCELLED status always takes highest priority
+    if (match.status === 'CANCELLED') {
+      return 'CANCELLED';
+    }
+
+    // Stats workflow statuses only apply to recorded matches
+    if (match.matchType !== MatchType.RECORDED) {
+      return match.status || 'ACTIVE';
+    }
+
+    // For recorded matches, determine status based on stats workflow
+    // 1. If not submitted to PlayerNation (no matchStatsId)
+    if (!match.matchStatsId) {
+      return 'STATS_SUBMISSION_PENDING';
+    }
+
+    // 2. If polling is in progress
+    if (match.playernationStatus === 'PENDING' || match.playernationStatus === 'PROCESSING') {
+      return 'POLLING_STATS';
+    }
+
+    // 3. If stats received, status is SS_MAPPING_PENDING (ready for mapping or processing)
+    // This applies whether players are mapped or not - the status indicates stats are ready
+    if (match.playernationStatus === 'SUCCESS' || match.playernationStatus === 'SUCCESS_WITH_UNMATCHED') {
+      return 'SS_MAPPING_PENDING';
+    }
+
+    // 4. If stats are imported/completed
+    if (match.playernationStatus === 'IMPORTED') {
+      return 'STATS_UPDATED';
+    }
+
+    // Default to existing status or ACTIVE
+    return match.status || 'ACTIVE';
+  }
+
+  /**
+   * Update match status based on current state (for recorded matches with stats workflow)
+   * This should be called after any change that might affect the status
+   */
+  async updateMatchStatusIfNeeded(matchId: number): Promise<void> {
+    const match = await this.matchRepository.findOne({ where: { matchId } });
+    if (!match) {
+      return;
+    }
+
+    const calculatedStatus = await this.calculateMatchStatus(match);
+    if (calculatedStatus !== match.status) {
+      await this.matchRepository.update({ matchId }, { status: calculatedStatus });
+    }
   }
 } 
