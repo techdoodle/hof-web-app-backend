@@ -83,6 +83,19 @@ export class BookingController {
         return this.bookingService.handlePaymentWebhook(webhookData, signature, rawBody);
     }
 
+    @Get(':bookingId/refund-breakdown')
+    @HttpCode(HttpStatus.OK)
+    @UseGuards(JwtAuthGuard)
+    getRefundBreakdown(
+        @Param('bookingId') bookingId: string,
+        @Query('slotNumbers') slotNumbers?: string
+    ) {
+        const slotNumbersArray = slotNumbers
+            ? slotNumbers.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+            : undefined;
+        return this.bookingService.getRefundBreakdown(bookingId, slotNumbersArray);
+    }
+
     @Delete(':bookingId/slots')
     @HttpCode(HttpStatus.OK)
     @UseGuards(JwtAuthGuard)

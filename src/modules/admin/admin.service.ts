@@ -319,7 +319,11 @@ export class AdminService {
 
         // Validate pricing if both are provided
         if (slotPrice !== undefined && offerPrice !== undefined) {
-            this.validatePricing(slotPrice, offerPrice);
+            // Convert to numbers to handle decimal/string types
+            const slotPriceNum = typeof slotPrice === 'string' ? parseFloat(slotPrice) : Number(slotPrice);
+            const offerPriceNum = typeof offerPrice === 'string' ? parseFloat(offerPrice) : Number(offerPrice);
+            
+            this.validatePricing(slotPriceNum, offerPriceNum);
         }
 
         // Extract matchStatsId to exclude it from match creation
@@ -377,7 +381,11 @@ export class AdminService {
                 }
 
                 if (slotPrice !== undefined && offerPrice !== undefined) {
-                    this.validatePricing(slotPrice, offerPrice);
+                    // Convert to numbers to handle decimal/string types from database
+                    const slotPriceNum = typeof slotPrice === 'string' ? parseFloat(slotPrice) : Number(slotPrice);
+                    const offerPriceNum = typeof offerPrice === 'string' ? parseFloat(offerPrice) : Number(offerPrice);
+                    
+                    this.validatePricing(slotPriceNum, offerPriceNum);
                 }
             }
 
@@ -1539,13 +1547,22 @@ export class AdminService {
     }
 
     private validatePricing(slotPrice: number, offerPrice: number): void {
+        // Ensure both are valid numbers
+        const slotPriceNum = typeof slotPrice === 'string' ? parseFloat(slotPrice) : Number(slotPrice);
+        const offerPriceNum = typeof offerPrice === 'string' ? parseFloat(offerPrice) : Number(offerPrice);
+        
+        // Check for NaN
+        if (isNaN(slotPriceNum) || isNaN(offerPriceNum)) {
+            throw new Error('Slot price and offer price must be valid numbers');
+        }
+        
         // Both prices must be >= 0
-        if (slotPrice < 0 || offerPrice < 0) {
+        if (slotPriceNum < 0 || offerPriceNum < 0) {
             throw new Error('Slot price and offer price must be greater than or equal to 0');
         }
 
         // Offer price must be <= slot price
-        if (offerPrice > slotPrice) {
+        if (offerPriceNum > slotPriceNum) {
             throw new Error('Offer price must be less than or equal to slot price');
         }
     }
