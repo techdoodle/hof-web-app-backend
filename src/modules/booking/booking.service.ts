@@ -24,6 +24,7 @@ import { generateBookingReference } from 'src/common/utils/reference.util';
 import { User } from '../user/user.entity';
 import { SlotAvailabilityMonitorService } from '../waitlist/slot-availability-monitor.service';
 import { MatchParticipant } from '../match-participants/match-participants.entity';
+import { Match } from '../matches/matches.entity';
 
 @Injectable()
 export class BookingService {
@@ -36,6 +37,8 @@ export class BookingService {
         private bookingSlotRepository: Repository<BookingSlotEntity>,
         @InjectRepository(MatchParticipant)
         private matchParticipantRepository: Repository<MatchParticipant>,
+        @InjectRepository(Match)
+        private matchRepository: Repository<Match>,
         private connection: Connection,
         private slotLockService: SlotLockService,
         private refundService: RefundService,
@@ -1376,6 +1379,114 @@ export class BookingService {
         }
     }
 
+    /**
+     * Get refund percentage based on hours until match start time
+     * @param hoursUntilMatch - Hours until match start time
+     * @returns Refund percentage (100, 50, or 0)
+     */
+    private getRefundPercentage(hoursUntilMatch: number): number {
+        if (hoursUntilMatch > 6) {
+            return 100; // Full refund
+        } else if (hoursUntilMatch > 3) {
+            return 50; // 50% refund
+        }
+        return 0; // No refund
+    }
+
+    /**
+     * Calculate hours until match start time
+     * @param matchStartTime - Match start time
+     * @returns Hours until match (can be negative if match already started)
+     */
+    private getHoursUntilMatch(matchStartTime: Date): number {
+        const now = new Date();
+        const diffMs = matchStartTime.getTime() - now.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+        return diffHours;
+    }
+
+    /**
+     * Calculate refund amount based on booking, slots to cancel, and match start time
+     * @param booking - Booking entity
+     * @param slotNumbers - Array of slot numbers to cancel (empty array means full cancellation)
+     * @param match - Match entity with startTime
+     * @returns Refund amount in rupees
+     */
+    private calculateRefundAmount(booking: BookingEntity, slotNumbers: number[], match: Match): number {
+        const slotsToCancel = slotNumbers.length || booking.totalSlots;
+        const perSlotAmount = parseFloat(booking.amount.toString()) / booking.totalSlots;
+        const baseRefund = perSlotAmount * slotsToCancel;
+
+        // Calculate hours until match
+        const hoursUntilMatch = this.getHoursUntilMatch(match.startTime);
+        const refundPercentage = this.getRefundPercentage(hoursUntilMatch);
+
+        // Calculate time-based refund
+        const timeBasedRefund = (baseRefund * refundPercentage) / 100;
+
+        // Handle discount adjustment if coupon was applied
+        // Note: discount_amount is stored in metadata or can be calculated from original amount
+        // For now, we'll return the time-based refund
+        // TODO: Add discount adjustment logic if discount information is available in booking
+
+        return Math.round(timeBasedRefund * 100) / 100; // Round to 2 decimal places
+    }
+
+    /**
+     * Get refund breakdown for a booking without processing cancellation
+     * @param bookingId - Booking ID
+     * @param slotNumbers - Optional array of slot numbers to cancel (empty means full cancellation)
+     * @returns Refund breakdown information
+     */
+    async getRefundBreakdown(bookingId: string, slotNumbers?: number[]): Promise<any> {
+        const booking = await this.bookingRepository.findOne({
+            where: { id: Number(bookingId) },
+        });
+
+        if (!booking) {
+            throw new NotFoundException(`Booking with ID ${bookingId} not found`);
+        }
+
+        // Fetch match details
+        const match = await this.matchRepository.findOne({
+            where: { matchId: booking.matchId },
+        });
+
+        if (!match) {
+            throw new NotFoundException(`Match with ID ${booking.matchId} not found`);
+        }
+
+        const slotsToCancel = slotNumbers?.length || booking.totalSlots;
+        const perSlotAmount = parseFloat(booking.amount.toString()) / booking.totalSlots;
+        const baseRefundAmount = perSlotAmount * slotsToCancel;
+
+        // Calculate hours until match
+        const hoursUntilMatch = this.getHoursUntilMatch(match.startTime);
+        const refundPercentage = this.getRefundPercentage(hoursUntilMatch);
+        const refundAmount = (baseRefundAmount * refundPercentage) / 100;
+
+        // Determine time window
+        let timeWindow: 'FULL_REFUND' | 'PARTIAL_REFUND' | 'NO_REFUND';
+        if (hoursUntilMatch > 6) {
+            timeWindow = 'FULL_REFUND';
+        } else if (hoursUntilMatch > 3) {
+            timeWindow = 'PARTIAL_REFUND';
+        } else {
+            timeWindow = 'NO_REFUND';
+        }
+
+        return {
+            refundPercentage,
+            refundAmount: Math.round(refundAmount * 100) / 100,
+            hoursUntilMatch: Math.round(hoursUntilMatch * 100) / 100,
+            eligibleForRefund: refundPercentage > 0,
+            perSlotAmount: Math.round(perSlotAmount * 100) / 100,
+            totalSlotsToCancel: slotsToCancel,
+            baseRefundAmount: Math.round(baseRefundAmount * 100) / 100,
+            timeWindow,
+        };
+    }
+
     async cancelBookingSlots(dto: CancelBookingDto) {
         const booking = await this.getBookingById(dto.bookingId);
         const slotNumbers = dto.slotNumbers || [];
@@ -1388,14 +1499,23 @@ export class BookingService {
             throw new BadRequestException('Booking is already cancelled');
         }
 
+        // Fetch match details for refund calculation
+        const match = await this.matchRepository.findOne({
+            where: { matchId: booking.matchId },
+        });
+
+        if (!match) {
+            throw new NotFoundException(`Match with ID ${booking.matchId} not found`);
+        }
+
+        // Calculate refund amount using time-based logic
+        const refundAmount = this.calculateRefundAmount(booking, slotNumbers, match);
+
         const queryRunner = this.connection.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
 
         try {
-            // Calculate refund amount
-            const perSlotAmount = booking.amount / booking.totalSlots;
-            const refundAmount = perSlotAmount * (slotNumbers.length || booking.totalSlots);
 
             if (slotNumbers.length > 0) {
                 // Partial cancellation
@@ -1482,26 +1602,33 @@ export class BookingService {
                 [cancelledSlotsCount, booking.matchId]
             );
 
-            // Validate payment ID before initiating refund
-            const razorpayPaymentId = booking.metadata?.razorpayPaymentId || booking.metadata?.paymentId;
-            if (!razorpayPaymentId) {
-                throw new BadRequestException('Payment ID not found. Cannot process refund.');
-            }
-
-            // Initiate refund
-            await this.refundService.initiateRefund({
-                bookingId: dto.bookingId,
-                amount: refundAmount,
-                reason: dto.reason || 'Booking cancelled',
-                razorpayPaymentId: razorpayPaymentId,
-                slots: slotNumbers,
-                metadata: {
-                    cancelledAt: new Date(),
-                    cancelledSlots: slotNumbers,
-                    originalAmount: booking.amount,
-                    cancellationType: 'PARTIAL'
+            // Only initiate refund if refund amount > 0
+            if (refundAmount > 0) {
+                // Validate payment ID before initiating refund
+                const razorpayPaymentId = booking.metadata?.razorpayPaymentId || booking.metadata?.paymentId;
+                if (!razorpayPaymentId) {
+                    throw new BadRequestException('Payment ID not found. Cannot process refund.');
                 }
-            }, queryRunner);
+
+                // Initiate refund with calculated amount
+                await this.refundService.initiateRefund({
+                    bookingId: dto.bookingId,
+                    amount: refundAmount,
+                    reason: dto.reason || 'Booking cancelled',
+                    razorpayPaymentId: razorpayPaymentId,
+                    slots: slotNumbers,
+                    metadata: {
+                        cancelledAt: new Date(),
+                        cancelledSlots: slotNumbers,
+                        originalAmount: booking.amount,
+                        cancellationType: slotNumbers.length > 0 ? 'PARTIAL' : 'FULL',
+                        refundPercentage: this.getRefundPercentage(this.getHoursUntilMatch(match.startTime))
+                    }
+                }, queryRunner);
+            } else {
+                // No refund eligible - log and continue without refund
+                this.logger.log(`[cancelBookingSlots] No refund eligible for booking ${dto.bookingId} - refund amount is 0 (cancelled within 3 hours of match)`);
+            }
 
             // Check for available slots and notify waitlist users
             await this.slotAvailabilityMonitor.checkAndNotifyAvailableSlots(booking.matchId);
