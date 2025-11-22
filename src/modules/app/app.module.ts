@@ -21,6 +21,7 @@ import { MatchTypesModule } from '../match-types/match-types.module';
 import { NotificationModule } from '../notification/notification.module';
 import { BookingModule } from '../booking/booking.module';
 import { WaitlistModule } from '../waitlist/waitlist.module';
+import { LeaderboardModule } from '../leaderboard/leaderboard.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { WaitlistModule } from '../waitlist/waitlist.module';
     NotificationModule,
     BookingModule,
     WaitlistModule,
+    LeaderboardModule,
   ],
   controllers: [AppController],
   providers: [

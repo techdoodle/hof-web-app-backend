@@ -1,11 +1,11 @@
 import { Controller, Get, Query, HttpException, HttpStatus } from '@nestjs/common';
-import { UserService } from './user.service';
+import { LeaderboardService } from './leaderboard.service';
 import { LeaderboardQueryDto } from './dto/leaderboard-query.dto';
 import { LeaderboardResponseDto } from './dto/leaderboard-response.dto';
 
 @Controller('leaderboard')
 export class LeaderboardController {
-  constructor(private readonly userService: UserService) { }
+  constructor(private readonly leaderboardService: LeaderboardService) {}
 
   @Get()
   async getLeaderboard(@Query() query: LeaderboardQueryDto): Promise<LeaderboardResponseDto> {
@@ -33,7 +33,7 @@ export class LeaderboardController {
         gender: (query.gender || 'male').toLowerCase(),
       };
 
-      return await this.userService.getLeaderboard(normalizedQuery);
+      return await this.leaderboardService.getLeaderboard(normalizedQuery);
     } catch (error) {
       console.error('Leaderboard error:', error);
       throw new HttpException(

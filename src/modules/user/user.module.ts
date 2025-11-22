@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserController } from './user.controller';
-import { LeaderboardController } from './leaderboard.controller';
 import { UserService } from './user.service';
 import { User } from './user.entity';
 import { ImageProcessingService } from './image-processing.service';
@@ -10,7 +9,7 @@ import { FirebaseStorageService } from './firebase-storage.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User])],
-  controllers: [UserController, LeaderboardController],
+  controllers: [UserController],
   providers: [UserService, ImageProcessingService, FirebaseConfig, FirebaseStorageService],
   exports: [UserService],
 })
