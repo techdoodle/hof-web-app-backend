@@ -191,20 +191,41 @@ export class BookingService {
                 );
             }
 
-            // Try to acquire locks on all requested slots
+            // Get actual available slot numbers (excluding both booked AND locked slots)
+            // This prevents conflicts when multiple users book simultaneously
+            const actualSlotNumbers = await this.getAvailableSlotNumbersExcludingLocked(
+                Number(dto.matchId),
+                requestedSlots,
+                queryRunner
+            );
+
+            if (actualSlotNumbers.length < requestedSlots) {
+                throw new ConflictException(
+                    `Only ${actualSlotNumbers.length} slots available. Another booking may be in progress.`
+                );
+            }
+
+            this.logger.log(
+                `[createBooking] Auto-assigned slot numbers: ${actualSlotNumbers.join(', ')}`
+            );
+
+            // Try to acquire locks on the auto-assigned available slots
             const lockResult = await this.slotLockService.tryLockSlots(
                 dto.matchId,
-                dto.slotNumbers,
+                actualSlotNumbers,  // Use actual available slots, not frontend placeholder
                 queryRunner
             );
             this.logger.log(`[createBooking] lockResult.success=${lockResult.success}`);
 
             if (!lockResult.success) {
-                throw new ConflictException('Slots are no longer available. Please try again later in 5 minutes.');
+                throw new ConflictException('Slots are no longer available. Please try again.');
             }
 
-            // NOTE: Slots are already locked via tryLockSlots using dto.slotNumbers.
-            // We will honor the exact requested slot numbers to avoid desyncs.
+            // Use the actual assigned slot numbers (not the frontend placeholder)
+            const assignedSlotNumbers = actualSlotNumbers;
+
+            // NOTE: Slots are now locked with the auto-assigned slot numbers.
+            // We use these actual slot numbers for booking slots creation.
 
             // Create booking
             const booking = this.bookingRepository.create({
@@ -289,8 +310,8 @@ export class BookingService {
             console.log("playerUsers", playerUsers);
             console.log("dto.players", dto.players);
             console.log("dto.totalSlots", dto.totalSlots);
-            // Create booking slots with the exact requested slot numbers (already locked)
-            const bookingSlots = dto.slotNumbers.map((slotNumber, index) => {
+            // Create booking slots with the auto-assigned slot numbers
+            const bookingSlots = assignedSlotNumbers.map((slotNumber, index) => {
                 const player = dto.players[index] || dto.players[0] || { firstName: '', lastName: '', phone: '' };
                 const playerUser = playerUsers[index] || playerUsers[0];
 
@@ -379,6 +400,62 @@ export class BookingService {
         const availableSlots = allSlots.filter(slot => !bookedSlotNumbers.includes(slot));
 
         return availableSlots;
+    }
+
+    /**
+     * Get available slot numbers excluding both ACTIVE slots and currently LOCKED slots
+     * This prevents conflicts during concurrent bookings
+     */
+    private async getAvailableSlotNumbersExcludingLocked(
+        matchId: number,
+        requestedSlots: number,
+        queryRunner: any
+    ): Promise<number[]> {
+        // Get currently ACTIVE slot numbers
+        const activeSlots = await queryRunner.query(`
+            SELECT bs.slot_number 
+            FROM booking_slots bs 
+            JOIN bookings b ON bs.booking_id = b.id 
+            WHERE b.match_id = $1 AND bs.status = $2
+        `, [matchId, BookingSlotStatus.ACTIVE]);
+
+        const bookedSlotNumbers = new Set(activeSlots.map((row: any) => row.slot_number));
+
+        // Get currently LOCKED slot numbers from matches.locked_slots
+        const match = await queryRunner.query(`
+            SELECT player_capacity, locked_slots FROM matches WHERE match_id = $1
+        `, [matchId]);
+
+        if (!match.length) {
+            throw new BadRequestException('Match not found');
+        }
+
+        const totalCapacity = match[0]?.player_capacity || 0;
+        const lockedSlots = match[0]?.locked_slots || {};
+        const currentTime = new Date();
+
+        // Get all currently locked slot numbers (excluding expired locks)
+        Object.values(lockedSlots).forEach((lockData: any) => {
+            if (new Date(lockData.expires_at) > currentTime) {
+                lockData.slots?.forEach((slotNum: number) => {
+                    bookedSlotNumbers.add(slotNum);
+                });
+            }
+        });
+
+        // Generate all possible slot numbers
+        const allSlots = Array.from({ length: totalCapacity }, (_, i) => i + 1);
+
+        // Find truly available slots (not booked AND not locked)
+        const availableSlots = allSlots.filter(slot => !bookedSlotNumbers.has(slot));
+
+        this.logger.log(
+            `[getAvailableSlotNumbersExcludingLocked] Match ${matchId}: ` +
+            `total=${totalCapacity}, booked+locked=${bookedSlotNumbers.size}, ` +
+            `available=${availableSlots.length}, requested=${requestedSlots}`
+        );
+
+        return availableSlots.slice(0, requestedSlots);
     }
 
     async getBookingById(bookingId: string): Promise<any> {
@@ -1008,12 +1085,24 @@ export class BookingService {
                 const teamSelections = booking.metadata?.teamSelections || [];
 
                 // Create a map of phone -> teamName
+                // IMPORTANT: Map by index first, then by phone for proper matching
                 const phoneTeamMap = new Map();
-                teamSelections.forEach((selection: any) => {
-                    if (selection.phone && selection.teamName) {
-                        phoneTeamMap.set(selection.phone.trim(), selection.teamName);
+
+                // Build map using actual phone numbers from booking slots
+                activatedSlots.forEach((slot, index) => {
+                    const teamSelection = teamSelections[index];
+                    if (teamSelection && teamSelection.teamName && slot.player_phone) {
+                        // Use the ACTUAL phone from booking_slots (which includes tokenUser phone for main user)
+                        phoneTeamMap.set(slot.player_phone.trim(), teamSelection.teamName);
+                        this.logger.log(
+                            `[handlePaymentCallback] Mapped phone ${slot.player_phone} → team ${teamSelection.teamName} (slot ${index})`
+                        );
                     }
                 });
+
+                this.logger.log(
+                    `[handlePaymentCallback] Team mapping complete. Total mappings: ${phoneTeamMap.size}`
+                );
 
                 const uniquePlayerIds = Array.from(new Set(activatedSlots.map(s => s.player_id).filter(Boolean)));
                 for (const pid of uniquePlayerIds) {
@@ -1028,6 +1117,10 @@ export class BookingService {
 
                         // Get team name from the mapping, default to 'Unassigned'
                         const teamName = phoneTeamMap.get(playerPhone) || 'Unassigned';
+
+                        this.logger.log(
+                            `[handlePaymentCallback] Creating participant: user=${pid}, phone=${playerPhone}, team=${teamName}`
+                        );
 
                         const participant = queryRunner.manager.create(MatchParticipant, {
                             match: { matchId: booking.matchId },
