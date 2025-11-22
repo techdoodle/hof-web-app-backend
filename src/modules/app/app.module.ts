@@ -45,9 +45,32 @@ import { WaitlistModule } from '../waitlist/waitlist.module';
         synchronize: config.get<boolean>('database.synchronize') ?? false,
         migrationsRun: config.get<boolean>('database.migrationsRun') ?? true,
         logging: config.get<any>('database.logging') ?? ['error'],
+
+        // Connection pool configuration
+        poolSize: 20,  // Maximum number of connections in pool
+
+        // Connection timeout settings
+        connectTimeoutMS: 5000,  // 5 seconds to establish connection
+
         extra: {
           timezone: 'Asia/Kolkata',
+
+          // PostgreSQL-specific timeout settings
+          // These prevent stuck transactions from holding locks indefinitely
+          statement_timeout: 30000,  // 30 seconds - kills long-running queries
+          idle_in_transaction_session_timeout: 60000,  // 1 minute - kills idle transactions
+
+          // TCP keepalive settings - detects dead connections quickly
+          tcp_keepalives_idle: 30,        // 30 seconds before first keepalive probe
+          tcp_keepalives_interval: 10,    // 10 seconds between keepalive probes
+          tcp_keepalives_count: 3,        // 3 failed probes = connection dead
+          // Total dead connection detection: 30 + (10 * 3) = 60 seconds
+
+          // Connection lifetime management
+          connectionTimeoutMillis: 5000,  // 5 seconds waiting for connection from pool
+          idleTimeoutMillis: 30000,       // 30 seconds - release idle connections
         },
+
         ssl: {
           rejectUnauthorized: false, // Railway requires SSL
         },

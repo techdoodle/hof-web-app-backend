@@ -143,6 +143,54 @@ export class BookingService {
         await queryRunner.startTransaction();
 
         try {
+            // CRITICAL: Lock the match row first to prevent race conditions
+            const matchLock = await queryRunner.query(
+                `SELECT match_id, player_capacity, booked_slots, locked_slots 
+                 FROM matches 
+                 WHERE match_id = $1 
+                 FOR UPDATE`,
+                [Number(dto.matchId)]
+            );
+
+            if (!matchLock.length) {
+                throw new BadRequestException('Match not found');
+            }
+
+            const currentMatch = matchLock[0];
+
+            // Validate overall capacity BEFORE locking slots
+            // CRITICAL: Account for both booked AND locked slots
+            const currentBookedSlots = currentMatch.booked_slots || 0;
+            const lockedSlots = currentMatch.locked_slots || {};
+            const currentTime = new Date();
+
+            // Count all currently locked slots (excluding expired locks)
+            let currentlyLockedSlotCount = 0;
+            Object.values(lockedSlots).forEach((lockData: any) => {
+                if (new Date(lockData.expires_at) > currentTime) {
+                    currentlyLockedSlotCount += (lockData.slots?.length || 0);
+                }
+            });
+
+            const requestedSlots = dto.totalSlots;
+            const totalOccupiedSlots = currentBookedSlots + currentlyLockedSlotCount;
+            const availableSlots = currentMatch.player_capacity - totalOccupiedSlots;
+
+            this.logger.log(
+                `[createBooking] Capacity check: ` +
+                `capacity=${currentMatch.player_capacity}, ` +
+                `booked=${currentBookedSlots}, ` +
+                `locked=${currentlyLockedSlotCount}, ` +
+                `available=${availableSlots}, ` +
+                `requested=${requestedSlots}`
+            );
+
+            if (requestedSlots > availableSlots) {
+                throw new BadRequestException(
+                    `Insufficient slots available. Requested: ${requestedSlots}, Available: ${availableSlots}`
+                );
+            }
+
             // Try to acquire locks on all requested slots
             const lockResult = await this.slotLockService.tryLockSlots(
                 dto.matchId,
@@ -152,7 +200,7 @@ export class BookingService {
             this.logger.log(`[createBooking] lockResult.success=${lockResult.success}`);
 
             if (!lockResult.success) {
-                throw new ConflictException('Some slots are no longer available');
+                throw new ConflictException('Slots are no longer available. Please try again later in 5 minutes.');
             }
 
             // NOTE: Slots are already locked via tryLockSlots using dto.slotNumbers.
@@ -289,7 +337,17 @@ export class BookingService {
             return savedBooking;
         } catch (error) {
             this.logger.error('[createBooking] failed', error?.stack || error);
-            await queryRunner.rollbackTransaction();
+
+            // Try to rollback, but don't fail if transaction already rolled back
+            // (e.g., due to statement_timeout or deadlock)
+            try {
+                await queryRunner.rollbackTransaction();
+            } catch (rollbackError) {
+                // Transaction might already be rolled back by PostgreSQL
+                // This is fine - just log it
+                this.logger.warn('[createBooking] Rollback failed (transaction may already be aborted):', rollbackError.message);
+            }
+
             throw error;
         } finally {
             await queryRunner.release();
@@ -983,19 +1041,115 @@ export class BookingService {
                 this.logger.warn(`Participant sync on payment confirm failed for booking ${bookingId}: ${e?.message || e}`);
             }
 
-            // Increment booked_slots when payment succeeds
-            await queryRunner.query(
-                `UPDATE matches 
-                 SET booked_slots = booked_slots + $1
-                 WHERE match_id = $2`,
-                [booking.totalSlots, booking.matchId]
-            );
-
-            // Remove lock from matches table and update booked_slots
-            const result = await queryRunner.query(
-                `SELECT locked_slots, version FROM matches WHERE match_id = $1 FOR UPDATE`,
+            // CRITICAL: Lock match row and validate capacity before incrementing
+            const matchLockResult = await queryRunner.query(
+                `SELECT match_id, player_capacity, booked_slots, locked_slots, version 
+                 FROM matches 
+                 WHERE match_id = $1 
+                 FOR UPDATE`,
                 [booking.matchId]
             );
+
+            if (!matchLockResult.length) {
+                throw new BadRequestException('Match not found');
+            }
+
+            const match = matchLockResult[0];
+            const currentBookedSlots = match.booked_slots || 0;
+            const newBookedSlots = currentBookedSlots + booking.totalSlots;
+
+            // Count currently locked slots (excluding this booking's lock which will be released)
+            const lockedSlots = match.locked_slots || {};
+            const currentTime = new Date();
+            const lockKey = booking.metadata?.lockKey;
+
+            let otherLockedSlotCount = 0;
+            Object.entries(lockedSlots).forEach(([key, lockData]: [string, any]) => {
+                // Skip this booking's lock and expired locks
+                if (key !== lockKey && new Date(lockData.expires_at) > currentTime) {
+                    otherLockedSlotCount += (lockData.slots?.length || 0);
+                }
+            });
+
+            // Safety check: Prevent overbooking even if validation was bypassed
+            // Account for other in-progress bookings (locked slots)
+            const totalOccupiedAfterConfirm = newBookedSlots + otherLockedSlotCount;
+
+            this.logger.log(
+                `[handlePaymentCallback] Capacity validation: ` +
+                `capacity=${match.player_capacity}, ` +
+                `currentBooked=${currentBookedSlots}, ` +
+                `thisBooking=${booking.totalSlots}, ` +
+                `otherLocked=${otherLockedSlotCount}, ` +
+                `totalAfterConfirm=${totalOccupiedAfterConfirm}`
+            );
+
+            if (totalOccupiedAfterConfirm > match.player_capacity) {
+                this.logger.error(
+                    `[handlePaymentCallback] CAPACITY BREACH PREVENTED: ` +
+                    `Booking ${bookingId} would cause overbooking. ` +
+                    `Current: ${currentBookedSlots}, Requested: ${booking.totalSlots}, ` +
+                    `Capacity: ${match.player_capacity}`
+                );
+
+                // Mark booking as failed and initiate refund
+                await queryRunner.query(
+                    `UPDATE bookings 
+                     SET status = $1, metadata = $2
+                     WHERE id = $3`,
+                    [
+                        BookingStatus.PAYMENT_FAILED,
+                        JSON.stringify({
+                            ...booking.metadata,
+                            failureReason: 'Capacity exceeded',
+                            refundRequired: true
+                        }),
+                        bookingId
+                    ]
+                );
+
+                // Cancel the booking slots
+                await queryRunner.manager.update(
+                    BookingSlotEntity,
+                    { bookingId: Number(bookingId) },
+                    { status: BookingSlotStatus.CANCELLED }
+                );
+
+                // Release the lock
+                const lockedSlots = match.locked_slots || {};
+                const lockKey = booking.metadata?.lockKey;
+                if (lockKey && lockedSlots[lockKey]) {
+                    delete lockedSlots[lockKey];
+                    await queryRunner.query(
+                        `UPDATE matches 
+                         SET locked_slots = $1, version = version + 1
+                         WHERE match_id = $2`,
+                        [JSON.stringify(lockedSlots), booking.matchId]
+                    );
+                }
+
+                await queryRunner.commitTransaction();
+
+                throw new BadRequestException(
+                    'Match capacity exceeded. Your payment will be refunded automatically.'
+                );
+            }
+
+            // Increment booked_slots when payment succeeds
+            this.logger.log(
+                `[handlePaymentCallback] Incrementing booked_slots: ` +
+                `${currentBookedSlots} + ${booking.totalSlots} = ${newBookedSlots}/${match.player_capacity}`
+            );
+
+            await queryRunner.query(
+                `UPDATE matches 
+                 SET booked_slots = $1
+                 WHERE match_id = $2`,
+                [newBookedSlots, booking.matchId]
+            );
+
+            // Remove lock from matches table (already have the match data from above)
+            const result = matchLockResult;
 
             if (result?.length) {
                 const match = result[0];

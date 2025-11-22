@@ -638,12 +638,26 @@ export class BookingCleanupService {
                 slotsToAssign.map(s => s.slotNumber).filter(n => n !== null).join(', ')
             );
 
-            // ✅ Increment booked_slots in matches table
+            // ✅ Update booked_slots in matches table based on actual ACTIVE slots count
+            // This is safer than incrementing because it ensures data integrity
+            const actualActiveSlots = await queryRunner.query(
+                `SELECT COUNT(DISTINCT bs.id) as count
+                 FROM booking_slots bs
+                 JOIN bookings b ON bs.booking_id = b.id
+                 WHERE b.match_id = $1 AND bs.status = $2`,
+                [booking.matchId, BookingSlotStatus.ACTIVE]
+            );
+            const actualCount = parseInt(actualActiveSlots[0]?.count || '0');
+
+            this.logger.log(
+                `📊 Updating booked_slots for match ${booking.matchId} to actual count: ${actualCount}`
+            );
+
             await queryRunner.query(
                 `UPDATE matches 
-                 SET booked_slots = booked_slots + $1
+                 SET booked_slots = $1
                  WHERE match_id = $2`,
-                [booking.totalSlots, booking.matchId]
+                [actualCount, booking.matchId]
             );
 
             // ✅ Create match participants for each unique player in activated slots
@@ -1086,6 +1100,86 @@ export class BookingCleanupService {
             this.logger.error('Failed to cleanup expired locks', error.stack);
         } finally {
             await queryRunner.release();
+        }
+    }
+
+    /**
+     * Periodic integrity check for booked_slots counter
+     * Runs daily at 3 AM to ensure booked_slots matches actual ACTIVE booking slots
+     * This prevents data drift and constraint violations
+     */
+    @Cron('0 3 * * *') // Daily at 3 AM
+    async verifyBookedSlotsIntegrity() {
+        if (!(await this.acquireDistributedLock('integrity_check', 3600))) {
+            this.logger.log('⏭️ Another instance is running integrity check. Skipping.');
+            return;
+        }
+
+        const queryRunner = this.connection.createQueryRunner();
+        await queryRunner.connect();
+
+        try {
+            this.logger.log('🔍 Starting booked_slots integrity check...');
+
+            // Find matches where booked_slots doesn't match actual ACTIVE booking slots count
+            const inconsistentMatches = await queryRunner.query(`
+                SELECT 
+                    m.match_id,
+                    m.booked_slots as current_count,
+                    COALESCE(COUNT(DISTINCT bs.id), 0) as actual_count,
+                    m.player_capacity
+                FROM matches m
+                LEFT JOIN bookings b ON b.match_id = m.match_id
+                LEFT JOIN booking_slots bs ON bs.booking_id = b.id AND bs.status = 'ACTIVE'
+                WHERE m.match_date > NOW()
+                GROUP BY m.match_id, m.booked_slots, m.player_capacity
+                HAVING m.booked_slots != COALESCE(COUNT(DISTINCT bs.id), 0)
+            `);
+
+            if (inconsistentMatches.length === 0) {
+                this.logger.log('✅ All match booked_slots counters are accurate');
+                return;
+            }
+
+            this.logger.warn(
+                `⚠️ Found ${inconsistentMatches.length} matches with inconsistent booked_slots counters`
+            );
+
+            // Fix each inconsistent match
+            for (const match of inconsistentMatches) {
+                await queryRunner.startTransaction();
+                try {
+                    this.logger.log(
+                        `🔧 Fixing match ${match.match_id}: ` +
+                        `current=${match.current_count}, actual=${match.actual_count}, ` +
+                        `capacity=${match.player_capacity}`
+                    );
+
+                    await queryRunner.query(
+                        `UPDATE matches 
+                         SET booked_slots = $1
+                         WHERE match_id = $2`,
+                        [parseInt(match.actual_count), match.match_id]
+                    );
+
+                    await queryRunner.commitTransaction();
+                    this.logger.log(`✅ Fixed match ${match.match_id}`);
+                } catch (error) {
+                    await queryRunner.rollbackTransaction();
+                    this.logger.error(
+                        `❌ Failed to fix match ${match.match_id}: ${error.message}`
+                    );
+                }
+            }
+
+            this.logger.log(
+                `✅ Completed integrity check. Fixed ${inconsistentMatches.length} matches.`
+            );
+        } catch (error) {
+            this.logger.error('Failed to verify booked_slots integrity', error.stack);
+        } finally {
+            await queryRunner.release();
+            await this.releaseDistributedLock('integrity_check');
         }
     }
 }

@@ -87,5 +87,38 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT || 3000);
   console.log(`Server is running on port ${process.env.PORT}`);
+
+  // Graceful shutdown handler
+  // Ensures database connections are properly closed on shutdown
+  const gracefulShutdown = async (signal: string) => {
+    console.log(`\n${signal} received. Starting graceful shutdown...`);
+    console.log('Closing database connections...');
+    
+    try {
+      // Close NestJS app (includes TypeORM connection pool)
+      await app.close();
+      console.log('✅ Database connections closed successfully');
+      console.log('✅ Graceful shutdown complete');
+      process.exit(0);
+    } catch (error) {
+      console.error('❌ Error during graceful shutdown:', error);
+      process.exit(1);
+    }
+  };
+
+  // Handle different shutdown signals
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));  // Docker/K8s stop
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));    // Ctrl+C
+  
+  // Handle uncaught errors
+  process.on('uncaughtException', (error) => {
+    console.error('❌ Uncaught Exception:', error);
+    gracefulShutdown('UNCAUGHT_EXCEPTION');
+  });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    gracefulShutdown('UNHANDLED_REJECTION');
+  });
 }
 bootstrap();
