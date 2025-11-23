@@ -3,9 +3,9 @@ import { LeaderboardService } from './leaderboard.service';
 import { LeaderboardQueryDto } from './dto/leaderboard-query.dto';
 import { LeaderboardResponseDto } from './dto/leaderboard-response.dto';
 
-@Controller('leaderboard')
+@Controller('leaderboard/overall')
 export class LeaderboardController {
-  constructor(private readonly leaderboardService: LeaderboardService) {}
+  constructor(private readonly leaderboardService: LeaderboardService) { }
 
   @Get()
   async getLeaderboard(@Query() query: LeaderboardQueryDto): Promise<LeaderboardResponseDto> {
