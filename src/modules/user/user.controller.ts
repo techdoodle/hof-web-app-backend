@@ -138,18 +138,20 @@ export class UserController {
         throw new HttpException('User ID not found in token', HttpStatus.UNAUTHORIZED);
       }
 
-      console.log('Processing image for userId:', userId);
-      const processedImageUrl = await this.imageProcessingService.processProfilePictureBase64(body.imageData, userId);
+      console.log('Validating image for userId:', userId, '(not storing to cloud)');
+      // Use validation method that returns base64 WITHOUT storing to cloud
+      const result = await this.imageProcessingService.validateProfilePictureBase64(body.imageData);
 
       return {
         success: true,
-        url: processedImageUrl,
-        message: 'Profile picture processed successfully (not saved to profile)'
+        url: result.url,
+        isBase64: result.isBase64,
+        message: 'Profile picture validated successfully (not saved to cloud or profile)'
       };
     } catch (error) {
-      console.error('Profile picture processing error:', error);
+      console.error('Profile picture validation error:', error);
       throw new HttpException(
-        `Failed to process profile picture: ${error.message}`,
+        `Failed to validate profile picture: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
