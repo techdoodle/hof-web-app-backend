@@ -389,6 +389,12 @@ export class AdminController {
         return this.playerNationService.getUnmappedPlayers(matchId);
     }
 
+    @Get('playernation/mappings/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getMappings(@Param('matchId', ParseIntPipe) matchId: number) {
+        return this.playerNationService.getMappings(matchId);
+    }
+
     @Post('playernation/mappings/purge-all')
     @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
     async purgeAllMappings() {

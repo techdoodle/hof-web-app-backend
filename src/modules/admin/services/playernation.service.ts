@@ -656,6 +656,17 @@ export class PlayerNationService {
     });
   }
 
+  async getMappings(matchId: number): Promise<Array<{ externalPlayerId: string; internalPlayerId: number | null }>> {
+    const mappings = await this.mappingRepository.find({
+      where: { matchId: matchId },
+      select: ['externalPlayerId', 'internalPlayerId'],
+    });
+    return mappings.map(m => ({
+      externalPlayerId: m.externalPlayerId,
+      internalPlayerId: m.internalPlayerId || null,
+    }));
+  }
+
   async saveMappings(matchId: number, mappings: SaveMappingsDto['mappings']): Promise<void> {
     for (const mapping of mappings) {
       await this.mappingRepository.update(
