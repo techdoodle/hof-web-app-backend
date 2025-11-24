@@ -10,7 +10,7 @@ export class LeaderboardService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
-  ) {}
+  ) { }
 
   async getLeaderboard(query: LeaderboardQueryDto): Promise<LeaderboardResponseDto> {
     const { page = 1, limit = 50, city = 'all', position = 'all', gender = 'male' } = query;
@@ -40,7 +40,7 @@ export class LeaderboardService {
         'SUM(COALESCE(stats.total_save, 0)) as totalSaves',
       ])
       .groupBy('user.id, user.first_name, user.last_name, user.profile_picture, user.player_category, user.gender, city.city_name')
-      .having('COUNT(stats.match_stats_id) > 0'); // Only users who have played at least one match
+      .having('COUNT(stats.match_stats_id) >= 3'); // Only users who have played at least 3 matches
 
     // Apply filters
     // City filter
@@ -69,7 +69,7 @@ export class LeaderboardService {
       const playerCategory = raw.playercategory || 'STRIKER';
       const matchesPlayed = parseInt(raw.matchesplayed) || 0;
 
-      if (matchesPlayed === 0) return null;
+      if (matchesPlayed < 3) return null; // Require at least 3 matches
 
       const totalGoals = parseInt(raw.totalgoals) || 0;
       const totalAssists = parseInt(raw.totalassists) || 0;
