@@ -8,7 +8,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { UserFilterDto, CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { AdminService } from './admin.service';
-import { CreateMatchDto, UpdateMatchDto, MatchFilterDto } from './dto/match.dto';
+import { CreateMatchDto, UpdateMatchDto, MatchFilterDto, CreateRecurringMatchesDto } from './dto/match.dto';
 import { PlayerNationSubmitDto } from './dto/playernation-submit.dto';
 import { SaveMappingsDto } from './dto/playernation-mapping.dto';
 import { PlayerNationService } from './services/playernation.service';
@@ -131,6 +131,12 @@ export class AdminController {
     @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async createMatch(@Body() createMatchDto: CreateMatchDto) {
         return this.adminService.createMatch(createMatchDto);
+    }
+
+    @Post('matches/recurring')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async createRecurringMatches(@Body() dto: CreateRecurringMatchesDto) {
+        return this.adminService.createRecurringMatches(dto);
     }
 
     @Patch('matches/:id')
