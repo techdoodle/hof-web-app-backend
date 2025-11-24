@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsNumber, IsDateString, IsBoolean, IsEnum, Min } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsDateString, IsBoolean, IsEnum, Min, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { MatchType } from '../../../common/enums/match-type.enum';
 
 export class CreateMatchDto {
@@ -53,9 +54,18 @@ export class CreateMatchDto {
     @Min(-1)
     slotPrice?: number;
 
-    @IsNumber()
-    @Min(-1)
-    offerPrice?: number;
+  @IsNumber()
+  @Min(-1)
+  offerPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  playerCapacity?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  bufferCapacity?: number;
 
   @IsString()
   @IsOptional()
@@ -176,7 +186,78 @@ export class MatchFilterDto {
     @IsString()
     sort?: string;
 
-    @IsOptional()
-    @IsString()
-    order?: 'ASC' | 'DESC';
+  @IsOptional()
+  @IsString()
+  order?: 'ASC' | 'DESC';
+}
+
+export class TimeSlotDto {
+  @IsString()
+  startTime: string; // Time in HH:mm format
+
+  @IsString()
+  endTime: string; // Time in HH:mm format
+}
+
+export class CreateRecurringMatchesDto {
+  @IsEnum(['daily', 'weekly', 'custom'])
+  pattern: 'daily' | 'weekly' | 'custom';
+
+  @IsDateString()
+  startDate: string; // First match date (YYYY-MM-DD)
+
+  @IsDateString()
+  endDate: string; // Last match date (YYYY-MM-DD)
+
+  @IsOptional()
+  @IsNumber({}, { each: true })
+  daysOfWeek?: number[]; // 0=Sunday, 1=Monday, ..., 6=Saturday (for weekly/custom)
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TimeSlotDto)
+  timeSlots: TimeSlotDto[]; // Multiple time slots per day
+
+  @IsNumber()
+  venue: number;
+
+  @IsEnum(MatchType)
+  matchType: MatchType;
+
+  @IsNumber()
+  matchTypeId: number;
+
+  @IsNumber()
+  footballChief: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  slotPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  offerPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  playerCapacity?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  bufferCapacity?: number;
+
+  @IsNumber()
+  @IsOptional()
+  city?: number;
+
+  @IsString()
+  @IsOptional()
+  teamAName?: string;
+
+  @IsString()
+  @IsOptional()
+  teamBName?: string;
 }

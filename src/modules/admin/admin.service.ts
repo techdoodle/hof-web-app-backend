@@ -22,7 +22,7 @@ import { parseGoogleMapsUrl } from '../../common/utils/google-maps.util';
 import * as csv from 'csv-parser';
 import { Readable } from 'stream';
 import { CreateUserDto, UpdateUserDto, UserFilterDto } from './dto/user.dto';
-import { CreateMatchDto, MatchFilterDto, UpdateMatchDto } from './dto/match.dto';
+import { CreateMatchDto, MatchFilterDto, UpdateMatchDto, CreateRecurringMatchesDto, TimeSlotDto } from './dto/match.dto';
 
 @Injectable()
 export class AdminService {
@@ -348,6 +348,159 @@ export class AdminService {
         } as any);
         const savedMatch = await this.matchRepository.save(match) as unknown as Match;
         return { ...savedMatch, id: savedMatch.matchId };
+    }
+
+    /**
+     * Generate all dates for recurring matches based on pattern
+     */
+    private generateMatchDates(
+        pattern: 'daily' | 'weekly' | 'custom',
+        startDate: Date,
+        endDate: Date,
+        daysOfWeek?: number[]
+    ): Date[] {
+        const dates: Date[] = [];
+        const current = new Date(startDate);
+        current.setHours(0, 0, 0, 0);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+
+        if (pattern === 'daily') {
+            // Generate dates for every day
+            while (current <= end) {
+                dates.push(new Date(current));
+                current.setDate(current.getDate() + 1);
+            }
+        } else if (pattern === 'weekly' || pattern === 'custom') {
+            // Generate dates for specified days of week
+            if (!daysOfWeek || daysOfWeek.length === 0) {
+                throw new BadRequestException('daysOfWeek is required for weekly/custom patterns');
+            }
+
+            while (current <= end) {
+                const dayOfWeek = current.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+                if (daysOfWeek.includes(dayOfWeek)) {
+                    dates.push(new Date(current));
+                }
+                current.setDate(current.getDate() + 1);
+            }
+        }
+
+        return dates;
+    }
+
+    /**
+     * Parse time string (HH:mm) and combine with date
+     */
+    private combineDateAndTime(date: Date, timeString: string): Date {
+        const [hours, minutes] = timeString.split(':').map(Number);
+        const result = new Date(date);
+        result.setHours(hours, minutes, 0, 0);
+        return result;
+    }
+
+    /**
+     * Create multiple matches based on recurring pattern
+     */
+    async createRecurringMatches(dto: CreateRecurringMatchesDto): Promise<{ created: number; matches: any[]; errors: string[] }> {
+        // Validate date range
+        const startDate = new Date(dto.startDate);
+        const endDate = new Date(dto.endDate);
+        
+        if (startDate > endDate) {
+            throw new BadRequestException('Start date must be before or equal to end date');
+        }
+
+        // Validate daysOfWeek for weekly/custom patterns
+        if ((dto.pattern === 'weekly' || dto.pattern === 'custom') && (!dto.daysOfWeek || dto.daysOfWeek.length === 0)) {
+            throw new BadRequestException('daysOfWeek is required for weekly/custom patterns');
+        }
+
+        // Validate time slots
+        if (!dto.timeSlots || dto.timeSlots.length === 0) {
+            throw new BadRequestException('At least one time slot is required');
+        }
+
+        // Validate time format
+        for (const slot of dto.timeSlots) {
+            const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+            if (!timeRegex.test(slot.startTime) || !timeRegex.test(slot.endTime)) {
+                throw new BadRequestException(`Invalid time format. Use HH:mm format (e.g., "14:30")`);
+            }
+        }
+
+        // Get city from venue if not provided
+        let cityId = dto.city;
+        if (dto.venue && !cityId) {
+            const venue = await this.venueRepository.findOne({
+                where: { id: dto.venue },
+                relations: ['city']
+            });
+            if (venue && venue.city) {
+                cityId = venue.city.id;
+            }
+        }
+
+        // Generate all match dates
+        const matchDates = this.generateMatchDates(dto.pattern, startDate, endDate, dto.daysOfWeek);
+
+        if (matchDates.length === 0) {
+            throw new BadRequestException('No matches would be generated with the given pattern and date range');
+        }
+
+        const createdMatches: any[] = [];
+        const errors: string[] = [];
+        let createdCount = 0;
+
+        // Create matches for each date and time slot combination
+        for (const date of matchDates) {
+            for (const timeSlot of dto.timeSlots) {
+                try {
+                    const startTime = this.combineDateAndTime(date, timeSlot.startTime);
+                    const endTime = this.combineDateAndTime(date, timeSlot.endTime);
+
+                    // Validate end time is after start time
+                    if (endTime <= startTime) {
+                        // If end time is before or equal to start time, assume it's next day
+                        endTime.setDate(endTime.getDate() + 1);
+                    }
+
+                    // Create match DTO
+                    const createMatchDto: CreateMatchDto = {
+                        matchType: dto.matchType,
+                        matchTypeId: dto.matchTypeId,
+                        startTime: startTime.toISOString(),
+                        endTime: endTime.toISOString(),
+                        venue: dto.venue,
+                        city: cityId,
+                        footballChief: dto.footballChief,
+                        slotPrice: dto.slotPrice,
+                        offerPrice: dto.offerPrice,
+                        playerCapacity: dto.playerCapacity,
+                        bufferCapacity: dto.bufferCapacity ?? 0,
+                        teamAName: dto.teamAName || 'Home',
+                        teamBName: dto.teamBName || 'Away',
+                    };
+
+                    // Create match using existing logic
+                    const match = await this.createMatch(createMatchDto);
+                    createdMatches.push(match);
+                    createdCount++;
+                } catch (error: any) {
+                    const errorMsg = `Failed to create match for ${date.toDateString()} at ${timeSlot.startTime}: ${error.message}`;
+                    errors.push(errorMsg);
+                    this.logger.error(errorMsg, error.stack);
+                }
+            }
+        }
+
+        this.logger.log(`Created ${createdCount} recurring matches. Errors: ${errors.length}`);
+
+        return {
+            created: createdCount,
+            matches: createdMatches,
+            errors,
+        };
     }
 
     async updateMatch(id: number, updateMatchDto: UpdateMatchDto) {
