@@ -403,6 +403,14 @@ export class MatchesService {
 
     const endTime2 = Date.now();
     console.log("venueMap query ends here", endTime2, "time taken", endTime2 - startTime2);
+
+    // Sort matches within each venue by start time (ascending)
+    venueMap.forEach((venueData) => {
+      venueData.matches.sort((a, b) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+      );
+    });
+
     // Convert to array and sort by distance
     return Array.from(venueMap.values())
       .sort((a, b) => a.venue.distance - b.venue.distance)
