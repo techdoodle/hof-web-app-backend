@@ -30,10 +30,29 @@ export class BookingUserService {
             } as User);
             user = await this.userRepository.save(user);
         } else {
-            // If user exists by phone, update email if provided and user doesn't have one
+            // If user exists by phone, update missing fields if provided
+            let needsUpdate = false;
+            
             if (userData?.email && !user.email) {
                 // Mark that email update is needed
                 (user as any).needsEmailUpdate = userData.email;
+            }
+            
+            // Update firstName if user has null/empty firstName and new data is provided
+            if (userData?.firstName && (!user.firstName || user.firstName.trim() === '')) {
+                user.firstName = userData.firstName;
+                needsUpdate = true;
+            }
+            
+            // Update lastName if user has null/empty lastName and new data is provided
+            if (userData?.lastName && (!user.lastName || user.lastName.trim() === '')) {
+                user.lastName = userData.lastName;
+                needsUpdate = true;
+            }
+            
+            // Save user if any updates were made
+            if (needsUpdate) {
+                user = await this.userRepository.save(user);
             }
         }
 
