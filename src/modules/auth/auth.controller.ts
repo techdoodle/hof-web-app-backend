@@ -3,12 +3,14 @@ import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { MatchParticipantStatsService } from '../match-participant-stats/match-participant-stats.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly userService: UserService
+    private readonly userService: UserService,
+    private readonly matchParticipantStatsService: MatchParticipantStatsService
   ) { }
 
   @Post('send-otp')
@@ -64,6 +66,7 @@ export class AuthController {
     }
 
     const user = await this.userService.findOne(userId);
-    return { ...user };
+    const calibrated = await this.matchParticipantStatsService.hasStatsForPlayer(userId);
+    return { ...user, calibrated };
   }
 }

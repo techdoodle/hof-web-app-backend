@@ -112,6 +112,13 @@ export class MatchParticipantStatsService {
     });
   }
 
+  async hasStatsForPlayer(playerId: number): Promise<boolean> {
+    const count = await this.matchParticipantStatsRepository.count({
+      where: { player: { id: playerId } },
+    });
+    return count > 0;
+  }
+
   async findByMatchParticipant(matchParticipantId: number): Promise<MatchParticipantStats[]> {
     return await this.matchParticipantStatsRepository.find({
       where: { matchParticipant: { matchParticipantId } },

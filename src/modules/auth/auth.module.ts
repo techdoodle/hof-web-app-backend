@@ -8,6 +8,7 @@ import { User } from '../user/user.entity';
 import { UserService } from '../user/user.service';
 import { UserModule } from '../user/user.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { MatchParticipantStatsModule } from '../match-participant-stats/match-participant-stats.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       }),
     }),
     UserModule,
+    MatchParticipantStatsModule,
   ],
   controllers: [AuthController],
   providers: [
