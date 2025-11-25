@@ -292,6 +292,11 @@ export class MatchesService {
     const startTime = Date.now();
     console.log("findNearbyMatches query starts here", location, startTime);
 
+    // Calculate 10 days from now
+    const tenDaysFromNow = new Date(currentTime);
+    tenDaysFromNow.setDate(tenDaysFromNow.getDate() + 10);
+    tenDaysFromNow.setHours(23, 59, 59, 999); // End of day
+
     // Optimized: Use raw SQL with distance calculation in database
     // This reduces data transfer and calculates distance efficiently
     // Using CTE to avoid duplicate distance calculation
@@ -305,6 +310,7 @@ export class MatchesService {
           m.offer_price as "offerPrice",
           m.player_capacity as "playerCapacity",
           m.booked_slots as "bookedSlots",
+          m.status as "status",
           v.id as "venueId",
           v.name as "venueName",
           v.latitude as "venueLatitude",
@@ -339,6 +345,8 @@ export class MatchesService {
           AND v.latitude BETWEEN $3 AND $4
           AND v.longitude BETWEEN $5 AND $6
           AND m.start_time > $7
+          AND m.start_time <= $8
+          AND m.status != 'CANCELLED'
       )
       SELECT * FROM matches_with_distance
       WHERE distance <= 50
@@ -351,7 +359,8 @@ export class MatchesService {
       maxLat,
       minLon,
       maxLon,
-      currentTime
+      currentTime,
+      tenDaysFromNow
     ]);
 
     const endTime = Date.now();
