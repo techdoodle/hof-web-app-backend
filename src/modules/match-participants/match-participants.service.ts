@@ -151,37 +151,47 @@ export class MatchParticipantsService {
     const participant = await this.findOne(matchParticipantId);
     const match = participant.match;
 
+    // Normalize incoming team name
+    const incomingTeamRaw = (teamName || '').trim();
+    const normalizedTeamName = incomingTeamRaw.toLowerCase();
+
     // Validate that team name matches one of the match's team names or is 'Unassigned'
-    const validTeamNames = [match.teamAName, match.teamBName, 'Unassigned'];
-    const normalizedTeamName = teamName?.trim();
-    const isValidTeamName = validTeamNames.some(validName => 
-      validName && validName.toLowerCase() === normalizedTeamName?.toLowerCase()
-    );
+    const validTeamNames = [match.teamAName, match.teamBName, 'Unassigned']
+      .filter(Boolean)
+      .map(name => (name as string).trim().toLowerCase());
+
+    const isValidTeamName = validTeamNames.includes(normalizedTeamName);
 
     if (!isValidTeamName) {
       throw new ConflictException(
-        `Invalid team name. Must be one of: ${match.teamAName}, ${match.teamBName}, or Unassigned`
+        `Invalid team name. Must be one of: ${match.teamAName?.trim()}, ${match.teamBName?.trim()}, or Unassigned`
       );
     }
 
     // Check if the new team name is different from current and validate max 2 assigned teams
-    if (participant.teamName !== teamName) {
+    if ((participant.teamName || '').trim() !== incomingTeamRaw) {
       const matchParticipants = await this.findByMatch(participant.match.matchId);
       // Exclude the current participant from the count since we're updating their team
       const otherParticipants = matchParticipants.filter(p => p.matchParticipantId !== matchParticipantId);
+
+      // Build a normalized set of existing assigned (non-Unassigned) team names
       const existingAssignedTeams = new Set(
         otherParticipants
-          .map(p => p.teamName)
-          .filter(name => name && name.trim().toLowerCase() !== 'unassigned')
+          .map(p => (p.teamName || '').trim())
+          .filter(name => name && name.toLowerCase() !== 'unassigned')
+          .map(name => name.toLowerCase()),
       );
-      const incomingTeam = (teamName || 'Unassigned').trim();
-      const isIncomingAssigned = incomingTeam.toLowerCase() !== 'unassigned';
-      if (isIncomingAssigned && !existingAssignedTeams.has(incomingTeam) && existingAssignedTeams.size >= 2) {
+
+      const isIncomingAssigned = normalizedTeamName !== 'unassigned';
+
+      // If we're trying to introduce a *new* assigned team and we already have 2, block it
+      if (isIncomingAssigned && !existingAssignedTeams.has(normalizedTeamName) && existingAssignedTeams.size >= 2) {
         throw new ConflictException('Cannot add more than 2 teams to a match');
       }
     }
 
-    participant.teamName = teamName;
+    // Persist the trimmed version
+    participant.teamName = incomingTeamRaw || 'Unassigned';
     return await this.matchParticipantRepository.save(participant);
   }
 

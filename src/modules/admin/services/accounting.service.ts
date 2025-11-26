@@ -29,7 +29,10 @@ export class AccountingService {
 
     // Get all matches in date range
     const matches = await this.matchRepository.find({
-      where: dateFilter,
+      where: {
+        ...dateFilter,
+        status: 'ACTIVE',
+      },
       relations: ['venue', 'city', 'footballChief'],
     });
 
@@ -216,7 +219,10 @@ export class AccountingService {
     const dateFilter = this.buildDateFilter(dateFrom, dateTo);
 
     const matches = await this.matchRepository.find({
-      where: dateFilter,
+      where: {
+        ...dateFilter,
+        status: 'ACTIVE',
+      },
       relations: ['venue', 'city', 'footballChief'],
     });
 
@@ -255,7 +261,10 @@ export class AccountingService {
     const dateFilter = this.buildDateFilter(dateFrom, dateTo);
 
     const matches = await this.matchRepository.find({
-      where: dateFilter,
+      where: {
+        ...dateFilter,
+        status: 'ACTIVE',
+      },
       relations: ['venue', 'city', 'footballChief'],
     });
 
@@ -307,7 +316,8 @@ export class AccountingService {
       .leftJoinAndSelect('match.venue', 'venue')
       .leftJoinAndSelect('match.city', 'city')
       .leftJoinAndSelect('match.footballChief', 'footballChief')
-      .where('city.id = :cityId', { cityId });
+      .where('city.id = :cityId', { cityId })
+      .andWhere('match.status != :cancelled', { cancelled: 'CANCELLED' });
 
     if (dateFilter.startTime) {
       qb.andWhere('match.startTime BETWEEN :from AND :to', {
@@ -343,7 +353,8 @@ export class AccountingService {
       .leftJoinAndSelect('match.venue', 'venue')
       .leftJoinAndSelect('match.city', 'city')
       .leftJoinAndSelect('match.footballChief', 'footballChief')
-      .where('footballChief.id = :chiefId', { chiefId });
+      .where('footballChief.id = :chiefId', { chiefId })
+      .andWhere('match.status != :cancelled', { cancelled: 'CANCELLED' });
 
     if (dateFilter.startTime) {
       qb.andWhere('match.startTime BETWEEN :from AND :to', {
