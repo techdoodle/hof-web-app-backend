@@ -32,6 +32,9 @@ export class Venue {
   @Column({ name: 'maps_url', type: 'text', nullable: true })
   mapsUrl: string;
 
+  @Column({ name: 'morning_end_hour', type: 'integer', nullable: true })
+  morningEndHour?: number;
+
   @OneToMany(() => VenueFormatEntity, (venueFormat) => venueFormat.venue, { cascade: true })
   venueFormats: VenueFormatEntity[];
 

@@ -25,6 +25,12 @@ import { BookingEntity } from '../booking/booking.entity';
 import { BookingSlotEntity } from '../booking/booking-slot.entity';
 import { PaymentModule } from '../payment/payment.module';
 import { MatchesModule } from '../matches/matches.module';
+import { VenueModule } from '../venue/venue.module';
+import { AccountingService } from './services/accounting.service';
+import { PlayerNationCostService } from './services/playernation-cost.service';
+import { PlayerNationCostConfig } from './entities/playernation-cost-config.entity';
+import { RefundEntity } from '../payment/refund.entity';
+import { MatchParticipantsModule } from '../match-participants/match-participants.module';
 
 @Module({
     imports: [
@@ -43,12 +49,16 @@ import { MatchesModule } from '../matches/matches.module';
             PlayerNationPlayerMapping,
             BookingEntity,
             BookingSlotEntity,
+            PlayerNationCostConfig,
+            RefundEntity,
         ]),
         PaymentModule,
         MatchesModule,
+        VenueModule,
+        MatchParticipantsModule,
     ],
     controllers: [AdminController, TestController],
-    providers: [AdminService, CsvUploadService, PlayerNationService, PlayerNationPollingJob, FirebaseStorageService, FirebaseConfig, VenueCsvUploadService],
+    providers: [AdminService, CsvUploadService, PlayerNationService, PlayerNationPollingJob, FirebaseStorageService, FirebaseConfig, VenueCsvUploadService, AccountingService, PlayerNationCostService],
     exports: [AdminService, PlayerNationService],
 })
 export class AdminModule { }

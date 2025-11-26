@@ -88,6 +88,9 @@ export class Match {
   @Column({ name: 'offer_price', type: 'decimal', precision: 10, scale: 2, default: 0 })
   offerPrice: number;
 
+  @Column({ name: 'football_chief_cost', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  footballChiefCost?: number;
+
   // Optional team names; default to Home/Away when not provided
   @Column({ name: 'team_a_name', type: 'varchar', length: 100, nullable: true, default: 'Home' })
   teamAName: string;

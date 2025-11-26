@@ -15,6 +15,8 @@ import { PlayerNationService } from './services/playernation.service';
 import { VenueCsvUploadService } from './services/venue-excel-upload.service';
 import { FirebaseStorageService } from '../user/firebase-storage.service';
 import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
+import { AccountingService } from './services/accounting.service';
+import { PlayerNationCostService } from './services/playernation-cost.service';
 
 @Controller('admin')
 @SkipThrottle()
@@ -25,11 +27,18 @@ export class AdminController {
         private readonly playerNationService: PlayerNationService,
         private readonly venueCsvUploadService: VenueCsvUploadService,
         private readonly firebaseStorageService: FirebaseStorageService,
+        private readonly accountingService: AccountingService,
+        private readonly playerNationCostService: PlayerNationCostService,
     ) { }
 
     // User Management - Admin and Super Admin only
     @Get('users')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+        UserRole.FOOTBALL_CHIEF,
+        UserRole.ACADEMY_ADMIN,
+    )
     async getAllUsers(@Query() raw: any) {
         let filters: any = { ...raw };
         if (raw && typeof raw.filter === 'string') {
@@ -49,7 +58,12 @@ export class AdminController {
     }
 
     @Get('users/:id')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+        UserRole.FOOTBALL_CHIEF,
+        UserRole.ACADEMY_ADMIN,
+    )
     async getUser(@Param('id', ParseIntPipe) id: number) {
         return this.adminService.getUser(id);
     }
@@ -502,5 +516,126 @@ export class AdminController {
                 error: error.message 
             };
         }
+    }
+
+    // Accounting endpoints (super_admin only)
+    @Get('accounting/summary')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getAccountingSummary(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        return this.accountingService.getAccountingSummary(from, to);
+    }
+
+    @Get('accounting/matches')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getMatchAccounting(
+        @Query('matchId', new ParseIntPipe({ optional: true })) matchId?: number,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        if (matchId) {
+            return this.accountingService.getMatchAccounting(matchId);
+        }
+        // If no matchId, return summary for date range
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        return this.accountingService.getAccountingSummary(from, to);
+    }
+
+    @Get('accounting/range')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getAccountingByRange(
+        @Query('dateFrom') dateFrom: string,
+        @Query('dateTo') dateTo: string,
+        @Query('groupBy') groupBy?: 'daily' | 'weekly' | 'monthly',
+    ) {
+        const from = new Date(dateFrom);
+        const to = new Date(dateTo);
+        // For now, return summary - can be enhanced later for grouping
+        return this.accountingService.getAccountingSummary(from, to);
+    }
+
+    @Get('accounting/by-city')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getAccountingByCity(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        return this.accountingService.getAccountingByCity(from, to);
+    }
+
+    @Get('accounting/by-football-chief')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getAccountingByFootballChief(@Query('dateFrom') dateFrom?: string, @Query('dateTo') dateTo?: string) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        return this.accountingService.getAccountingByFootballChief(from, to);
+    }
+
+    @Get('accounting/cancelled-matches')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getCancelledMatchCosts(
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+        @Query('groupBy') groupBy?: 'city' | 'football-chief',
+    ) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        return this.accountingService.getCancelledMatchCosts(from, to, groupBy);
+    }
+
+    // Drill-down match-level accounting (paginated)
+    @Get('accounting/by-city/:cityId/matches')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getCityMatchAccounting(
+        @Param('cityId', ParseIntPipe) cityId: number,
+        @Query('page') page = '1',
+        @Query('pageSize') pageSize = '10',
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        return this.accountingService.getCityMatchAccounting(
+            cityId,
+            from,
+            to,
+            Number(page) || 1,
+            Number(pageSize) || 10,
+        );
+    }
+
+    @Get('accounting/by-football-chief/:chiefId/matches')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getFootballChiefMatchAccounting(
+        @Param('chiefId', ParseIntPipe) chiefId: number,
+        @Query('page') page = '1',
+        @Query('pageSize') pageSize = '10',
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        return this.accountingService.getFootballChiefMatchAccounting(
+            chiefId,
+            from,
+            to,
+            Number(page) || 1,
+            Number(pageSize) || 10,
+        );
+    }
+
+    // PlayerNation cost configuration (super_admin only)
+    @Get('playernation-cost-config')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getPlayerNationCostConfig() {
+        const cost = await this.playerNationCostService.getCostPerParticipant();
+        return { costPerParticipant: cost };
+    }
+
+    @Post('playernation-cost-config')
+    @Roles(UserRole.SUPER_ADMIN)
+    async setPlayerNationCostConfig(@Body() body: { costPerParticipant: number }) {
+        return this.playerNationCostService.setCostPerParticipant(body.costPerParticipant);
     }
 }
