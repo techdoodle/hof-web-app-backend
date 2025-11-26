@@ -18,6 +18,15 @@ export class VenueFormatEntity {
   @Column({ name: 'cost', type: 'decimal', precision: 10, scale: 2, nullable: false })
   cost: number;
 
+  @Column({ name: 'morning_cost', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  morningCost?: number;
+
+  @Column({ name: 'weekend_cost', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  weekendCost?: number;
+
+  @Column({ name: 'weekend_morning_cost', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  weekendMorningCost?: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 

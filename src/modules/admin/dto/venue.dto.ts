@@ -10,6 +10,18 @@ export class CreateVenueFormatDto {
   @IsNumber()
   @IsNotEmpty()
   cost: number;
+
+  @IsNumber()
+  @IsOptional()
+  morningCost?: number;
+
+  @IsNumber()
+  @IsOptional()
+  weekendCost?: number;
+
+  @IsNumber()
+  @IsOptional()
+  weekendMorningCost?: number;
 }
 
 export class CreateVenueDto {
@@ -44,6 +56,10 @@ export class CreateVenueDto {
   @IsString()
   @IsOptional()
   mapsUrl?: string;
+
+  @IsNumber()
+  @IsOptional()
+  morningEndHour?: number;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -84,6 +100,10 @@ export class UpdateVenueDto {
   @IsString()
   @IsOptional()
   mapsUrl?: string;
+
+  @IsNumber()
+  @IsOptional()
+  morningEndHour?: number;
 
   @IsArray()
   @ValidateNested({ each: true })

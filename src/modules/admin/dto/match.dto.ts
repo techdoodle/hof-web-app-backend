@@ -74,6 +74,11 @@ export class CreateMatchDto {
   @IsString()
   @IsOptional()
   teamBName?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  footballChiefCost?: number;
 }
 
 export class UpdateMatchDto {
@@ -146,6 +151,11 @@ export class UpdateMatchDto {
   @IsString()
   @IsOptional()
   teamBName?: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  footballChiefCost?: number;
 }
 
 export class MatchFilterDto {
