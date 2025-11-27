@@ -30,6 +30,22 @@ import { Match } from '../matches/matches.entity';
 export class BookingService {
     private readonly logger = new Logger(BookingService.name);
 
+    /**
+     * Normalize phone numbers to a consistent 10-digit format so that
+     * team mappings and player lookups don't break due to formatting differences.
+     */
+    private normalizePhone(raw: string | null | undefined): string {
+        if (!raw) return '';
+        let digits = String(raw).replace(/\D/g, '');
+        // If exactly 10 digits, assume it's a local mobile number
+        if (digits.length === 10) return digits;
+        // If starts with 91 and 12 digits, strip country code
+        if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+        // Fallback: keep last 10 digits if longer
+        if (digits.length > 10) return digits.slice(-10);
+        return digits;
+    }
+
     constructor(
         @InjectRepository(BookingEntity)
         private bookingRepository: Repository<BookingEntity>,
@@ -227,40 +243,6 @@ export class BookingService {
             // NOTE: Slots are now locked with the auto-assigned slot numbers.
             // We use these actual slot numbers for booking slots creation.
 
-            // Create booking
-            const booking = this.bookingRepository.create({
-                matchId: Number(dto.matchId),
-                userId: dto.userId ? Number(dto.userId) : undefined,
-                email: dto.email,
-                bookingReference: generateBookingReference(),
-                totalSlots: dto.totalSlots,
-                amount: dto.metadata?.amount || 0, // Amount in rupees from frontend
-                status: BookingStatus.INITIATED,
-                paymentStatus: PaymentStatus.INITIATED,
-                metadata: {
-                    ...dto.metadata,
-                    lockKey: lockResult.lockKey,
-                    // Store team selections for each player (phone -> team mapping)
-                    teamSelections: dto.players.map(p => ({
-                        phone: p.phone,
-                        teamName: p.teamName || 'Unassigned'
-                    }))
-                },
-            });
-
-            const savedBooking = await queryRunner.manager.save(booking);
-
-            // Don't update booked_slots yet - only when payment succeeds
-            // Just increment version for the lock
-            await queryRunner.query(
-                `UPDATE matches 
-                 SET version = version + 1
-                 WHERE match_id = $1`,
-                [dto.matchId]
-            );
-
-            // Create or find users for each player
-            const playerUsers: User[] = [];
             // Determine whether it's valid to auto-use the token user's phone for the first slot
             // Only prevent if user has an ACTIVE slot from a CONFIRMED booking
             // Allow booking again if previous bookings are failed/cancelled
@@ -280,15 +262,13 @@ export class BookingService {
                 canUseTokenUserAsFirst = rows.length === 0;
             }
             this.logger.log(`[createBooking] canUseTokenUserAsFirst=${canUseTokenUserAsFirst}`);
-            for (let i = 0; i < dto.players.length; i++) {
-                const player = dto.players[i];
 
-                // For the first player (main user), get phone from token user
-                // For additional players, use provided phone
+            // Compute final phone numbers for each player (after applying token user logic)
+            const finalPlayerPhones: string[] = dto.players.map((player, index) => {
                 let phoneToUse = (player.phone || '').trim();
 
                 if (
-                    i === 0 &&
+                    index === 0 &&
                     tokenUser?.phoneNumber &&
                     canUseTokenUserAsFirst &&
                     (!phoneToUse || phoneToUse === String(tokenUser.phoneNumber).trim())
@@ -297,6 +277,47 @@ export class BookingService {
                     // player phone is empty or matches token user's phone
                     phoneToUse = String(tokenUser.phoneNumber).trim();
                 }
+
+                return this.normalizePhone(phoneToUse);
+            });
+
+            // Create booking
+            const booking = this.bookingRepository.create({
+                matchId: Number(dto.matchId),
+                userId: dto.userId ? Number(dto.userId) : undefined,
+                email: dto.email,
+                bookingReference: generateBookingReference(),
+                totalSlots: dto.totalSlots,
+                amount: dto.metadata?.amount || 0, // Amount in rupees from frontend
+                status: BookingStatus.INITIATED,
+                paymentStatus: PaymentStatus.INITIATED,
+                metadata: {
+                    ...dto.metadata,
+                    lockKey: lockResult.lockKey,
+                    // Store team selections for each player (phone -> team mapping) using FINAL normalized phone numbers
+                    teamSelections: dto.players.map((p, index) => ({
+                        phone: finalPlayerPhones[index],
+                        teamName: p.teamName || 'Unassigned',
+                    })),
+                },
+            });
+
+            const savedBooking = await queryRunner.manager.save(booking);
+
+            // Don't update booked_slots yet - only when payment succeeds
+            // Just increment version for the lock
+            await queryRunner.query(
+                `UPDATE matches 
+                 SET version = version + 1
+                 WHERE match_id = $1`,
+                [dto.matchId]
+            );
+
+            // Create or find users for each player
+            const playerUsers: User[] = [];
+            for (let i = 0; i < dto.players.length; i++) {
+                const player = dto.players[i];
+                const phoneToUse = finalPlayerPhones[i];
 
                 const user = await this.bookingUserService.findOrCreateUserByPhone(phoneToUse, {
                     firstName: player.firstName,
@@ -312,24 +333,8 @@ export class BookingService {
             console.log("dto.totalSlots", dto.totalSlots);
             // Create booking slots with the auto-assigned slot numbers
             const bookingSlots = assignedSlotNumbers.map((slotNumber, index) => {
-                const player = dto.players[index] || dto.players[0] || { firstName: '', lastName: '', phone: '' };
                 const playerUser = playerUsers[index] || playerUsers[0];
-
-                // Determine phone number for player_phone column:
-                // - If index 0 AND player phone matches token user's phone (or is empty) → use token user's phone
-                //   (Case 1: User booking for themselves)
-                // - Otherwise → use the provided player phone
-                //   (Case 2: User booking only for friends, or friend slots in any case)
-                let phoneToUse = (player?.phone || '').trim();
-                if (
-                    index === 0 &&
-                    tokenUser?.phoneNumber &&
-                    (!phoneToUse || phoneToUse === String(tokenUser.phoneNumber).trim())
-                ) {
-                    // First slot belongs to the token user (booking for self)
-                    phoneToUse = String(tokenUser.phoneNumber).trim();
-                }
-                // If condition is false, phoneToUse remains as player.phone (friend's phone)
+                const phoneToUse = finalPlayerPhones[index] || finalPlayerPhones[0] || '';
 
                 return this.bookingSlotRepository.create({
                     bookingId: savedBooking.id,
@@ -1084,24 +1089,20 @@ export class BookingService {
                 // Get team selections from booking metadata
                 const teamSelections = booking.metadata?.teamSelections || [];
 
-                // Create a map of phone -> teamName
-                // IMPORTANT: Map by index first, then by phone for proper matching
-                const phoneTeamMap = new Map();
-
-                // Build map using actual phone numbers from booking slots
-                activatedSlots.forEach((slot, index) => {
-                    const teamSelection = teamSelections[index];
-                    if (teamSelection && teamSelection.teamName && slot.player_phone) {
-                        // Use the ACTUAL phone from booking_slots (which includes tokenUser phone for main user)
-                        phoneTeamMap.set(slot.player_phone.trim(), teamSelection.teamName);
+                // Build a normalized phone -> teamName map from teamSelections
+                const phoneTeamMap = new Map<string, string>();
+                (teamSelections as Array<{ phone?: string; teamName?: string }>).forEach((sel, index) => {
+                    const normalized = this.normalizePhone(sel.phone);
+                    if (normalized && sel.teamName) {
+                        phoneTeamMap.set(normalized, sel.teamName);
                         this.logger.log(
-                            `[handlePaymentCallback] Mapped phone ${slot.player_phone} → team ${teamSelection.teamName} (slot ${index})`
+                            `[handlePaymentCallback] Team selection ${index}: phone=${normalized}, team=${sel.teamName}`
                         );
                     }
                 });
 
                 this.logger.log(
-                    `[handlePaymentCallback] Team mapping complete. Total mappings: ${phoneTeamMap.size}`
+                    `[handlePaymentCallback] Team selection map built. Total entries: ${phoneTeamMap.size}`
                 );
 
                 const uniquePlayerIds = Array.from(new Set(activatedSlots.map(s => s.player_id).filter(Boolean)));
@@ -1113,13 +1114,14 @@ export class BookingService {
                     if (!existing) {
                         // Find the slot for this player to get their phone number
                         const playerSlot = activatedSlots.find(s => s.player_id === pid);
-                        const playerPhone = playerSlot?.player_phone?.trim() || '';
+                        const playerPhoneRaw = playerSlot?.player_phone || '';
+                        const normalizedPhone = this.normalizePhone(playerPhoneRaw);
 
                         // Get team name from the mapping, default to 'Unassigned'
-                        const teamName = phoneTeamMap.get(playerPhone) || 'Unassigned';
+                        const teamName = phoneTeamMap.get(normalizedPhone) || 'Unassigned';
 
                         this.logger.log(
-                            `[handlePaymentCallback] Creating participant: user=${pid}, phone=${playerPhone}, team=${teamName}`
+                            `[handlePaymentCallback] Creating participant: user=${pid}, phoneRaw=${playerPhoneRaw}, normalized=${normalizedPhone}, team=${teamName}`
                         );
 
                         const participant = queryRunner.manager.create(MatchParticipant, {

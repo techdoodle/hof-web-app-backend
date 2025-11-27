@@ -54,9 +54,9 @@ export class CreateMatchDto {
     @Min(-1)
     slotPrice?: number;
 
-  @IsNumber()
-  @Min(-1)
-  offerPrice?: number;
+    @IsNumber()
+    @Min(-1)
+    offerPrice?: number;
 
   @IsNumber()
   @IsOptional()
@@ -196,9 +196,9 @@ export class MatchFilterDto {
     @IsString()
     sort?: string;
 
-  @IsOptional()
-  @IsString()
-  order?: 'ASC' | 'DESC';
+    @IsOptional()
+    @IsString()
+    order?: 'ASC' | 'DESC';
 }
 
 export class TimeSlotDto {
