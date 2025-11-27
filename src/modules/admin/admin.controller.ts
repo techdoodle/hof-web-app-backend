@@ -17,6 +17,7 @@ import { FirebaseStorageService } from '../user/firebase-storage.service';
 import { PlayerNationPlayerMapping } from './entities/playernation-player-mapping.entity';
 import { AccountingService } from './services/accounting.service';
 import { PlayerNationCostService } from './services/playernation-cost.service';
+import { FootballChiefLeaderboardService } from './services/football-chief-leaderboard.service';
 
 @Controller('admin')
 @SkipThrottle()
@@ -29,6 +30,7 @@ export class AdminController {
         private readonly firebaseStorageService: FirebaseStorageService,
         private readonly accountingService: AccountingService,
         private readonly playerNationCostService: PlayerNationCostService,
+        private readonly footballChiefLeaderboardService: FootballChiefLeaderboardService,
     ) { }
 
     // User Management - Admin and Super Admin only
@@ -637,5 +639,22 @@ export class AdminController {
     @Roles(UserRole.SUPER_ADMIN)
     async setPlayerNationCostConfig(@Body() body: { costPerParticipant: number }) {
         return this.playerNationCostService.setCostPerParticipant(body.costPerParticipant);
+    }
+
+    // Football Chief Leaderboard (Ballon d'Or) - All admin roles
+    @Get('football-chief-leaderboard')
+    @Roles(
+        UserRole.FOOTBALL_CHIEF,
+        UserRole.ACADEMY_ADMIN,
+        UserRole.ADMIN,
+        UserRole.SUPER_ADMIN,
+    )
+    async getFootballChiefLeaderboard(
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+    ) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        return this.footballChiefLeaderboardService.getLeaderboard(from, to);
     }
 }
