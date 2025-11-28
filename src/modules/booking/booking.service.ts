@@ -164,7 +164,7 @@ export class BookingService {
         try {
             // CRITICAL: Lock the match row first to prevent race conditions
             const matchLock = await queryRunner.query(
-                `SELECT match_id, player_capacity, booked_slots, locked_slots 
+                `SELECT match_id, player_capacity, booked_slots, locked_slots, slot_price, offer_price 
                  FROM matches 
                  WHERE match_id = $1 
                  FOR UPDATE`,
@@ -285,9 +285,11 @@ export class BookingService {
             });
 
             // Handle promo code validation and application
-            let finalAmount = dto.metadata?.amount || 0;
+            // Calculate original/base amount from match pricing (server-side source of truth)
+            const perSlotPrice = (currentMatch.offer_price || currentMatch.slot_price || 0) as number;
+            let originalAmount = perSlotPrice * dto.totalSlots;
+            let finalAmount = originalAmount;
             let discountAmount = 0;
-            let originalAmount = finalAmount;
             let promoCodeId: number | null = null;
 
             if (dto.promoCode && !dto.isWaitlist) {
@@ -311,9 +313,13 @@ export class BookingService {
             }
 
             // Create booking
+            // Ensure booking.userId is always set to the authenticated user when available,
+            // so that promo code per-user limits can be enforced reliably.
             const booking = this.bookingRepository.create({
                 matchId: Number(dto.matchId),
-                userId: dto.userId ? Number(dto.userId) : undefined,
+                userId: dto.userId
+                    ? Number(dto.userId)
+                    : (tokenUser?.userId ?? tokenUser?.id ?? undefined),
                 email: dto.email,
                 bookingReference: generateBookingReference(),
                 totalSlots: dto.totalSlots,
