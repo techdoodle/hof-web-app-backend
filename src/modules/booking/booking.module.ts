@@ -24,12 +24,14 @@ import { WaitlistModule } from '../waitlist/waitlist.module';
 import { Match } from '../matches/matches.entity';
 import { MatchParticipant } from '../match-participants/match-participants.entity';
 import { MatchesModule } from '../matches/matches.module';
+import { PromoCodesModule } from '../promo-codes/promo-codes.module';
 
 @Module({
     imports: [
         TypeOrmModule.forFeature([BookingEntity, BookingSlotEntity, RefundEntity, RazorpayOrder, PaymentAttempt, Refund, Notification, User, Match, MatchParticipant]),
         forwardRef(() => WaitlistModule),
-        forwardRef(() => MatchesModule)
+        forwardRef(() => MatchesModule),
+        forwardRef(() => PromoCodesModule)
     ],
     controllers: [BookingController],
     providers: [BookingService, SlotLockService, RefundService, RazorpayService, PaymentService, RazorpayGateway, BookingUserService, BookingCleanupService, NotificationService, EmailService, SlotAvailabilityMonitorService],
