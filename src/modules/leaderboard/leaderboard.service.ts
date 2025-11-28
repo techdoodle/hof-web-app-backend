@@ -13,7 +13,14 @@ export class LeaderboardService {
   ) { }
 
   async getLeaderboard(query: LeaderboardQueryDto): Promise<LeaderboardResponseDto> {
-    const { page = 1, limit = 50, city = 'all', position = 'all', gender = 'male' } = query;
+    const {
+      page = 1,
+      limit = 50,
+      city = 'all',
+      position = 'all',
+      gender = 'male',
+      type = 'overall',
+    } = query;
 
     // Build the base query to get users with their match stats
     const queryBuilder = this.userRepository
@@ -60,7 +67,7 @@ export class LeaderboardService {
 
     const rawResults = await queryBuilder.getRawMany();
 
-    // Calculate XP for each user
+    // Calculate score for each user based on requested leaderboard type
     const leaderboardData = rawResults.map((raw) => {
       const userId = parseInt(raw.userid);
       const firstName = raw.firstname || '';
@@ -91,14 +98,78 @@ export class LeaderboardService {
       const gnaPerMatch = (totalGoals + totalAssists) / matchesPlayed;
 
       let score: number;
+      let suffix: string = 'XP';
       const category = (playerCategory || '').toUpperCase();
 
-      if (category === 'GOALKEEPER') {
-        score = this.computeGoalkeeperXp({ savesPerMatch, passAccuracyPct: passAccPct, assistsPerMatch });
-      } else if (category === 'DEFENDER') {
-        score = this.computeDefenderXp({ tacklesPerMatch, interceptionsPerMatch, passAccuracyPct: passAccPct, gnaPerMatch });
-      } else {
-        score = this.computeAttackXp({ goalsPerMatch, assistsPerMatch, shotsPerMatch, shotAccuracyPct: shotAccPct, passAccuracyPct: passAccPct, keyPassesPerMatch, tacklesPerMatch, interceptionsPerMatch });
+      // Overall XP leaderboard (existing behavior)
+      if (type === 'overall') {
+        if (category === 'GOALKEEPER') {
+          score = this.computeGoalkeeperXp({ savesPerMatch, passAccuracyPct: passAccPct, assistsPerMatch });
+        } else if (category === 'DEFENDER') {
+          score = this.computeDefenderXp({
+            tacklesPerMatch,
+            interceptionsPerMatch,
+            passAccuracyPct: passAccPct,
+            gnaPerMatch,
+          });
+        } else {
+          score = this.computeAttackXp({
+            goalsPerMatch,
+            assistsPerMatch,
+            shotsPerMatch,
+            shotAccuracyPct: shotAccPct,
+            passAccuracyPct: passAccPct,
+            keyPassesPerMatch,
+            tacklesPerMatch,
+            interceptionsPerMatch,
+          });
+        }
+        suffix = 'XP';
+      }
+      // Goals + Assists
+      else if (type === 'gna') {
+        score = totalGoals + totalAssists;
+        suffix = '';
+      }
+      // Appearances
+      else if (type === 'appearances') {
+        score = matchesPlayed;
+        suffix = '';
+      }
+      // Shot accuracy %
+      else if (type === 'shot_accuracy') {
+        score = shotAccPct;
+        suffix = '%';
+      }
+      // Pass accuracy %
+      else if (type === 'pass_accuracy') {
+        score = passAccPct;
+        suffix = '%';
+      }
+      // Fallback to XP if unknown type
+      else {
+        if (category === 'GOALKEEPER') {
+          score = this.computeGoalkeeperXp({ savesPerMatch, passAccuracyPct: passAccPct, assistsPerMatch });
+        } else if (category === 'DEFENDER') {
+          score = this.computeDefenderXp({
+            tacklesPerMatch,
+            interceptionsPerMatch,
+            passAccuracyPct: passAccPct,
+            gnaPerMatch,
+          });
+        } else {
+          score = this.computeAttackXp({
+            goalsPerMatch,
+            assistsPerMatch,
+            shotsPerMatch,
+            shotAccuracyPct: shotAccPct,
+            passAccuracyPct: passAccPct,
+            keyPassesPerMatch,
+            tacklesPerMatch,
+            interceptionsPerMatch,
+          });
+        }
+        suffix = 'XP';
       }
 
       return {
@@ -106,7 +177,7 @@ export class LeaderboardService {
         userId: userId,
         name: `${firstName} ${lastName}`.trim() || `Player ${userId}`,
         score: Math.round(score),
-        suffix: 'XP',
+        suffix,
         imageUrl: profilePicture || '',
       };
     }).filter(player => player !== null);
@@ -131,11 +202,11 @@ export class LeaderboardService {
     return {
       data: paginatedData,
       pagination: {
-        currentPage: page,
-        totalPages,
-        totalItems,
-        itemsPerPage: limit,
-        hasNextPage,
+        currentPage: Number(page),
+        totalPages: Number(totalPages),
+        totalItems: Number(totalItems),
+        itemsPerPage: Number(limit),
+        hasNextPage: Boolean(hasNextPage),
       },
     };
   }

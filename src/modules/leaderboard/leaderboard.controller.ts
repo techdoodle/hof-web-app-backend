@@ -26,11 +26,12 @@ export class LeaderboardController {
 
       // Normalize query parameters (case insensitive)
       const normalizedQuery: LeaderboardQueryDto = {
-        page: query.page || 1,
-        limit: query.limit || 50,
+        page: Number(query.page) || 1,
+        limit: Number(query.limit) || 50,
         city: (query.city || 'all').toLowerCase(),
         position: mappedPosition,
         gender: (query.gender || 'male').toLowerCase(),
+        type: (query.type || 'overall').toLowerCase(),
       };
 
       return await this.leaderboardService.getLeaderboard(normalizedQuery);

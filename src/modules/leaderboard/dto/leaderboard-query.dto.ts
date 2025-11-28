@@ -28,5 +28,10 @@ export class LeaderboardQueryDto {
   @IsString()
   @Transform(({ value }) => (value || 'male').toLowerCase())
   gender?: string = 'male';
+
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (value || 'overall').toLowerCase())
+  type?: string = 'overall';
 }
 
