@@ -47,11 +47,11 @@ export class UserService {
 
     if (updatedUser) {
       // Check if all mandatory onboarding fields are filled
+      // Note: profilePicture is intentionally NOT required so users can complete onboarding without a photo
       const mandatoryFieldsFilled = updatedUser.firstName &&
         updatedUser.lastName &&
         updatedUser.city &&
         updatedUser.gender &&
-        updatedUser.profilePicture &&
         updatedUser.playerCategory &&
         updatedUser.preferredTeam;
 
@@ -116,7 +116,6 @@ export class UserService {
 
   async getCalibrationStatus(userId: number): Promise<{ isCalibrated: boolean; isMinimumRequisiteCompleteForCalibration: boolean; rank: number | null }> {
     // Check if user has at least 1 match stat (same as me API)
-    userId = 214; // TODO: Remove this after testing
     const isCalibrated = await this.matchParticipantStatsService.hasStatsForPlayer(userId);
 
     // Check if user has at least 3 match stats
