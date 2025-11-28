@@ -211,6 +211,24 @@ export class LeaderboardService {
     };
   }
 
+  async getOverallRankForUser(userId: number): Promise<number | null> {
+    // Use the same query and scoring logic as the leaderboard/overall API
+    const result = await this.getLeaderboard({
+      page: 1,
+      limit: 100000, // large limit to effectively include all players
+      city: 'all',
+      position: 'all',
+      gender: 'all',
+      type: 'overall',
+    });
+
+    const entry = result.data.find(
+      (p: any) => p.userId === userId || p.id === userId,
+    );
+
+    return entry ? entry.rank : null;
+  }
+
   // XP calculation methods
   private computeGoalkeeperXp(params: { savesPerMatch: number; passAccuracyPct: number; assistsPerMatch: number }): number {
     const { savesPerMatch, passAccuracyPct, assistsPerMatch } = params;

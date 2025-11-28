@@ -21,6 +21,26 @@ export class UserController {
     return this.userService.findAll();
   }
 
+  @Get('calibration-status')
+  @UseGuards(JwtAuthGuard)
+  async getCalibrationStatus(@Req() req) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new HttpException('No User found for this token', HttpStatus.UNAUTHORIZED);
+      }
+
+      const calibrationStatus = await this.userService.getCalibrationStatus(userId);
+      return calibrationStatus;
+    } catch (error) {
+      console.error('Calibration status error:', error);
+      throw new HttpException(
+        `Failed to get calibration status: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
   @Get(':id')
   findOne(@Param('id') id: number) {
     return this.userService.findOne(id);

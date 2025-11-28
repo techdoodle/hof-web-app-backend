@@ -2,12 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
+import { MatchParticipantStatsService } from '../match-participant-stats/match-participant-stats.service';
+import { LeaderboardService } from '../leaderboard/leaderboard.service';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private readonly matchParticipantStatsService: MatchParticipantStatsService,
+    private readonly leaderboardService: LeaderboardService,
   ) { }
 
   async create(data: Partial<User>) {
@@ -108,5 +112,26 @@ export class UserService {
       throw new Error('Failed to retrieve updated user');
     }
     return updatedUser;
+  }
+
+  async getCalibrationStatus(userId: number): Promise<{ isCalibrated: boolean; isMinimumRequisiteCompleteForCalibration: boolean; rank: number | null }> {
+    // Check if user has at least 1 match stat (same as me API)
+    userId = 214; // TODO: Remove this after testing
+    const isCalibrated = await this.matchParticipantStatsService.hasStatsForPlayer(userId);
+
+    // Check if user has at least 3 match stats
+    const statsCount = await this.matchParticipantStatsService.countStatsForPlayer(userId);
+    const isMinimumRequisiteCompleteForCalibration = statsCount >= 3;
+
+    let rank: number | null = null;
+    if (isCalibrated && isMinimumRequisiteCompleteForCalibration) {
+      rank = await this.leaderboardService.getOverallRankForUser(userId);
+    }
+
+    return {
+      isCalibrated,
+      isMinimumRequisiteCompleteForCalibration,
+      rank,
+    };
   }
 }

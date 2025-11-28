@@ -19,7 +19,7 @@ export class AccountingService {
     private refundRepository: Repository<RefundEntity>,
     private venueCostService: VenueCostService,
     private playerNationCostService: PlayerNationCostService,
-  ) {}
+  ) { }
 
   /**
    * Get overall accounting summary
@@ -47,7 +47,7 @@ export class AccountingService {
       .select('COALESCE(SUM(booking.total_amount), 0)', 'total')
       .leftJoin('matches', 'm', 'm.match_id = booking.match_id')
       .where('booking.status = :status', { status: BookingStatus.CONFIRMED });
-    
+
     if (dateFrom || dateTo) {
       if (dateFrom) {
         incomeQuery.andWhere('m.start_time >= :dateFrom', { dateFrom: dateFrom.toISOString() });
@@ -56,7 +56,7 @@ export class AccountingService {
         incomeQuery.andWhere('m.start_time <= :dateTo', { dateTo: dateTo.toISOString() });
       }
     }
-    
+
     const incomeResult = await incomeQuery.getRawOne();
 
     const totalIncome = Number(incomeResult?.total || 0);
@@ -69,7 +69,7 @@ export class AccountingService {
       .where('booking.status = :status', { status: BookingStatus.CONFIRMED })
       .andWhere('booking.payment_status = :paymentStatus', { paymentStatus: PaymentStatus.COMPLETED })
       .andWhere('booking.payment_status != :cashStatus', { cashStatus: PaymentStatus.PAID_CASH });
-    
+
     if (dateFrom || dateTo) {
       if (dateFrom) {
         paymentFeesQuery.andWhere('m.start_time >= :dateFrom', { dateFrom: dateFrom.toISOString() });
@@ -78,7 +78,7 @@ export class AccountingService {
         paymentFeesQuery.andWhere('m.start_time <= :dateTo', { dateTo: dateTo.toISOString() });
       }
     }
-    
+
     const paymentFeesResult = await paymentFeesQuery.getRawOne();
 
     const totalRazorpayPaymentFees = Number(paymentFeesResult?.total || 0) * 0.02;
@@ -242,7 +242,7 @@ export class AccountingService {
     for (const [cityId, cityMatches] of cityMap.entries()) {
       const city = cityMatches[0].city!;
       const accounting = await this.calculateAccountingForMatches(cityMatches);
-      
+
       results.push({
         cityId: city.id,
         cityName: city.cityName,
@@ -282,10 +282,10 @@ export class AccountingService {
     for (const [chiefId, chiefMatches] of chiefMap.entries()) {
       const chief = chiefMatches[0].footballChief;
       const accounting = await this.calculateAccountingForMatches(chiefMatches);
-      
+
       // Calculate their specific costs (football_chief_cost)
       const theirCosts = chiefMatches.reduce((sum, m) => sum + Number(m.footballChiefCost || 0), 0);
-      
+
       results.push({
         footballChiefId: chief.id,
         footballChiefName: `${chief.firstName} ${chief.lastName}`,
@@ -450,9 +450,9 @@ export class AccountingService {
   private buildDateFilter(dateFrom?: Date, dateTo?: Date) {
     const filter: any = {};
     if (dateFrom || dateTo) {
-      filter.startTime = dateFrom && dateTo 
+      filter.startTime = dateFrom && dateTo
         ? Between(dateFrom, dateTo)
-        : dateFrom 
+        : dateFrom
           ? Between(dateFrom, new Date('2100-01-01'))
           : Between(new Date('1970-01-01'), dateTo);
     }
@@ -479,8 +479,8 @@ export class AccountingService {
   private async getRefundData(dateFrom?: Date, dateTo?: Date) {
     const query = this.refundRepository
       .createQueryBuilder('refund')
-      .where('refund.status IN (:...statuses)', { 
-        statuses: [RefundStatus.PROCESSING, RefundStatus.COMPLETED] 
+      .where('refund.status IN (:...statuses)', {
+        statuses: [RefundStatus.PROCESSING, RefundStatus.COMPLETED]
       });
 
     if (dateFrom || dateTo) {
@@ -539,13 +539,13 @@ export class AccountingService {
     });
 
     const bookingIds = bookings.map(b => b.id);
-    const refunds = bookingIds.length > 0 
+    const refunds = bookingIds.length > 0
       ? await this.refundRepository.find({
-          where: {
-            bookingId: In(bookingIds),
-            status: In([RefundStatus.PROCESSING, RefundStatus.COMPLETED]),
-          },
-        })
+        where: {
+          bookingId: In(bookingIds),
+          status: In([RefundStatus.PROCESSING, RefundStatus.COMPLETED]),
+        },
+      })
       : [];
 
     const refundAmount = refunds.reduce((sum, r) => sum + Number(r.amount), 0);
@@ -600,11 +600,11 @@ export class AccountingService {
     const bookingIds = bookings.map(b => b.id);
     const refunds = bookingIds.length > 0
       ? await this.refundRepository.find({
-          where: {
-            bookingId: In(bookingIds),
-            status: In([RefundStatus.PROCESSING, RefundStatus.COMPLETED]),
-          },
-        })
+        where: {
+          bookingId: In(bookingIds),
+          status: In([RefundStatus.PROCESSING, RefundStatus.COMPLETED]),
+        },
+      })
       : [];
 
     const refundAmount = refunds.reduce((sum, r) => sum + Number(r.amount), 0);
