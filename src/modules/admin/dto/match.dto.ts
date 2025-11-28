@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsDateString, IsBoolean, IsEnum, Min, IsArray, ValidateNested } from 'class-validator';
+ import { IsString, IsOptional, IsNumber, IsDateString, IsBoolean, IsEnum, Min, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MatchType } from '../../../common/enums/match-type.enum';
 

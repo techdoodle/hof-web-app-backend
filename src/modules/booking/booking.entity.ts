@@ -1,6 +1,7 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { BookingSlotEntity } from './booking-slot.entity';
 import { BookingStatus, PaymentStatus, RefundStatus } from '../../common/types/booking.types';
+import { PromoCode } from '../promo-codes/entities/promo-code.entity';
 
 @Entity('bookings')
 export class BookingEntity {
@@ -24,6 +25,19 @@ export class BookingEntity {
 
     @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
     amount: number;
+
+    @ManyToOne(() => PromoCode, { nullable: true })
+    @JoinColumn({ name: 'promo_code_id' })
+    promoCode: PromoCode | null;
+
+    @Column({ name: 'promo_code_id', nullable: true })
+    promoCodeId: number | null;
+
+    @Column({ name: 'discount_amount', type: 'decimal', precision: 10, scale: 2, nullable: true })
+    discountAmount: number | null;
+
+    @Column({ name: 'original_amount', type: 'decimal', precision: 10, scale: 2, nullable: true })
+    originalAmount: number | null;
 
     @Column({
         name: 'refund_status',

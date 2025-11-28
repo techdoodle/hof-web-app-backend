@@ -25,6 +25,7 @@ import { User } from '../user/user.entity';
 import { SlotAvailabilityMonitorService } from '../waitlist/slot-availability-monitor.service';
 import { MatchParticipant } from '../match-participants/match-participants.entity';
 import { Match } from '../matches/matches.entity';
+import { PromoCodesService } from '../promo-codes/promo-codes.service';
 
 @Injectable()
 export class BookingService {
@@ -64,6 +65,8 @@ export class BookingService {
         private notificationService: NotificationService,
         @Inject(forwardRef(() => SlotAvailabilityMonitorService))
         private slotAvailabilityMonitor: SlotAvailabilityMonitorService,
+        @Inject(forwardRef(() => PromoCodesService))
+        private promoCodesService: PromoCodesService,
     ) { }
 
     async createBooking(dto: CreateBookingDto, tokenUser?: any): Promise<BookingEntity> {
@@ -281,6 +284,32 @@ export class BookingService {
                 return this.normalizePhone(phoneToUse);
             });
 
+            // Handle promo code validation and application
+            let finalAmount = dto.metadata?.amount || 0;
+            let discountAmount = 0;
+            let originalAmount = finalAmount;
+            let promoCodeId: number | null = null;
+
+            if (dto.promoCode && !dto.isWaitlist) {
+                const userId = tokenUser?.userId || (dto.userId ? Number(dto.userId) : null);
+                const cityId = tokenUser?.city?.id || null;
+
+                const validation = await this.promoCodesService.validatePromoCode(
+                    dto.promoCode,
+                    userId,
+                    originalAmount,
+                    cityId
+                );
+
+                if (validation.valid && validation.promoCode) {
+                    discountAmount = validation.discountAmount;
+                    finalAmount = validation.finalAmount;
+                    promoCodeId = validation.promoCode.id;
+                } else {
+                    throw new BadRequestException(validation.message || 'Invalid promo code');
+                }
+            }
+
             // Create booking
             const booking = this.bookingRepository.create({
                 matchId: Number(dto.matchId),
@@ -288,7 +317,10 @@ export class BookingService {
                 email: dto.email,
                 bookingReference: generateBookingReference(),
                 totalSlots: dto.totalSlots,
-                amount: dto.metadata?.amount || 0, // Amount in rupees from frontend
+                amount: finalAmount, // Use discounted amount
+                originalAmount: originalAmount, // Store original amount
+                discountAmount: discountAmount, // Store discount amount
+                promoCodeId: promoCodeId, // Store promo code ID
                 status: BookingStatus.INITIATED,
                 paymentStatus: PaymentStatus.INITIATED,
                 metadata: {
@@ -299,10 +331,26 @@ export class BookingService {
                         phone: finalPlayerPhones[index],
                         teamName: p.teamName || 'Unassigned',
                     })),
+                    promoCode: dto.promoCode || null,
                 },
             });
 
             const savedBooking = await queryRunner.manager.save(booking);
+
+            // Apply promo code usage record if promo code was used
+            if (dto.promoCode && promoCodeId && !dto.isWaitlist) {
+                try {
+                    await this.promoCodesService.applyPromoCode(
+                        dto.promoCode,
+                        tokenUser?.userId || (dto.userId ? Number(dto.userId) : null),
+                        savedBooking.id,
+                        originalAmount
+                    );
+                } catch (error) {
+                    this.logger.warn(`Failed to record promo code usage: ${error.message}`);
+                    // Don't fail the booking if promo code usage recording fails
+                }
+            }
 
             // Don't update booked_slots yet - only when payment succeeds
             // Just increment version for the lock
@@ -1663,7 +1711,13 @@ export class BookingService {
      */
     private calculateRefundAmount(booking: BookingEntity, slotNumbers: number[], match: Match): number {
         const slotsToCancel = slotNumbers.length || booking.totalSlots;
-        const perSlotAmount = parseFloat(booking.amount.toString()) / booking.totalSlots;
+        
+        // Use original amount if available (for promo code bookings), otherwise use current amount
+        const baseAmount = booking.originalAmount !== null && booking.originalAmount !== undefined
+            ? parseFloat(booking.originalAmount.toString())
+            : parseFloat(booking.amount.toString());
+        
+        const perSlotAmount = baseAmount / booking.totalSlots;
         const baseRefund = perSlotAmount * slotsToCancel;
 
         // Calculate hours until match
@@ -1673,11 +1727,8 @@ export class BookingService {
         // Calculate time-based refund
         const timeBasedRefund = (baseRefund * refundPercentage) / 100;
 
-        // Handle discount adjustment if coupon was applied
-        // Note: discount_amount is stored in metadata or can be calculated from original amount
-        // For now, we'll return the time-based refund
-        // TODO: Add discount adjustment logic if discount information is available in booking
-
+        // If promo code was applied, the refund is calculated on original amount
+        // The discount is not refunded (as per standard practice)
         return Math.round(timeBasedRefund * 100) / 100; // Round to 2 decimal places
     }
 

@@ -22,6 +22,7 @@ import { NotificationModule } from '../notification/notification.module';
 import { BookingModule } from '../booking/booking.module';
 import { WaitlistModule } from '../waitlist/waitlist.module';
 import { LeaderboardModule } from '../leaderboard/leaderboard.module';
+import { PromoCodesModule } from '../promo-codes/promo-codes.module';
 
 @Module({
   imports: [
@@ -99,6 +100,7 @@ import { LeaderboardModule } from '../leaderboard/leaderboard.module';
     BookingModule,
     WaitlistModule,
     LeaderboardModule,
+    PromoCodesModule,
   ],
   controllers: [AppController],
   providers: [

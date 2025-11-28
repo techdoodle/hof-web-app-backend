@@ -48,6 +48,7 @@ export interface CreateBookingDto {
     }>;
     metadata?: Record<string, any>;
     isWaitlist?: boolean; // Flag to indicate if this is a waitlist booking
+    promoCode?: string; // Optional promo code
 }
 
 export interface InitiatePaymentDto {
