@@ -412,5 +412,16 @@ export class PromoCodesService {
             totalRevenue: Math.round(totalRevenue * 100) / 100
         };
     }
+
+    /**
+     * Check if a promo code usage record already exists for a given booking.
+     * Used to keep applyPromoCode idempotent across retries/webhooks.
+     */
+    async hasUsageForBooking(bookingId: number): Promise<boolean> {
+        const count = await this.promoCodeUsageRepository.count({
+            where: { bookingId }
+        });
+        return count > 0;
+    }
 }
 

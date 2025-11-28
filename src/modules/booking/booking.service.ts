@@ -337,21 +337,6 @@ export class BookingService {
 
             const savedBooking = await queryRunner.manager.save(booking);
 
-            // Apply promo code usage record if promo code was used
-            if (dto.promoCode && promoCodeId && !dto.isWaitlist) {
-                try {
-                    await this.promoCodesService.applyPromoCode(
-                        dto.promoCode,
-                        tokenUser?.userId || (dto.userId ? Number(dto.userId) : null),
-                        savedBooking.id,
-                        originalAmount
-                    );
-                } catch (error) {
-                    this.logger.warn(`Failed to record promo code usage: ${error.message}`);
-                    // Don't fail the booking if promo code usage recording fails
-                }
-            }
-
             // Don't update booked_slots yet - only when payment succeeds
             // Just increment version for the lock
             await queryRunner.query(
@@ -1327,6 +1312,34 @@ export class BookingService {
 
             // Send booking confirmation notifications
             await this.sendBookingConfirmationNotifications(booking);
+
+            // After successful payment and commit, record promo code usage if applicable
+            try {
+                const freshBooking = await this.bookingRepository.findOne({
+                    where: { id: Number(bookingId) },
+                });
+
+                if (freshBooking?.promoCodeId && freshBooking.originalAmount) {
+                    const alreadyUsed = await this.promoCodesService.hasUsageForBooking(freshBooking.id);
+
+                    if (!alreadyUsed) {
+                        const promo = await this.promoCodesService.getPromoCodeById(freshBooking.promoCodeId);
+
+                        if (promo) {
+                            await this.promoCodesService.applyPromoCode(
+                                promo.code,
+                                freshBooking.userId ?? null,
+                                freshBooking.id,
+                                Number(freshBooking.originalAmount)
+                            );
+                        }
+                    }
+                }
+            } catch (e) {
+                this.logger.warn(
+                    `[handlePaymentCallback] Failed to record promo code usage for booking ${bookingId}: ${e?.message || e}`
+                );
+            }
 
             return booking;
         } catch (error) {
