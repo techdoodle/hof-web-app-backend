@@ -22,6 +22,9 @@ export class LeaderboardService {
       type = 'overall',
     } = query;
 
+    const leaderboardType = type.toLowerCase();
+    const requiresMinMatches = ['overall', 'shot_accuracy', 'pass_accuracy'].includes(leaderboardType);
+
     // Build the base query to get users with their match stats
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
@@ -46,8 +49,12 @@ export class LeaderboardService {
         'SUM(COALESCE(stats.total_interceptions, 0)) as totalInterceptions',
         'SUM(COALESCE(stats.total_save, 0)) as totalSaves',
       ])
-      .groupBy('user.id, user.first_name, user.last_name, user.profile_picture, user.player_category, user.gender, city.city_name')
-      .having('COUNT(stats.match_stats_id) >= 3'); // Only users who have played at least 3 matches
+      .groupBy('user.id, user.first_name, user.last_name, user.profile_picture, user.player_category, user.gender, city.city_name');
+
+    // Only apply 3-match minimum to specific leaderboard types
+    if (requiresMinMatches) {
+      queryBuilder.having('COUNT(stats.match_stats_id) >= 3');
+    }
 
     // Apply filters
     // City filter
@@ -76,7 +83,8 @@ export class LeaderboardService {
       const playerCategory = raw.playercategory || 'STRIKER';
       const matchesPlayed = parseInt(raw.matchesplayed) || 0;
 
-      if (matchesPlayed < 3) return null; // Require at least 3 matches
+      // Require at least 3 matches only for specific leaderboard types
+      if (requiresMinMatches && matchesPlayed < 3) return null;
 
       const totalGoals = parseInt(raw.totalgoals) || 0;
       const totalAssists = parseInt(raw.totalassists) || 0;
@@ -88,21 +96,23 @@ export class LeaderboardService {
       const shotAccPct = (parseFloat(raw.avgshotaccuracy) || 0) * 100;
       const passAccPct = (parseFloat(raw.avgpassingaccuracy) || 0) * 100;
 
-      const goalsPerMatch = totalGoals / matchesPlayed;
-      const assistsPerMatch = totalAssists / matchesPlayed;
-      const shotsPerMatch = shots / matchesPlayed;
-      const keyPassesPerMatch = keyPasses / matchesPlayed;
-      const tacklesPerMatch = tackles / matchesPlayed;
-      const interceptionsPerMatch = interceptions / matchesPlayed;
-      const savesPerMatch = saves / matchesPlayed;
-      const gnaPerMatch = (totalGoals + totalAssists) / matchesPlayed;
+      const safeDiv = (num: number, denom: number) => (denom > 0 ? num / denom : 0);
+
+      const goalsPerMatch = safeDiv(totalGoals, matchesPlayed);
+      const assistsPerMatch = safeDiv(totalAssists, matchesPlayed);
+      const shotsPerMatch = safeDiv(shots, matchesPlayed);
+      const keyPassesPerMatch = safeDiv(keyPasses, matchesPlayed);
+      const tacklesPerMatch = safeDiv(tackles, matchesPlayed);
+      const interceptionsPerMatch = safeDiv(interceptions, matchesPlayed);
+      const savesPerMatch = safeDiv(saves, matchesPlayed);
+      const gnaPerMatch = safeDiv(totalGoals + totalAssists, matchesPlayed);
 
       let score: number;
       let suffix: string = 'XP';
       const category = (playerCategory || '').toUpperCase();
 
       // Overall XP leaderboard (existing behavior)
-      if (type === 'overall') {
+      if (leaderboardType === 'overall') {
         if (category === 'GOALKEEPER') {
           score = this.computeGoalkeeperXp({ savesPerMatch, passAccuracyPct: passAccPct, assistsPerMatch });
         } else if (category === 'DEFENDER') {
@@ -127,22 +137,22 @@ export class LeaderboardService {
         suffix = 'XP';
       }
       // Goals + Assists
-      else if (type === 'gna') {
+      else if (leaderboardType === 'gna') {
         score = totalGoals + totalAssists;
         suffix = '';
       }
       // Appearances
-      else if (type === 'appearances') {
+      else if (leaderboardType === 'appearances') {
         score = matchesPlayed;
         suffix = '';
       }
       // Shot accuracy %
-      else if (type === 'shot_accuracy') {
+      else if (leaderboardType === 'shot_accuracy') {
         score = shotAccPct;
         suffix = '%';
       }
       // Pass accuracy %
-      else if (type === 'pass_accuracy') {
+      else if (leaderboardType === 'pass_accuracy') {
         score = passAccPct;
         suffix = '%';
       }
