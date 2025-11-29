@@ -698,12 +698,20 @@ export class PlayerNationService {
       throw new NotFoundException('Match not found');
     }
 
+    // Extract timestamp from playernationLastResponse if it exists
+    let lastPollTime: any = null;
+    if (match.playernationLastResponse) {
+      // Try to extract timestamp from response, or use updatedAt as fallback
+      lastPollTime = match.updatedAt;
+    }
+
     return {
       matchStatsId: match.matchStatsId,
       status: match.playernationStatus,
-      lastPollTime: match.playernationLastResponse,
+      lastPollTime,
       pollAttempts: match.playernationPollAttempts,
       nextPollAt: match.playernationNextPollAt,
+      playernationLastResponse: match.playernationLastResponse,
     };
   }
 }
