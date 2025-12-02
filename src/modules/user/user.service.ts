@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { User } from './user.entity';
 import { MatchParticipantStatsService } from '../match-participant-stats/match-participant-stats.service';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
+import { UserSearchDto } from './dto/user-search.dto';
 
 @Injectable()
 export class UserService {
@@ -131,6 +132,85 @@ export class UserService {
       isCalibrated,
       isMinimumRequisiteCompleteForCalibration,
       rank,
+    };
+  }
+
+  /**
+   * Normalize phone numbers to a consistent 10-digit format so that
+   * search and booking mappings don't break due to formatting differences.
+   * This mirrors the logic used in BookingService.
+   */
+  private normalizePhone(raw: string | null | undefined): string {
+    if (!raw) return '';
+    let digits = String(raw).replace(/\D/g, '');
+    if (digits.length === 10) return digits;
+    if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+    if (digits.length > 10) return digits.slice(-10);
+    return digits;
+  }
+
+  /**
+   * Lightweight, paginated search for existing users, primarily used
+   * for bulk booking flows. Supports city-scoped search and a single
+   * query string that matches name or phone.
+   */
+  async searchUsers(params: UserSearchDto) {
+    const page = params.page && params.page > 0 ? params.page : 1;
+    const limit = params.limit && params.limit > 0 && params.limit <= 50 ? params.limit : 25;
+    const skip = (page - 1) * limit;
+
+    const qb: SelectQueryBuilder<User> = this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.city', 'city')
+      .leftJoinAndSelect('user.preferredTeam', 'preferredTeam');
+
+    if (params.cityId) {
+      qb.andWhere('city.id = :cityId', { cityId: params.cityId });
+    }
+
+    if (params.query && params.query.trim().length > 0) {
+      const q = params.query.trim();
+      const normalizedPhone = this.normalizePhone(q);
+
+      qb.andWhere(
+        `(LOWER(user.firstName) LIKE :nameQuery
+           OR LOWER(user.lastName) LIKE :nameQuery
+           OR LOWER(CONCAT(user.firstName, ' ', user.lastName)) LIKE :nameQuery
+           OR REPLACE(REGEXP_REPLACE(user.phoneNumber, '\\D', '', 'g'), '91', '') LIKE :phoneQuery)`,
+        {
+          nameQuery: `%${q.toLowerCase()}%`,
+          phoneQuery: normalizedPhone ? `%${normalizedPhone}%` : '%',
+        },
+      );
+    }
+
+    qb.orderBy('user.firstName', 'ASC')
+      .addOrderBy('user.lastName', 'ASC')
+      .skip(skip)
+      .take(limit);
+
+    const [users, total] = await qb.getManyAndCount();
+
+    return {
+      success: true,
+      message: 'Users fetched successfully',
+      data: {
+        users: users.map(u => ({
+          id: u.id,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          phoneNumber: u.phoneNumber,
+          city: u.city ? { id: (u.city as any).id, name: (u.city as any).name } : null,
+          preferredTeam: u.preferredTeam
+            ? { id: (u.preferredTeam as any).id, teamName: (u.preferredTeam as any).teamName }
+            : null,
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+        },
+      },
     };
   }
 }

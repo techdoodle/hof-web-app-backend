@@ -332,10 +332,16 @@ export class BookingService {
                 metadata: {
                     ...dto.metadata,
                     lockKey: lockResult.lockKey,
-                    // Store team selections for each player (phone -> team mapping) using FINAL normalized phone numbers
+                    /**
+                     * Store team selections for each player.
+                     * For backward compatibility we keep phone-based mapping,
+                     * but we will also attach playerId later once users are created.
+                     * handlePaymentCallback will prefer playerId-based mapping.
+                     */
                     teamSelections: dto.players.map((p, index) => ({
-                        phone: finalPlayerPhones[index],
+                        phone: finalPlayerPhones[index] || null,
                         teamName: p.teamName || 'Unassigned',
+                        existingUserId: p.existingUserId ?? null,
                     })),
                     promoCode: dto.promoCode || null,
                 },
@@ -358,18 +364,40 @@ export class BookingService {
                 const player = dto.players[i];
                 const phoneToUse = finalPlayerPhones[i];
 
-                const user = await this.bookingUserService.findOrCreateUserByPhone(phoneToUse, {
-                    firstName: player.firstName,
-                    lastName: player.lastName,
-                    // Only pass email when first slot belongs to the token user (initial booking),
-                    // for additional bookings (canUseTokenUserAsFirst === false) don't attach email to friend users
-                    email: i === 0 && canUseTokenUserAsFirst ? dto.email : undefined
-                });
+                let user: User | null = null;
+
+                // If an existing user is explicitly selected for this slot, use that user
+                if (player.existingUserId) {
+                    user = await queryRunner.manager.findOne(User, { where: { id: Number(player.existingUserId) } });
+                    if (!user) {
+                        throw new BadRequestException(`Selected user not found for slot ${i + 1}`);
+                    }
+                } else {
+                    // Fallback to phone-based lookup / creation for new players
+                    user = await this.bookingUserService.findOrCreateUserByPhone(phoneToUse, {
+                        firstName: player.firstName,
+                        lastName: player.lastName,
+                        // Only pass email when first slot belongs to the token user (initial booking),
+                        // for additional bookings (canUseTokenUserAsFirst === false) don't attach email to friend users
+                        email: i === 0 && canUseTokenUserAsFirst ? dto.email : undefined
+                    });
+                }
+
                 playerUsers.push(user);
             }
             console.log("playerUsers", playerUsers);
             console.log("dto.players", dto.players);
             console.log("dto.totalSlots", dto.totalSlots);
+            // Update metadata.teamSelections to include the resolved playerIds
+            if (Array.isArray(savedBooking.metadata?.teamSelections)) {
+                const updatedTeamSelections = (savedBooking.metadata.teamSelections as any[]).map((sel, index) => ({
+                    ...sel,
+                    playerId: playerUsers[index]?.id ?? null,
+                }));
+                savedBooking.metadata.teamSelections = updatedTeamSelections;
+                await queryRunner.manager.update(BookingEntity, { id: savedBooking.id }, { metadata: savedBooking.metadata });
+            }
+
             // Create booking slots with the auto-assigned slot numbers
             const bookingSlots = assignedSlotNumbers.map((slotNumber, index) => {
                 const playerUser = playerUsers[index] || playerUsers[0];
@@ -1128,20 +1156,35 @@ export class BookingService {
                 // Get team selections from booking metadata
                 const teamSelections = booking.metadata?.teamSelections || [];
 
-                // Build a normalized phone -> teamName map from teamSelections
+                // Build playerId -> teamName map (preferred), with a legacy
+                // normalized phone -> teamName map as fallback.
+                const playerTeamMap = new Map<number, string>();
                 const phoneTeamMap = new Map<string, string>();
-                (teamSelections as Array<{ phone?: string; teamName?: string }>).forEach((sel, index) => {
-                    const normalized = this.normalizePhone(sel.phone);
-                    if (normalized && sel.teamName) {
-                        phoneTeamMap.set(normalized, sel.teamName);
+
+                (teamSelections as Array<{ playerId?: number; existingUserId?: number; phone?: string; teamName?: string }>).forEach((sel, index) => {
+                    const teamName = sel.teamName || 'Unassigned';
+                    const primaryPlayerId = sel.playerId ?? sel.existingUserId;
+                    if (primaryPlayerId) {
+                        // If multiple entries exist for same playerId, last one wins but log it
+                        if (playerTeamMap.has(primaryPlayerId)) {
+                            this.logger.warn(
+                                `[handlePaymentCallback] Duplicate team selection for playerId=${primaryPlayerId}. Overwriting previous value.`
+                            );
+                        }
+                        playerTeamMap.set(primaryPlayerId, teamName);
                         this.logger.log(
-                            `[handlePaymentCallback] Team selection ${index}: phone=${normalized}, team=${sel.teamName}`
+                            `[handlePaymentCallback] Team selection ${index}: playerId=${primaryPlayerId}, team=${teamName}`
                         );
+                    }
+
+                    const normalized = this.normalizePhone(sel.phone);
+                    if (normalized) {
+                        phoneTeamMap.set(normalized, teamName);
                     }
                 });
 
                 this.logger.log(
-                    `[handlePaymentCallback] Team selection map built. Total entries: ${phoneTeamMap.size}`
+                    `[handlePaymentCallback] Team selection maps built. playerTeamMap.size=${playerTeamMap.size}, phoneTeamMap.size=${phoneTeamMap.size}`
                 );
 
                 const uniquePlayerIds = Array.from(new Set(activatedSlots.map(s => s.player_id).filter(Boolean)));
@@ -1156,8 +1199,13 @@ export class BookingService {
                         const playerPhoneRaw = playerSlot?.player_phone || '';
                         const normalizedPhone = this.normalizePhone(playerPhoneRaw);
 
-                        // Get team name from the mapping, default to 'Unassigned'
-                        const teamName = phoneTeamMap.get(normalizedPhone) || 'Unassigned';
+                        // Get team name from the mapping:
+                        // 1) Prefer explicit playerId-based mapping
+                        // 2) Fallback to phone-based mapping
+                        // 3) Finally, default to 'Unassigned'
+                        const teamNameFromPlayer = playerTeamMap.get(pid);
+                        const teamNameFromPhone = normalizedPhone ? phoneTeamMap.get(normalizedPhone) : undefined;
+                        const teamName = teamNameFromPlayer || teamNameFromPhone || 'Unassigned';
 
                         this.logger.log(
                             `[handlePaymentCallback] Creating participant: user=${pid}, phoneRaw=${playerPhoneRaw}, normalized=${normalizedPhone}, team=${teamName}`
