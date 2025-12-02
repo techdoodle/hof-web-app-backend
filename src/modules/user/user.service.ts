@@ -164,9 +164,7 @@ export class UserService {
       .leftJoinAndSelect('user.city', 'city')
       .leftJoinAndSelect('user.preferredTeam', 'preferredTeam');
 
-    if (params.cityId) {
-      qb.andWhere('city.id = :cityId', { cityId: params.cityId });
-    }
+    // City filtering removed - show all users regardless of city
 
     if (params.query && params.query.trim().length > 0) {
       const q = params.query.trim();
