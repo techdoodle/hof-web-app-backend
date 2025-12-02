@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, UploadedFile, UseInterceptors, HttpException, HttpStatus, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, UploadedFile, UseInterceptors, HttpException, HttpStatus, Req, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UserService } from './user.service';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { ImageProcessingService } from './image-processing.service';
+import { UserSearchDto } from './dto/user-search.dto';
 
 @Controller('users')
 export class UserController {
@@ -19,6 +20,25 @@ export class UserController {
   @Get()
   findAll() {
     return this.userService.findAll();
+  }
+
+  /**
+   * Lightweight, paginated user search primarily for bulk booking flows.
+   * Supports city-scoped filtering and a single query string that matches
+   * name or phone number.
+   */
+  @Get('search')
+  @UseGuards(JwtAuthGuard)
+  async search(@Query() query: UserSearchDto) {
+    try {
+      return await this.userService.searchUsers(query);
+    } catch (error) {
+      console.error('User search error:', error);
+      throw new HttpException(
+        error?.message || 'Failed to search users',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get('calibration-status')

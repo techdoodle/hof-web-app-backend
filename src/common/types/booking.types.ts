@@ -41,10 +41,14 @@ export interface CreateBookingDto {
     totalSlots: number;
     slotNumbers: number[];
     players: Array<{
+        // For existing users booked into a slot
+        existingUserId?: number;
+        // For new players created as part of this booking
         firstName?: string;
         lastName?: string;
-        phone: string;
-        teamName?: string; // Team selection for this player (required for confirmed bookings)
+        phone?: string;
+        // Team selection for this player (required for confirmed bookings)
+        teamName?: string;
     }>;
     metadata?: Record<string, any>;
     isWaitlist?: boolean; // Flag to indicate if this is a waitlist booking
