@@ -199,6 +199,14 @@ export class MatchFilterDto {
     @IsOptional()
     @IsString()
     order?: 'ASC' | 'DESC';
+
+    @IsOptional()
+    @IsString()
+    status?: string;
+
+    @IsOptional()
+    @IsString()
+    statusNot?: string;
 }
 
 export class TimeSlotDto {
