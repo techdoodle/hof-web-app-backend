@@ -170,11 +170,13 @@ export class UserService {
       const q = params.query.trim();
       const normalizedPhone = this.normalizePhone(q);
 
+      // Handle NULL values properly - use COALESCE to convert NULL to empty string
+      // This ensures LIKE comparisons work even when firstName or lastName is NULL
       qb.andWhere(
-        `(LOWER(user.firstName) LIKE :nameQuery
-           OR LOWER(user.lastName) LIKE :nameQuery
-           OR LOWER(CONCAT(user.firstName, ' ', user.lastName)) LIKE :nameQuery
-           OR REPLACE(REGEXP_REPLACE(user.phoneNumber, '\\D', '', 'g'), '91', '') LIKE :phoneQuery)`,
+        `(LOWER(COALESCE(user.firstName, '')) LIKE :nameQuery
+           OR LOWER(COALESCE(user.lastName, '')) LIKE :nameQuery
+           OR LOWER(CONCAT(COALESCE(user.firstName, ''), ' ', COALESCE(user.lastName, ''))) LIKE :nameQuery
+           OR REPLACE(REGEXP_REPLACE(COALESCE(user.phoneNumber, ''), '\\D', '', 'g'), '91', '') LIKE :phoneQuery)`,
         {
           nameQuery: `%${q.toLowerCase()}%`,
           phoneQuery: normalizedPhone ? `%${normalizedPhone}%` : '%',
