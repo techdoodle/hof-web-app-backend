@@ -183,6 +183,12 @@ export class AdminService {
         if ((filters as any).matchType) {
             queryBuilder.andWhere('match.match_type = :matchType', { matchType: (filters as any).matchType });
         }
+        if (filters.status) {
+            queryBuilder.andWhere('match.status = :status', { status: filters.status });
+        }
+        if (filters.statusNot) {
+            queryBuilder.andWhere('match.status != :statusNot', { statusNot: filters.statusNot });
+        }
 
         // Backward compatible filters
         // Accept dateFrom/dateTo (primary) and also startDate/startTime, endDate/endTime (back-compat)
