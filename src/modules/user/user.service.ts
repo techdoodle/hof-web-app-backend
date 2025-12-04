@@ -177,7 +177,7 @@ export class UserService {
         `LOWER(CONCAT(COALESCE(user.firstName, ''), ' ', COALESCE(user.lastName, ''))) LIKE :nameQuery`,
       ];
 
-      const params: Record<string, any> = {
+      const queryParams: Record<string, any> = {
         nameQuery: `%${q.toLowerCase()}%`,
       };
 
@@ -186,10 +186,10 @@ export class UserService {
         conditions.push(
           `REPLACE(REGEXP_REPLACE(COALESCE(user.phoneNumber, ''), '\\\\D', '', 'g'), '91', '') LIKE :phoneQuery`,
         );
-        params.phoneQuery = `%${normalizedPhone}%`;
+        queryParams.phoneQuery = `%${normalizedPhone}%`;
       }
 
-      qb.andWhere(`(${conditions.join(' OR ')})`, params);
+      qb.andWhere(`(${conditions.join(' OR ')})`, queryParams);
     }
 
     // Simple, safe alphabetical ordering for all cases
