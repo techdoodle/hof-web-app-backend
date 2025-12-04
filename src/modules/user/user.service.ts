@@ -170,18 +170,26 @@ export class UserService {
       const q = params.query.trim();
       const normalizedPhone = this.normalizePhone(q);
 
-      // Handle NULL values properly - use COALESCE to convert NULL to empty string
-      // This ensures LIKE comparisons work even when firstName or lastName is NULL
-      qb.andWhere(
-        `(LOWER(COALESCE(user.firstName, '')) LIKE :nameQuery
-           OR LOWER(COALESCE(user.lastName, '')) LIKE :nameQuery
-           OR LOWER(CONCAT(COALESCE(user.firstName, ''), ' ', COALESCE(user.lastName, ''))) LIKE :nameQuery
-           OR REPLACE(REGEXP_REPLACE(COALESCE(user.phoneNumber, ''), '\\D', '', 'g'), '91', '') LIKE :phoneQuery)`,
-        {
-          nameQuery: `%${q.toLowerCase()}%`,
-          phoneQuery: normalizedPhone ? `%${normalizedPhone}%` : '%',
-        },
-      );
+      // Always match on name fields
+      const conditions: string[] = [
+        `LOWER(COALESCE(user.firstName, '')) LIKE :nameQuery`,
+        `LOWER(COALESCE(user.lastName, '')) LIKE :nameQuery`,
+        `LOWER(CONCAT(COALESCE(user.firstName, ''), ' ', COALESCE(user.lastName, ''))) LIKE :nameQuery`,
+      ];
+
+      const params: Record<string, any> = {
+        nameQuery: `%${q.toLowerCase()}%`,
+      };
+
+      // Only add phone condition if query looks like a phone number
+      if (normalizedPhone) {
+        conditions.push(
+          `REPLACE(REGEXP_REPLACE(COALESCE(user.phoneNumber, ''), '\\\\D', '', 'g'), '91', '') LIKE :phoneQuery`,
+        );
+        params.phoneQuery = `%${normalizedPhone}%`;
+      }
+
+      qb.andWhere(`(${conditions.join(' OR ')})`, params);
     }
 
     // Simple, safe alphabetical ordering for all cases
