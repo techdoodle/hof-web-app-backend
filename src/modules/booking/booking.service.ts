@@ -375,12 +375,12 @@ export class BookingService {
                 } else {
                     // Fallback to phone-based lookup / creation for new players
                     user = await this.bookingUserService.findOrCreateUserByPhone(phoneToUse, {
-                        firstName: player.firstName,
-                        lastName: player.lastName,
-                        // Only pass email when first slot belongs to the token user (initial booking),
-                        // for additional bookings (canUseTokenUserAsFirst === false) don't attach email to friend users
-                        email: i === 0 && canUseTokenUserAsFirst ? dto.email : undefined
-                    });
+                    firstName: player.firstName,
+                    lastName: player.lastName,
+                    // Only pass email when first slot belongs to the token user (initial booking),
+                    // for additional bookings (canUseTokenUserAsFirst === false) don't attach email to friend users
+                    email: i === 0 && canUseTokenUserAsFirst ? dto.email : undefined
+                });
                 }
 
                 playerUsers.push(user);

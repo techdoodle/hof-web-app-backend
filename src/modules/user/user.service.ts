@@ -182,30 +182,12 @@ export class UserService {
           phoneQuery: normalizedPhone ? `%${normalizedPhone}%` : '%',
         },
       );
-
-      // When searching, order by relevance: exact matches first, then starts with, then contains
-      // This ensures search results appear on the first page
-      qb.orderBy(
-        `CASE 
-          WHEN LOWER(COALESCE(user.firstName, '')) = :exactQuery THEN 1
-          WHEN LOWER(COALESCE(user.firstName, '')) LIKE :startsWithQuery THEN 2
-          WHEN LOWER(COALESCE(user.lastName, '')) = :exactQuery THEN 3
-          WHEN LOWER(COALESCE(user.lastName, '')) LIKE :startsWithQuery THEN 4
-          ELSE 5
-        END`,
-        'ASC'
-      )
-      .addOrderBy('user.firstName', 'ASC')
-      .addOrderBy('user.lastName', 'ASC')
-      .setParameter('exactQuery', q.toLowerCase())
-      .setParameter('startsWithQuery', `${q.toLowerCase()}%`);
-    } else {
-      // No search query - just order alphabetically
-      qb.orderBy('user.firstName', 'ASC')
-        .addOrderBy('user.lastName', 'ASC');
     }
 
-    qb.skip(skip)
+    // Simple, safe alphabetical ordering for all cases
+    qb.orderBy('user.firstName', 'ASC')
+      .addOrderBy('user.lastName', 'ASC')
+      .skip(skip)
       .take(limit);
 
     const [users, total] = await qb.getManyAndCount();
