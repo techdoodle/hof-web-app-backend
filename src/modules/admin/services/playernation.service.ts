@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan, DataSource } from 'typeorm';
+import { Repository, MoreThan, DataSource, IsNull, Not } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Match } from '../../matches/matches.entity';
@@ -13,6 +13,7 @@ import { PlayerNationPlayerMapping, PlayerMappingStatus } from '../entities/play
 import { PlayerNationSubmitDto } from '../dto/playernation-submit.dto';
 import { SaveMappingsDto } from '../dto/playernation-mapping.dto';
 import { MatchesService } from '../../matches/matches.service';
+import { MatchType } from '../../../common/enums/match-type.enum';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -27,6 +28,7 @@ interface PlayerNationResponse {
 interface PlayerNationStatsResponse {
   status: 'success' | 'analyzing' | 'cancelled';
   matchNotes?: string;
+  matchHighlights?: string;
   playerStats?: Record<string, {
     playerInfo: {
       name: string;
@@ -380,6 +382,14 @@ export class PlayerNationService {
         // Update match status
         await this.matchesService.updateMatchStatusIfNeeded(matchId);
       } else if (response.data.status === 'success') {
+        // Extract and store match highlights if available
+        if (response.data.matchHighlights && response.data.matchHighlights.trim() !== '' && response.data.matchHighlights !== 'null') {
+          await this.matchRepository.update({ matchId }, {
+            matchHighlights: response.data.matchHighlights,
+          });
+          this.logger.log(`Stored match highlights for match ${matchId}`);
+        }
+
         await this.processPlayerStats(matchId, response.data);
         // Do not override SUCCESS_WITH_UNMATCHED set by processPlayerStats
         // If all players were matched and ingested, processPlayerStats will set SUCCESS or IMPORTED elsewhere
@@ -521,7 +531,7 @@ export class PlayerNationService {
     const mappings = await this.mappingRepository.find({ where: { matchId, status: PlayerMappingStatus.MATCHED } });
     
     // Group external player IDs by internal player ID to handle players who changed teams
-    const internalIdToExternalIds = new Map<number, Array<{ externalId: string; playerData: any; videoUrl?: string }>>();
+    const internalIdToExternalIds = new Map<number, Array<{ externalId: string; playerData: any; videoUrl?: string; playerTopMomentUrl?: string }>>();
     
     for (const mapping of mappings) {
       if (!mapping.internalPlayerId) continue;
@@ -530,10 +540,17 @@ export class PlayerNationService {
       const playerData = last.playerStats[externalPlayerId];
       if (!playerData) continue;
 
-      // Extract video URL
+      // Extract video URL from highlightURL array (for playernationVideoUrl)
       const highlightArr = (playerData as any)?.hightlightURL || (playerData as any)?.highlightURL;
       const playerVideoUrl = Array.isArray(highlightArr) && highlightArr.length > 0
         ? (highlightArr[0]?.youtubeVideoUrl as string | undefined)
+        : undefined;
+
+      // Extract player top moment video URL from playerInfo.playerVideo (for playerHighlights)
+      const playerTopMomentUrl = playerData.playerInfo?.playerVideo && 
+        playerData.playerInfo.playerVideo.trim() !== '' && 
+        playerData.playerInfo.playerVideo !== 'null'
+        ? playerData.playerInfo.playerVideo
         : undefined;
 
       if (!internalIdToExternalIds.has(mapping.internalPlayerId)) {
@@ -543,6 +560,7 @@ export class PlayerNationService {
         externalId: externalPlayerId,
         playerData,
         videoUrl: playerVideoUrl,
+        playerTopMomentUrl: playerTopMomentUrl,
       });
     }
 
@@ -552,19 +570,23 @@ export class PlayerNationService {
       try {
         let combinedStats: Record<string, any>;
         let combinedVideoUrl: string | undefined;
+        let combinedPlayerTopMomentUrl: string | undefined;
 
         if (externalDataArray.length === 1) {
           // Single mapping - use stats as is
           combinedStats = externalDataArray[0].playerData.stats;
           combinedVideoUrl = externalDataArray[0].videoUrl;
+          combinedPlayerTopMomentUrl = externalDataArray[0].playerTopMomentUrl;
         } else {
           // Multiple mappings - combine stats
           combinedStats = this.combineStatsForPlayer(externalDataArray.map(item => item.playerData.stats));
           // Use first non-empty video URL
           combinedVideoUrl = externalDataArray.find(item => item.videoUrl)?.videoUrl;
+          // Use first non-empty player top moment URL
+          combinedPlayerTopMomentUrl = externalDataArray.find(item => item.playerTopMomentUrl)?.playerTopMomentUrl;
         }
 
-        await this.mapStatsToCompact(matchId, internalId, combinedStats, combinedVideoUrl);
+        await this.mapStatsToCompact(matchId, internalId, combinedStats, combinedVideoUrl, combinedPlayerTopMomentUrl);
         processed++;
       } catch (e) {
         this.logger.error(`Failed to ingest stats for internal user ${internalId}`, e);
@@ -680,7 +702,7 @@ export class PlayerNationService {
     };
   }
 
-  private async mapStatsToCompact(matchId: number, userId: number, stats: Record<string, any>, playerVideoUrl?: string): Promise<void> {
+  private async mapStatsToCompact(matchId: number, userId: number, stats: Record<string, any>, playerVideoUrl?: string, playerTopMomentUrl?: string): Promise<void> {
     // Helper function to parse numeric values (handle string numbers and "NA")
     const parseNumeric = (value: number | string | undefined): number => {
       if (value === undefined || value === null) return 0;
@@ -750,9 +772,18 @@ export class PlayerNationService {
 
     // Use transaction to ensure atomicity
     await this.dataSource.transaction(async (manager) => {
-      // Update participant's PlayerNation video URL if provided
+      // Update participant's PlayerNation video URL if provided (from highlightURL array)
       if (playerVideoUrl && playerVideoUrl.trim() !== '') {
         matchParticipant.playernationVideoUrl = playerVideoUrl;
+      }
+
+      // Update participant's player highlights if provided (from playerInfo.playerVideo - top moment)
+      if (playerTopMomentUrl && playerTopMomentUrl.trim() !== '') {
+        matchParticipant.playerHighlights = playerTopMomentUrl;
+      }
+
+      // Save participant if any video URLs were updated
+      if ((playerVideoUrl && playerVideoUrl.trim() !== '') || (playerTopMomentUrl && playerTopMomentUrl.trim() !== '')) {
         await manager.save(MatchParticipant, matchParticipant);
       }
 
@@ -837,6 +868,129 @@ export class PlayerNationService {
       pollAttempts: match.playernationPollAttempts,
       nextPollAt: match.playernationNextPollAt,
       playernationLastResponse: match.playernationLastResponse,
+    };
+  }
+
+  /**
+   * Backfill highlights from stored PlayerNation response for a specific match
+   * Extracts matchHighlights and player highlights (playerInfo.playerVideo) from stored response
+   */
+  async backfillHighlightsFromStoredResponse(matchId: number): Promise<{ 
+    matchHighlightsUpdated: boolean; 
+    playersUpdated: number; 
+  }> {
+    const match = await this.matchRepository.findOne({ where: { matchId } });
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+    
+    if (!match.playernationLastResponse) {
+      throw new BadRequestException('No stored PlayerNation response found for this match');
+    }
+
+    const response = match.playernationLastResponse as any as PlayerNationStatsResponse;
+    let playersUpdated = 0;
+    let matchHighlightsUpdated = false;
+
+    // Extract and store match highlights
+    if (response.matchHighlights && response.matchHighlights.trim() !== '' && response.matchHighlights !== 'null') {
+      await this.matchRepository.update({ matchId }, {
+        matchHighlights: response.matchHighlights,
+      });
+      matchHighlightsUpdated = true;
+      this.logger.log(`Backfilled match highlights for match ${matchId}`);
+    }
+
+    // Extract and store player highlights
+    if (response.playerStats) {
+      const mappings = await this.mappingRepository.find({ 
+        where: { matchId, status: PlayerMappingStatus.MATCHED } 
+      });
+
+      for (const mapping of mappings) {
+        if (!mapping.internalPlayerId) continue;
+
+        const playerData = response.playerStats[mapping.externalPlayerId];
+        if (!playerData) continue;
+
+        // Extract player top moment video from playerInfo.playerVideo
+        const playerTopMomentUrl = playerData.playerInfo?.playerVideo && 
+          playerData.playerInfo.playerVideo.trim() !== '' && 
+          playerData.playerInfo.playerVideo !== 'null'
+          ? playerData.playerInfo.playerVideo
+          : null;
+
+        if (playerTopMomentUrl) {
+          const matchParticipant = await this.matchParticipantRepository.findOne({
+            where: {
+              match: { matchId },
+              user: { id: mapping.internalPlayerId },
+            },
+          });
+
+          if (matchParticipant) {
+            matchParticipant.playerHighlights = playerTopMomentUrl;
+            await this.matchParticipantRepository.save(matchParticipant);
+            playersUpdated++;
+            this.logger.log(`Backfilled player highlights for user ${mapping.internalPlayerId} in match ${matchId}`);
+          }
+        }
+      }
+    }
+
+    return {
+      matchHighlightsUpdated,
+      playersUpdated,
+    };
+  }
+
+  /**
+   * Backfill highlights for all matches with stored PlayerNation responses
+   * Useful for bulk processing of existing matches
+   */
+  async backfillHighlightsForAllMatches(): Promise<{ 
+    totalMatches: number; 
+    processed: number; 
+    errors: number;
+    results: Array<{ matchId: number; success: boolean; error?: string }>;
+  }> {
+    // Find all matches with stored PlayerNation responses
+    const matches = await this.matchRepository.find({
+      where: {
+        playernationLastResponse: Not(IsNull()),
+        matchType: MatchType.RECORDED,
+      },
+    });
+
+    let processed = 0;
+    let errors = 0;
+    const results: Array<{ matchId: number; success: boolean; error?: string }> = [];
+
+    this.logger.log(`Starting backfill for ${matches.length} matches`);
+
+    for (const match of matches) {
+      try {
+        await this.backfillHighlightsFromStoredResponse(match.matchId);
+        processed++;
+        results.push({ matchId: match.matchId, success: true });
+      } catch (error: any) {
+        this.logger.error(`Failed to backfill highlights for match ${match.matchId}`, error);
+        errors++;
+        results.push({ 
+          matchId: match.matchId, 
+          success: false, 
+          error: error?.message || 'Unknown error' 
+        });
+      }
+    }
+
+    this.logger.log(`Backfill completed: ${processed} processed, ${errors} errors`);
+
+    return {
+      totalMatches: matches.length,
+      processed,
+      errors,
+      results,
     };
   }
 }
