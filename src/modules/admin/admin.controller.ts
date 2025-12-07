@@ -392,6 +392,26 @@ export class AdminController {
         return { message: 'Stats processed', ...result };
     }
 
+    @Post('playernation/backfill-highlights/:matchId')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async backfillHighlights(@Param('matchId', ParseIntPipe) matchId: number) {
+        const result = await this.playerNationService.backfillHighlightsFromStoredResponse(matchId);
+        return { 
+            message: 'Highlights backfilled successfully', 
+            ...result 
+        };
+    }
+
+    @Post('playernation/backfill-highlights-all')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async backfillHighlightsAll() {
+        const result = await this.playerNationService.backfillHighlightsForAllMatches();
+        return { 
+            message: 'Bulk highlights backfill completed', 
+            ...result 
+        };
+    }
+
     @Get('playernation/unmapped-count/:matchId')
     @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async getUnmappedCount(@Param('matchId', ParseIntPipe) matchId: number) {
