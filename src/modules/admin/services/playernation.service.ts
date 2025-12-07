@@ -540,14 +540,14 @@ export class PlayerNationService {
       const playerData = last.playerStats[externalPlayerId];
       if (!playerData) continue;
 
-      // Extract video URL from highlightURL array (for playernationVideoUrl)
+      // Extract YouTube highlight video URL from highlightURL array (for playerHighlights - displayed on FE)
       const highlightArr = (playerData as any)?.hightlightURL || (playerData as any)?.highlightURL;
-      const playerVideoUrl = Array.isArray(highlightArr) && highlightArr.length > 0
+      const playerHighlightUrl = Array.isArray(highlightArr) && highlightArr.length > 0
         ? (highlightArr[0]?.youtubeVideoUrl as string | undefined)
         : undefined;
 
-      // Extract player top moment video URL from playerInfo.playerVideo (for playerHighlights)
-      const playerTopMomentUrl = playerData.playerInfo?.playerVideo && 
+      // Extract 360-degree video URL from playerInfo.playerVideo (for playernationVideoUrl - NOT displayed, only for submission)
+      const player360VideoUrl = playerData.playerInfo?.playerVideo && 
         playerData.playerInfo.playerVideo.trim() !== '' && 
         playerData.playerInfo.playerVideo !== 'null'
         ? playerData.playerInfo.playerVideo
@@ -559,8 +559,8 @@ export class PlayerNationService {
       internalIdToExternalIds.get(mapping.internalPlayerId)!.push({
         externalId: externalPlayerId,
         playerData,
-        videoUrl: playerVideoUrl,
-        playerTopMomentUrl: playerTopMomentUrl,
+        videoUrl: player360VideoUrl, // 360-degree video for playernationVideoUrl
+        playerTopMomentUrl: playerHighlightUrl, // YouTube highlight for playerHighlights
       });
     }
 
@@ -575,14 +575,14 @@ export class PlayerNationService {
         if (externalDataArray.length === 1) {
           // Single mapping - use stats as is
           combinedStats = externalDataArray[0].playerData.stats;
-          combinedVideoUrl = externalDataArray[0].videoUrl;
-          combinedPlayerTopMomentUrl = externalDataArray[0].playerTopMomentUrl;
+          combinedVideoUrl = externalDataArray[0].videoUrl; // 360-degree video
+          combinedPlayerTopMomentUrl = externalDataArray[0].playerTopMomentUrl; // YouTube highlight
         } else {
           // Multiple mappings - combine stats
           combinedStats = this.combineStatsForPlayer(externalDataArray.map(item => item.playerData.stats));
-          // Use first non-empty video URL
+          // Use first non-empty 360-degree video URL
           combinedVideoUrl = externalDataArray.find(item => item.videoUrl)?.videoUrl;
-          // Use first non-empty player top moment URL
+          // Use first non-empty YouTube highlight URL
           combinedPlayerTopMomentUrl = externalDataArray.find(item => item.playerTopMomentUrl)?.playerTopMomentUrl;
         }
 
@@ -772,12 +772,12 @@ export class PlayerNationService {
 
     // Use transaction to ensure atomicity
     await this.dataSource.transaction(async (manager) => {
-      // Update participant's PlayerNation video URL if provided (from highlightURL array)
+      // Update participant's 360-degree video URL if provided (from playerInfo.playerVideo - NOT displayed, only for submission)
       if (playerVideoUrl && playerVideoUrl.trim() !== '') {
         matchParticipant.playernationVideoUrl = playerVideoUrl;
       }
 
-      // Update participant's player highlights if provided (from playerInfo.playerVideo - top moment)
+      // Update participant's player highlights if provided (from highlightURL array - YouTube highlight, displayed on FE)
       if (playerTopMomentUrl && playerTopMomentUrl.trim() !== '') {
         matchParticipant.playerHighlights = playerTopMomentUrl;
       }
@@ -913,14 +913,21 @@ export class PlayerNationService {
         const playerData = response.playerStats[mapping.externalPlayerId];
         if (!playerData) continue;
 
-        // Extract player top moment video from playerInfo.playerVideo
-        const playerTopMomentUrl = playerData.playerInfo?.playerVideo && 
+        // Extract 360-degree video from playerInfo.playerVideo (for playernationVideoUrl - NOT displayed)
+        const player360VideoUrl = playerData.playerInfo?.playerVideo && 
           playerData.playerInfo.playerVideo.trim() !== '' && 
           playerData.playerInfo.playerVideo !== 'null'
           ? playerData.playerInfo.playerVideo
           : null;
 
-        if (playerTopMomentUrl) {
+        // Extract YouTube highlight video from highlightURL array (for playerHighlights - displayed on FE)
+        const highlightArr = (playerData as any)?.hightlightURL || (playerData as any)?.highlightURL;
+        const playerHighlightUrl = Array.isArray(highlightArr) && highlightArr.length > 0
+          ? (highlightArr[0]?.youtubeVideoUrl as string | undefined)
+          : null;
+
+        // Update 360-degree video URL (playernationVideoUrl)
+        if (player360VideoUrl) {
           const matchParticipant = await this.matchParticipantRepository.findOne({
             where: {
               match: { matchId },
@@ -929,7 +936,23 @@ export class PlayerNationService {
           });
 
           if (matchParticipant) {
-            matchParticipant.playerHighlights = playerTopMomentUrl;
+            matchParticipant.playernationVideoUrl = player360VideoUrl;
+            await this.matchParticipantRepository.save(matchParticipant);
+            this.logger.log(`Backfilled 360-degree video for user ${mapping.internalPlayerId} in match ${matchId}`);
+          }
+        }
+
+        // Update player highlights (YouTube video - displayed on FE)
+        if (playerHighlightUrl) {
+          const matchParticipant = await this.matchParticipantRepository.findOne({
+            where: {
+              match: { matchId },
+              user: { id: mapping.internalPlayerId },
+            },
+          });
+
+          if (matchParticipant) {
+            matchParticipant.playerHighlights = playerHighlightUrl;
             await this.matchParticipantRepository.save(matchParticipant);
             playersUpdated++;
             this.logger.log(`Backfilled player highlights for user ${mapping.internalPlayerId} in match ${matchId}`);
