@@ -517,42 +517,167 @@ export class PlayerNationService {
     const last = match.playernationLastResponse as any as PlayerNationStatsResponse;
     if (!last || !last.playerStats) throw new BadRequestException('No PlayerNation stats available to process');
 
-    const unmappedCount = await this.mappingRepository.count({ where: { matchId, status: PlayerMappingStatus.UNMATCHED } });
-    if (unmappedCount > 0) {
-      throw new BadRequestException('Cannot process stats: there are unmapped players');
+    // Get all matched mappings - no longer require all players to be mapped
+    const mappings = await this.mappingRepository.find({ where: { matchId, status: PlayerMappingStatus.MATCHED } });
+    
+    // Group external player IDs by internal player ID to handle players who changed teams
+    const internalIdToExternalIds = new Map<number, Array<{ externalId: string; playerData: any; videoUrl?: string }>>();
+    
+    for (const mapping of mappings) {
+      if (!mapping.internalPlayerId) continue;
+      
+      const externalPlayerId = mapping.externalPlayerId;
+      const playerData = last.playerStats[externalPlayerId];
+      if (!playerData) continue;
+
+      // Extract video URL
+      const highlightArr = (playerData as any)?.hightlightURL || (playerData as any)?.highlightURL;
+      const playerVideoUrl = Array.isArray(highlightArr) && highlightArr.length > 0
+        ? (highlightArr[0]?.youtubeVideoUrl as string | undefined)
+        : undefined;
+
+      if (!internalIdToExternalIds.has(mapping.internalPlayerId)) {
+        internalIdToExternalIds.set(mapping.internalPlayerId, []);
+      }
+      internalIdToExternalIds.get(mapping.internalPlayerId)!.push({
+        externalId: externalPlayerId,
+        playerData,
+        videoUrl: playerVideoUrl,
+      });
     }
 
-    const mappings = await this.mappingRepository.find({ where: { matchId, status: PlayerMappingStatus.MATCHED } });
-    const externalIdToInternal = new Map<string, number>();
-    mappings.forEach(m => { if (m.internalPlayerId) externalIdToInternal.set(m.externalPlayerId, m.internalPlayerId); });
-
     let processed = 0;
-    for (const [externalPlayerId, playerData] of Object.entries(last.playerStats)) {
-      const internalId = externalIdToInternal.get(externalPlayerId);
-      if (!internalId) continue;
+    // Process each internal player, combining stats if they have multiple external IDs
+    for (const [internalId, externalDataArray] of internalIdToExternalIds.entries()) {
       try {
-        // Only push YouTube highlight URL (no fallback)
-        const highlightArr = (playerData as any)?.hightlightURL || (playerData as any)?.highlightURL;
-        const playerVideoUrl = Array.isArray(highlightArr) && highlightArr.length > 0
-          ? (highlightArr[0]?.youtubeVideoUrl as string | undefined)
-          : undefined;
-        await this.mapStatsToCompact(matchId, internalId, playerData.stats, playerVideoUrl);
+        let combinedStats: Record<string, any>;
+        let combinedVideoUrl: string | undefined;
+
+        if (externalDataArray.length === 1) {
+          // Single mapping - use stats as is
+          combinedStats = externalDataArray[0].playerData.stats;
+          combinedVideoUrl = externalDataArray[0].videoUrl;
+        } else {
+          // Multiple mappings - combine stats
+          combinedStats = this.combineStatsForPlayer(externalDataArray.map(item => item.playerData.stats));
+          // Use first non-empty video URL
+          combinedVideoUrl = externalDataArray.find(item => item.videoUrl)?.videoUrl;
+        }
+
+        await this.mapStatsToCompact(matchId, internalId, combinedStats, combinedVideoUrl);
         processed++;
       } catch (e) {
-        this.logger.error(`Failed to ingest stats for internal user ${internalId} (external ${externalPlayerId})`, e);
+        this.logger.error(`Failed to ingest stats for internal user ${internalId}`, e);
       }
     }
 
-    // If we couldn't process all matched mappings, mark as POLL_SUCCESS_MAPPING_FAILED
-    const expected = Array.from(externalIdToInternal.keys()).length;
-    if (processed < expected) {
-      await this.matchRepository.update({ matchId }, { playernationStatus: 'POLL_SUCCESS_MAPPING_FAILED' });
-    } else {
+    // Update match status based on whether we processed any stats
+    if (processed > 0) {
       await this.matchRepository.update({ matchId }, { playernationStatus: 'IMPORTED' });
       // Update match status to STATS_UPDATED for recorded matches
       await this.matchesService.updateMatchStatusIfNeeded(matchId);
+    } else {
+      await this.matchRepository.update({ matchId }, { playernationStatus: 'POLL_SUCCESS_MAPPING_FAILED' });
     }
+    
+    const expected = internalIdToExternalIds.size;
     return { processed, expected };
+  }
+
+  /**
+   * Combines stats from multiple external player IDs for the same internal player
+   * (e.g., when a player changed teams during the match)
+   */
+  private combineStatsForPlayer(statsArray: Array<Record<string, any>>): Record<string, any> {
+    if (statsArray.length === 0) return {};
+    if (statsArray.length === 1) return statsArray[0];
+
+    // Helper function to parse numeric values
+    const parseNumeric = (value: number | string | undefined): number => {
+      if (value === undefined || value === null) return 0;
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        if (value === 'NA' || value === '') return 0;
+        const parsed = parseFloat(value);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return 0;
+    };
+
+    // Helper function to parse percentage
+    const parsePercentage = (stat: any): number => {
+      if (!stat) return 0;
+      const value = parseNumeric(stat.totalCount);
+      if (stat.isPercentageStat) {
+        return value > 1 ? value / 100 : value;
+      }
+      return value;
+    };
+
+    // Extract and combine absolute stats (addition)
+    let totalGoal = 0;
+    let totalAssist = 0;
+    let totalPass = 0;
+    let totalKeyPass = 0;
+    let totalShot = 0;
+    let totalTackles = 0;
+    let totalInterceptions = 0;
+    let totalSave = 0;
+
+    // Extract and collect percentage stats for averaging
+    const passingAccuracies: number[] = [];
+    const shotAccuracies: number[] = [];
+
+    for (const stats of statsArray) {
+      // Add absolute stats
+      totalGoal += parseNumeric(stats.goals?.totalCount);
+      totalAssist += parseNumeric(stats.assists?.totalCount);
+      totalPass += parseNumeric(stats.passes_total?.totalCount);
+      totalKeyPass += parseNumeric(stats.key_passes?.totalCount);
+      totalShot += parseNumeric(stats.shots_total?.totalCount);
+      totalTackles += parseNumeric(stats.tackles_total?.totalCount);
+      totalInterceptions += parseNumeric(stats.interceptions_total?.totalCount);
+      totalSave += parseNumeric(stats.saves?.totalCount);
+
+      // Collect percentage stats
+      const passingAccuracy = parsePercentage(stats.passing_accuracy_overall);
+      if (passingAccuracy > 0) {
+        passingAccuracies.push(passingAccuracy);
+      }
+
+      const shotAccuracy = parsePercentage(stats.shot_accuracy);
+      if (shotAccuracy > 0) {
+        shotAccuracies.push(shotAccuracy);
+      }
+    }
+
+    // Calculate averages for percentage stats
+    const avgPassingAccuracy = passingAccuracies.length > 0
+      ? passingAccuracies.reduce((sum, val) => sum + val, 0) / passingAccuracies.length
+      : 0;
+    const avgShotAccuracy = shotAccuracies.length > 0
+      ? shotAccuracies.reduce((sum, val) => sum + val, 0) / shotAccuracies.length
+      : 0;
+
+    // Return combined stats in the same format as PlayerNation response
+    return {
+      goals: { totalCount: totalGoal },
+      assists: { totalCount: totalAssist },
+      passes_total: { totalCount: totalPass },
+      passing_accuracy_overall: {
+        totalCount: avgPassingAccuracy,
+        isPercentageStat: true,
+      },
+      key_passes: { totalCount: totalKeyPass },
+      shots_total: { totalCount: totalShot },
+      shot_accuracy: {
+        totalCount: avgShotAccuracy,
+        isPercentageStat: true,
+      },
+      tackles_total: { totalCount: totalTackles },
+      interceptions_total: { totalCount: totalInterceptions },
+      saves: { totalCount: totalSave },
+    };
   }
 
   private async mapStatsToCompact(matchId: number, userId: number, stats: Record<string, any>, playerVideoUrl?: string): Promise<void> {
