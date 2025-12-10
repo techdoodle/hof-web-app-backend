@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import configuration from 'src/config/configuration';
 import playernationConfig from 'src/config/playernation.config';
 import { AppController } from './app.controller';
+import { ImageProxyController } from './image-proxy.controller';
 import { AppService } from './app.service';
 import { AuthModule } from '../auth/auth.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -102,7 +103,7 @@ import { PromoCodesModule } from '../promo-codes/promo-codes.module';
     LeaderboardModule,
     PromoCodesModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, ImageProxyController],
   providers: [
     AppService,
     {
