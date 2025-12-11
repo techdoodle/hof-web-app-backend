@@ -29,6 +29,7 @@ import { VenueModule } from '../venue/venue.module';
 import { AccountingService } from './services/accounting.service';
 import { PlayerNationCostService } from './services/playernation-cost.service';
 import { FootballChiefLeaderboardService } from './services/football-chief-leaderboard.service';
+import { AnalyticsService } from './services/analytics.service';
 import { PlayerNationCostConfig } from './entities/playernation-cost-config.entity';
 import { RefundEntity } from '../payment/refund.entity';
 import { MatchParticipantsModule } from '../match-participants/match-participants.module';
@@ -59,7 +60,7 @@ import { MatchParticipantsModule } from '../match-participants/match-participant
         MatchParticipantsModule,
     ],
     controllers: [AdminController, TestController],
-    providers: [AdminService, CsvUploadService, PlayerNationService, PlayerNationPollingJob, FirebaseStorageService, FirebaseConfig, VenueCsvUploadService, AccountingService, PlayerNationCostService, FootballChiefLeaderboardService],
+    providers: [AdminService, CsvUploadService, PlayerNationService, PlayerNationPollingJob, FirebaseStorageService, FirebaseConfig, VenueCsvUploadService, AccountingService, PlayerNationCostService, FootballChiefLeaderboardService, AnalyticsService],
     exports: [AdminService, PlayerNationService],
 })
 export class AdminModule { }
