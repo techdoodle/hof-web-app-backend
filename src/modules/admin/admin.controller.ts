@@ -18,6 +18,7 @@ import { PlayerNationPlayerMapping } from './entities/playernation-player-mappin
 import { AccountingService } from './services/accounting.service';
 import { PlayerNationCostService } from './services/playernation-cost.service';
 import { FootballChiefLeaderboardService } from './services/football-chief-leaderboard.service';
+import { AnalyticsService } from './services/analytics.service';
 
 @Controller('admin')
 @SkipThrottle()
@@ -31,6 +32,7 @@ export class AdminController {
         private readonly accountingService: AccountingService,
         private readonly playerNationCostService: PlayerNationCostService,
         private readonly footballChiefLeaderboardService: FootballChiefLeaderboardService,
+        private readonly analyticsService: AnalyticsService,
     ) { }
 
     // User Management - Admin and Super Admin only
@@ -676,5 +678,45 @@ export class AdminController {
         const from = dateFrom ? new Date(dateFrom) : undefined;
         const to = dateTo ? new Date(dateTo) : undefined;
         return this.footballChiefLeaderboardService.getLeaderboard(from, to);
+    }
+
+    // Analytics endpoints (super_admin only)
+    @Get('analytics/users-added')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getUsersAddedTrend(
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+        @Query('groupBy') groupBy?: 'daily' | 'weekly' | 'monthly',
+    ) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        const group = groupBy || 'daily';
+        return this.analyticsService.getUsersAddedTrend(from, to, group);
+    }
+
+    @Get('analytics/matches-completed')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getMatchesCompletedTrend(
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+        @Query('groupBy') groupBy?: 'daily' | 'weekly' | 'monthly',
+    ) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        const group = groupBy || 'daily';
+        return this.analyticsService.getMatchesCompletedTrend(from, to, group);
+    }
+
+    @Get('analytics/matches-cancelled')
+    @Roles(UserRole.SUPER_ADMIN)
+    async getMatchesCancelledTrend(
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+        @Query('groupBy') groupBy?: 'daily' | 'weekly' | 'monthly',
+    ) {
+        const from = dateFrom ? new Date(dateFrom) : undefined;
+        const to = dateTo ? new Date(dateTo) : undefined;
+        const group = groupBy || 'daily';
+        return this.analyticsService.getMatchesCancelledTrend(from, to, group);
     }
 }
