@@ -2075,18 +2075,26 @@ export class AdminService {
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
         // Use COUNT queries instead of fetching all data
-        const [totalUsers, totalParticipants, monthlyMatches] = await Promise.all([
+        const [totalUsers, totalParticipants, monthlyMatches, futureMatches] = await Promise.all([
             // Total users count
             this.userRepository.count(),
             
             // Total participants count
             this.matchParticipantRepository.count(),
             
-            // Monthly matches count (only count, no data fetching)
+            // Monthly matches count (matches in current month)
             this.matchRepository
                 .createQueryBuilder('match')
                 .where('match.start_time >= :monthStart', { monthStart: monthStart.toISOString() })
                 .andWhere('match.start_time <= :monthEnd', { monthEnd: monthEnd.toISOString() })
+                .getCount(),
+            
+            // Future matches count (matches where start_time is in the future)
+            // Use database NOW() to avoid timezone issues
+            this.matchRepository
+                .createQueryBuilder('match')
+                .where('match.start_time > NOW()')
+                .andWhere('match.status != :cancelled', { cancelled: 'CANCELLED' })
                 .getCount()
         ]);
 
@@ -2095,7 +2103,8 @@ export class AdminService {
             data: {
                 totalUsers,
                 totalParticipants,
-                monthlyMatches
+                monthlyMatches,
+                futureMatches
             }
         };
     }

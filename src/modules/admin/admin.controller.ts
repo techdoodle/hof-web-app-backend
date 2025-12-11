@@ -680,9 +680,9 @@ export class AdminController {
         return this.footballChiefLeaderboardService.getLeaderboard(from, to);
     }
 
-    // Analytics endpoints (super_admin only)
+    // Analytics endpoints (admin & super_admin only)
     @Get('analytics/users-added')
-    @Roles(UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async getUsersAddedTrend(
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
@@ -695,7 +695,7 @@ export class AdminController {
     }
 
     @Get('analytics/matches-completed')
-    @Roles(UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async getMatchesCompletedTrend(
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
@@ -708,7 +708,7 @@ export class AdminController {
     }
 
     @Get('analytics/matches-cancelled')
-    @Roles(UserRole.SUPER_ADMIN)
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async getMatchesCancelledTrend(
         @Query('dateFrom') dateFrom?: string,
         @Query('dateTo') dateTo?: string,
