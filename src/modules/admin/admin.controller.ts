@@ -719,4 +719,11 @@ export class AdminController {
         const group = groupBy || 'daily';
         return this.analyticsService.getMatchesCancelledTrend(from, to, group);
     }
+
+    // Dashboard Stats - Optimized endpoint
+    @Get('dashboard/stats')
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getDashboardStats() {
+        return this.adminService.getDashboardStats();
+    }
 }

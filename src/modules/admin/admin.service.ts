@@ -58,9 +58,16 @@ export class AdminService {
 
     // User Management
     async getAllUsers(filters: UserFilterDto) {
+        // Optimize: Use leftJoin with addSelect to only load necessary fields
         const queryBuilder = this.userRepository.createQueryBuilder('user')
-            .leftJoinAndSelect('user.city', 'city')
-            .leftJoinAndSelect('user.preferredTeam', 'preferredTeam');
+            .leftJoin('user.city', 'city')
+            .leftJoin('user.preferredTeam', 'preferredTeam')
+            .addSelect([
+                'city.id',
+                'city.cityName',
+                'preferredTeam.id',
+                'preferredTeam.teamName'
+            ]);
 
         if (filters.search) {
             queryBuilder.where(
@@ -161,11 +168,24 @@ export class AdminService {
 
     // Match Management
     async getAllMatches(filters: MatchFilterDto) {
+        // Optimize: Use leftJoin with addSelect to only load necessary fields
+        // This reduces data transfer compared to leftJoinAndSelect which loads all fields
         const queryBuilder = this.matchRepository.createQueryBuilder('match')
-            .leftJoinAndSelect('match.venue', 'venue')
-            .leftJoinAndSelect('venue.city', 'city')
-            .leftJoinAndSelect('match.footballChief', 'footballChief')
-            .leftJoinAndSelect('match.matchTypeRef', 'matchTypeRef');
+            .leftJoin('match.venue', 'venue')
+            .leftJoin('venue.city', 'city')
+            .leftJoin('match.footballChief', 'footballChief')
+            .leftJoin('match.matchTypeRef', 'matchTypeRef')
+            .addSelect([
+                'venue.id',
+                'venue.name',
+                'city.id',
+                'city.cityName',
+                'footballChief.id',
+                'footballChief.firstName',
+                'footballChief.lastName',
+                'matchTypeRef.id',
+                'matchTypeRef.name'
+            ]);
 
         if (filters.search) {
             queryBuilder.where('match.name ILIKE :search', { search: `%${filters.search}%` });
@@ -575,10 +595,22 @@ export class AdminService {
     // Match Participants Management
     async getAllMatchParticipants(query: any) {
         console.log('Query params:', query); // Debug log
+        // Optimize: Use leftJoin with addSelect to only load necessary fields
         const queryBuilder = this.matchParticipantRepository.createQueryBuilder('mp')
-            .leftJoinAndSelect('mp.user', 'user')
-            .leftJoinAndSelect('mp.match', 'match')
-            .leftJoinAndSelect('match.venue', 'venue');
+            .leftJoin('mp.user', 'user')
+            .leftJoin('mp.match', 'match')
+            .leftJoin('match.venue', 'venue')
+            .addSelect([
+                'user.id',
+                'user.firstName',
+                'user.lastName',
+                'user.phoneNumber',
+                'user.email',
+                'match.matchId',
+                'match.startTime',
+                'venue.id',
+                'venue.name'
+            ]);
 
         // Apply matchId filter from direct query params
         if (query.matchId) {
@@ -2034,6 +2066,38 @@ export class AdminService {
             confirmedBookings,
             nonConfirmedBookings,
             totalRefundAmount
+        };
+    }
+
+    // Dashboard Stats - Optimized endpoint for dashboard
+    async getDashboardStats() {
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+        // Use COUNT queries instead of fetching all data
+        const [totalUsers, totalParticipants, monthlyMatches] = await Promise.all([
+            // Total users count
+            this.userRepository.count(),
+            
+            // Total participants count
+            this.matchParticipantRepository.count(),
+            
+            // Monthly matches count (only count, no data fetching)
+            this.matchRepository
+                .createQueryBuilder('match')
+                .where('match.start_time >= :monthStart', { monthStart: monthStart.toISOString() })
+                .andWhere('match.start_time <= :monthEnd', { monthEnd: monthEnd.toISOString() })
+                .getCount()
+        ]);
+
+        return {
+            success: true,
+            data: {
+                totalUsers,
+                totalParticipants,
+                monthlyMatches
+            }
         };
     }
 
