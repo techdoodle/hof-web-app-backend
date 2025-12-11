@@ -170,11 +170,12 @@ export class AdminService {
     async getAllMatches(filters: MatchFilterDto) {
         // Optimize: Use leftJoin with addSelect to only load necessary fields
         // This reduces data transfer compared to leftJoinAndSelect which loads all fields
+        // Note: Using leftJoinAndSelect for matchTypeRef as it's a small entity and addSelect has issues with relation aliases
         const queryBuilder = this.matchRepository.createQueryBuilder('match')
             .leftJoin('match.venue', 'venue')
             .leftJoin('venue.city', 'city')
             .leftJoin('match.footballChief', 'footballChief')
-            .leftJoin('match.matchTypeRef', 'matchTypeRef')
+            .leftJoinAndSelect('match.matchTypeRef', 'matchTypeRef')
             .addSelect([
                 'venue.id',
                 'venue.name',
@@ -182,9 +183,7 @@ export class AdminService {
                 'city.cityName',
                 'footballChief.id',
                 'footballChief.firstName',
-                'footballChief.lastName',
-                'matchTypeRef.id',
-                'matchTypeRef.name'
+                'footballChief.lastName'
             ]);
 
         if (filters.search) {
