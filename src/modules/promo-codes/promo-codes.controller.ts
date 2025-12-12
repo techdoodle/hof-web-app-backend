@@ -25,7 +25,8 @@ export class PromoCodesController {
             dto.code,
             userId,
             dto.bookingAmount,
-            cityId
+            cityId,
+            dto.matchId
         );
 
         return {

@@ -66,6 +66,12 @@ export class UpdatePromoCodeDto {
     eligibleCities?: number[];
 
     @IsOptional()
+    @IsArray()
+    @IsNumber({}, { each: true })
+    @Type(() => Number)
+    eligibleMatches?: number[];
+
+    @IsOptional()
     @IsBoolean()
     @Type(() => Boolean)
     firstTimeUsersOnly?: boolean;
