@@ -8,6 +8,7 @@ import { UpdatePromoCodeDto } from './dto/update-promo-code.dto';
 import { DiscountType } from '../../common/enums/discount-type.enum';
 import { BookingEntity } from '../booking/booking.entity';
 import { BookingStatus } from '../../common/types/booking.types';
+import { Match } from '../matches/matches.entity';
 
 export interface ValidatePromoCodeResult {
     valid: boolean;
@@ -35,6 +36,8 @@ export class PromoCodesService {
         private promoCodeUsageRepository: Repository<PromoCodeUsage>,
         @InjectRepository(BookingEntity)
         private bookingRepository: Repository<BookingEntity>,
+        @InjectRepository(Match)
+        private matchRepository: Repository<Match>,
         private connection: Connection,
     ) { }
 
@@ -42,8 +45,11 @@ export class PromoCodesService {
         code: string,
         userId: number | null,
         bookingAmount: number,
-        cityId?: number | null
+        cityId?: number | null,
+        matchId?: number | null
     ): Promise<ValidatePromoCodeResult> {
+        // Note: cityId parameter is kept for backward compatibility but not used in validation
+        // We only check match's city, not user's city
         // Normalize code to uppercase
         const normalizedCode = code.toUpperCase().trim();
 
@@ -140,15 +146,98 @@ export class PromoCodesService {
             }
         }
 
-        // Check city eligibility
-        if (promoCode.eligibleCities && promoCode.eligibleCities.length > 0 && cityId) {
-            if (!promoCode.eligibleCities.includes(cityId)) {
-                return {
-                    valid: false,
-                    discountAmount: 0,
-                    finalAmount: bookingAmount,
-                    message: 'This code is not valid for your city'
-                };
+        // Check eligibility with OR logic:
+        // - If eligibleCities is set: match's city must be in the list
+        // - If eligibleMatches is set: matchId must be in the list
+        // - If both are set: either condition can be true (OR logic)
+        // - User's city is NOT checked at all
+
+        const hasCityRestriction = promoCode.eligibleCities && promoCode.eligibleCities.length > 0;
+        const hasMatchRestriction = promoCode.eligibleMatches && promoCode.eligibleMatches.length > 0;
+
+        if (hasCityRestriction || hasMatchRestriction) {
+            let cityEligible = false;
+            let matchEligible = false;
+
+            // Check match city eligibility (if cities are restricted)
+            if (hasCityRestriction) {
+                if (!matchId) {
+                    return {
+                        valid: false,
+                        discountAmount: 0,
+                        finalAmount: bookingAmount,
+                        message: 'This promo code is only valid for matches in specific cities'
+                    };
+                }
+
+                // Fetch match to get its city
+                const match = await this.matchRepository.findOne({
+                    where: { matchId: matchId },
+                    relations: ['city']
+                });
+
+                if (!match) {
+                    return {
+                        valid: false,
+                        discountAmount: 0,
+                        finalAmount: bookingAmount,
+                        message: 'Match not found'
+                    };
+                }
+
+                const matchCityId = match.city?.id;
+                if (matchCityId && promoCode.eligibleCities && promoCode.eligibleCities.includes(matchCityId)) {
+                    cityEligible = true;
+                }
+            }
+
+            // Check match ID eligibility (if specific matches are restricted)
+            if (hasMatchRestriction) {
+                if (!matchId) {
+                    return {
+                        valid: false,
+                        discountAmount: 0,
+                        finalAmount: bookingAmount,
+                        message: 'This promo code is only valid for specific matches'
+                    };
+                }
+                if (promoCode.eligibleMatches && promoCode.eligibleMatches.includes(matchId)) {
+                    matchEligible = true;
+                }
+            }
+
+            // OR logic: if both restrictions exist, either can be true
+            // If only one restriction exists, that one must be true
+            if (hasCityRestriction && hasMatchRestriction) {
+                // Both set: OR logic - either condition can be true
+                if (!cityEligible && !matchEligible) {
+                    return {
+                        valid: false,
+                        discountAmount: 0,
+                        finalAmount: bookingAmount,
+                        message: 'This promo code is not valid for this match or match city'
+                    };
+                }
+            } else if (hasCityRestriction) {
+                // Only cities set: must match city
+                if (!cityEligible) {
+                    return {
+                        valid: false,
+                        discountAmount: 0,
+                        finalAmount: bookingAmount,
+                        message: 'This promo code is not valid for matches in this city'
+                    };
+                }
+            } else if (hasMatchRestriction) {
+                // Only matches set: must match match ID
+                if (!matchEligible) {
+                    return {
+                        valid: false,
+                        discountAmount: 0,
+                        finalAmount: bookingAmount,
+                        message: 'This promo code is not valid for this match'
+                    };
+                }
             }
         }
 
@@ -190,12 +279,13 @@ export class PromoCodesService {
         code: string,
         userId: number | null,
         bookingId: number,
-        originalAmount: number
+        originalAmount: number,
+        matchId?: number | null
     ): Promise<{ discountAmount: number; finalAmount: number }> {
         const normalizedCode = code.toUpperCase().trim();
 
         // Validate code again (in case it changed between validation and application)
-        const validation = await this.validatePromoCode(normalizedCode, userId, originalAmount);
+        const validation = await this.validatePromoCode(normalizedCode, userId, originalAmount, undefined, matchId);
 
         if (!validation.valid || !validation.promoCode) {
             throw new BadRequestException(validation.message || 'Invalid promo code');
@@ -312,6 +402,7 @@ export class PromoCodesService {
             maxUses: dto.maxUses,
             maxUsesPerUser: dto.maxUsesPerUser,
             eligibleCities: dto.eligibleCities,
+            eligibleMatches: dto.eligibleMatches,
             firstTimeUsersOnly: dto.firstTimeUsersOnly || false,
             createdById: createdById
         });
@@ -352,6 +443,7 @@ export class PromoCodesService {
         if (dto.maxUses !== undefined) promoCode.maxUses = dto.maxUses;
         if (dto.maxUsesPerUser !== undefined) promoCode.maxUsesPerUser = dto.maxUsesPerUser;
         if (dto.eligibleCities !== undefined) promoCode.eligibleCities = dto.eligibleCities;
+        if (dto.eligibleMatches !== undefined) promoCode.eligibleMatches = dto.eligibleMatches;
         if (dto.firstTimeUsersOnly !== undefined) promoCode.firstTimeUsersOnly = dto.firstTimeUsersOnly;
 
         // Validate date range if updated

@@ -1384,7 +1384,8 @@ export class BookingService {
                                 promo.code,
                                 freshBooking.userId ?? null,
                                 freshBooking.id,
-                                Number(freshBooking.originalAmount)
+                                Number(freshBooking.originalAmount),
+                                freshBooking.matchId
                             );
                         }
                     }

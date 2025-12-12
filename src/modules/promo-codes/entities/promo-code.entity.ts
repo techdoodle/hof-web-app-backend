@@ -53,6 +53,9 @@ export class PromoCode {
     @Column({ name: 'eligible_cities', type: 'jsonb', nullable: true })
     eligibleCities: number[] | null;
 
+    @Column({ name: 'eligible_matches', type: 'jsonb', nullable: true })
+    eligibleMatches: number[] | null;
+
     @Column({ name: 'first_time_users_only', type: 'boolean', default: false })
     firstTimeUsersOnly: boolean;
 
