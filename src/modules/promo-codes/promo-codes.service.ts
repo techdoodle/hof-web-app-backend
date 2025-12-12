@@ -186,7 +186,7 @@ export class PromoCodesService {
                 }
 
                 const matchCityId = match.city?.id;
-                if (matchCityId && promoCode.eligibleCities.includes(matchCityId)) {
+                if (matchCityId && promoCode.eligibleCities && promoCode.eligibleCities.includes(matchCityId)) {
                     cityEligible = true;
                 }
             }
@@ -201,7 +201,7 @@ export class PromoCodesService {
                         message: 'This promo code is only valid for specific matches'
                     };
                 }
-                if (promoCode.eligibleMatches.includes(matchId)) {
+                if (promoCode.eligibleMatches && promoCode.eligibleMatches.includes(matchId)) {
                     matchEligible = true;
                 }
             }
