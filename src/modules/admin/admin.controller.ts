@@ -256,6 +256,13 @@ export class AdminController {
         return this.adminService.getCities(query);
     }
 
+    // Admin Updates (changelog surfaced in admin panel)
+    @Get('updates')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getRecentUpdates() {
+        return this.adminService.getRecentAdminUpdates();
+    }
+
     // Venue Management
     @Get('venues')
     @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN)

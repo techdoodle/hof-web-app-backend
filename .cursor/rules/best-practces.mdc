@@ -1,0 +1,94 @@
+---
+alwaysApply: true
+---
+
+# HUMANS OF FOOTBALL — Backend Engineering Rules
+
+## Language & Framework
+- Use **TypeScript** only (no JS files).
+- Use **Node.js + Express** patterns consistently.
+- Follow **RESTful** API structure with clear resource naming.
+
+## Database + Prisma
+- Always validate Prisma inputs using Zod or built-in DTO validators.
+- Prefer **select** over **include** to reduce overfetching.
+- Add proper indexes for queries used frequently (leaderboards, player lookup).
+- Migrate database schema changes in **small, safe increments**.
+
+## Performance Requirements
+- Avoid N+1 queries — batch or use Prisma `in` queries.
+- Cache frequently requested data whenever possible.
+- Add pagination for all list endpoints (default 25 items).
+
+## Error Handling & Logging
+- Never swallow errors — always return user-friendly messages.
+- Use structured logs with context: user, endpoint, correlation ID.
+- Include HTTP status codes correctly:
+  - 4xx for client errors
+  - 5xx for server/database errors
+
+## Code Structure
+- Keep controllers thin → business logic in **services**.
+- Separate concerns:
+  - `/controllers`
+  - `/services`
+  - `/repositories` → Prisma ops
+  - `/middlewares`
+  - `/utils`
+- Maximum file length: ~250 lines.
+
+## Response Format
+- Always return a wrapped format:
+
+
+## Changelog rules
+
+- **When to update changelogs**
+  - Whenever a change:
+    - Modifies **business logic** (e.g. match status rules, pricing, stats behaviour), or
+    - Changes **database schema / Prisma models**, or
+    - Changes **public/admin-visible behaviour** (new buttons, flows, or labels), or
+    - Introduces or deprecates **API endpoints**.
+  - For such changes, the assistant MUST:
+    - Add an entry to `CHANGELOG.tech.md` in the relevant repo.
+    - Add an entry to `CHANGELOG.admin.md` **if admins will notice or should test the change**.
+
+- **Technical changelog entries (`CHANGELOG.tech.md`)**
+  - Use version + date sections: `## vX.Y.Z (YYYY-MM-DD)`.
+  - Under `### Added / Changed / Fixed`, briefly describe:
+    - What changed.
+    - Key modules/files/endpoints if helpful.
+
+- **Admin changelog entries (`CHANGELOG.admin.md`)**
+  - Use the same version + date as the technical changelog.
+  - Use plain language, no internal jargon.
+  - **Never mention “PlayerNation”**. Always call it **“stats”**, e.g. “stats upload”, “stats processing”, “stats mapping screen”.
+  - Include:
+    - **What changed** (user-visible behaviour).
+    - **How to test** (simple step list for admins).
+
+- **Assistant behaviour**
+  - When proposing a change that meets the above criteria, the assistant SHOULD:
+    - Suggest concrete changelog bullets for both files.
+    - Clearly label which bullets belong in `CHANGELOG.tech.md` and which in `CHANGELOG.admin.md`.
+
+## Versioning & release workflow
+
+- Use semantic-like versions per repo: `vMAJOR.MINOR.PATCH` (e.g. `v1.0.0`, `v1.1.0`, `v1.1.1`).
+- When preparing a change that will be deployed:
+  - If it is a **behaviour / feature change**, bump **MINOR** (e.g. `v1.3.0` → `v1.4.0`).
+  - If it is a **bugfix only**, bump **PATCH** (e.g. `v1.4.0` → `v1.4.1`).
+  - Reserve **MAJOR** bumps for breaking API or product changes.
+- For each deployable change set:
+  - Add or update the matching version section in `CHANGELOG.tech.md` (engineer-facing).
+  - Add or update the same version section in `CHANGELOG.admin.md` if admins should see or test the change.
+- Ownership:
+  - The engineer implementing the change is responsible for updating both changelog files before merging.
+  - Reviewers should treat missing or incomplete changelog entries as a review issue for behaviour-changing PRs.
+
+```jsonc
+{
+  "success": true | false,
+  "message": "Short description",
+  "data": {} // optional
+}

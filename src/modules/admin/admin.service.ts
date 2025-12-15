@@ -21,6 +21,8 @@ import { generateBookingReference } from '../../common/utils/reference.util';
 import { parseGoogleMapsUrl } from '../../common/utils/google-maps.util';
 import * as csv from 'csv-parser';
 import { Readable } from 'stream';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { CreateUserDto, UpdateUserDto, UserFilterDto } from './dto/user.dto';
 import { CreateMatchDto, MatchFilterDto, UpdateMatchDto, CreateRecurringMatchesDto, TimeSlotDto } from './dto/match.dto';
 
@@ -1406,6 +1408,103 @@ export class AdminService {
         });
         const total = await this.cityRepository.count();
         return { data: cities, total: total };
+    }
+
+    /**
+     * Read admin-facing changelog entries (CHANGELOG.admin.md) and return only
+     * entries from the last 7 days for display in the admin panel \"Updates\" tab.
+     */
+    async getRecentAdminUpdates() {
+        try {
+            const changelogPath = path.resolve(process.cwd(), 'CHANGELOG.admin.md');
+            const raw = await fs.readFile(changelogPath, 'utf-8');
+
+            const lines = raw.split(/\r?\n/);
+            const entries: Array<{
+                version: string;
+                date: string;
+                whatChanged: string[];
+                howToTest: string[];
+            }> = [];
+
+            let currentVersion: string | null = null;
+            let currentDate: string | null = null;
+            let inWhatChanged = false;
+            let inHowToTest = false;
+            let bufferWhat: string[] = [];
+            let bufferHow: string[] = [];
+
+            const flushEntry = () => {
+                if (currentVersion && currentDate && (bufferWhat.length || bufferHow.length)) {
+                    entries.push({
+                        version: currentVersion,
+                        date: currentDate,
+                        whatChanged: bufferWhat.slice(),
+                        howToTest: bufferHow.slice(),
+                    });
+                }
+                bufferWhat = [];
+                bufferHow = [];
+                inWhatChanged = false;
+                inHowToTest = false;
+            };
+
+            for (const line of lines) {
+                const versionMatch = line.match(/^##\s+v([0-9]+\.[0-9]+\.[0-9]+)\s+\((\d{4}-\d{2}-\d{2})\)/);
+                if (versionMatch) {
+                    flushEntry();
+                    currentVersion = `v${versionMatch[1]}`;
+                    currentDate = versionMatch[2];
+                    continue;
+                }
+
+                if (/^###\s+What changed/i.test(line)) {
+                    inWhatChanged = true;
+                    inHowToTest = false;
+                    continue;
+                }
+                if (/^###\s+How to test/i.test(line)) {
+                    inWhatChanged = false;
+                    inHowToTest = true;
+                    continue;
+                }
+
+                const bulletMatch = line.match(/^\s*[-*]\s+(.*)$/);
+                if (bulletMatch) {
+                    const text = bulletMatch[1].trim();
+                    if (inWhatChanged) {
+                        bufferWhat.push(text);
+                    } else if (inHowToTest) {
+                        bufferHow.push(text);
+                    }
+                    continue;
+                }
+
+                const stepMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+                if (stepMatch && inHowToTest) {
+                    bufferHow.push(stepMatch[1].trim());
+                }
+            }
+
+            flushEntry();
+
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+            const recent = entries.filter(e => {
+                const d = new Date(e.date);
+                return !Number.isNaN(d.getTime()) && d >= oneWeekAgo;
+            });
+
+            return {
+                success: true,
+                message: 'Recent admin updates',
+                data: recent,
+            };
+        } catch (error) {
+            this.logger.error('Failed to read admin changelog for updates', error as any);
+            throw new BadRequestException('Failed to read admin updates');
+        }
     }
 
     async getChiefs() {
