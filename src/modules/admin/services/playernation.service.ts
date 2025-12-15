@@ -593,15 +593,31 @@ export class PlayerNationService {
       }
     }
 
-    // Update match status based on whether we processed any stats
+    // Update match PlayerNation status & overall match status based on whether we processed any stats
     if (processed > 0) {
-      await this.matchRepository.update({ matchId }, { playernationStatus: 'IMPORTED' });
-      // Update match status to STATS_UPDATED for recorded matches
+      // Check if any players are still unmapped AFTER ingesting stats for matched players
+      const remainingUnmapped = await this.mappingRepository.count({
+        where: { matchId, status: PlayerMappingStatus.UNMATCHED },
+      });
+
+      if (remainingUnmapped > 0) {
+        // Partial ingestion only – keep status as SUCCESS_WITH_UNMATCHED
+        // so that calculateMatchStatus() continues to return SS_MAPPING_PENDING
+        await this.matchRepository.update(
+          { matchId },
+          { playernationStatus: 'SUCCESS_WITH_UNMATCHED' },
+        );
+      } else {
+        // All players mapped & ingested – mark as IMPORTED to move to STATS_UPDATED
+        await this.matchRepository.update({ matchId }, { playernationStatus: 'IMPORTED' });
+      }
+
+      // Recalculate match.status from playernationStatus
       await this.matchesService.updateMatchStatusIfNeeded(matchId);
     } else {
       await this.matchRepository.update({ matchId }, { playernationStatus: 'POLL_SUCCESS_MAPPING_FAILED' });
     }
-    
+
     const expected = internalIdToExternalIds.size;
     return { processed, expected };
   }
