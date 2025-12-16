@@ -1,3 +1,19 @@
+## v1.1.0 (2025-01-20)
+
+### Added
+- Match ticketing system for admin users to report and track issues:
+  - New `tickets` table with fields: `id`, `match_id`, `created_by_admin_id`, `assigned_to_admin_id`, `title`, `description`, `resolution_notes`, `status`, `priority`, `created_at`, `updated_at`.
+  - `Ticket` entity (`src/modules/admin/entities/ticket.entity.ts`) with TypeORM mappings and relations to `Match` and `User`.
+  - Database migration `1764311000000-CreateTicketsTable.ts` creates the `tickets` table with foreign keys and indexes.
+  - `TicketsService` (`src/modules/admin/services/tickets.service.ts`) handles ticket creation, listing with filters/pagination, retrieval, and updates.
+  - `CreateTicketDto` and `UpdateTicketDto` (`src/modules/admin/dto/ticket.dto.ts`) with class-validator decorators.
+  - REST endpoints in `AdminController`:
+    - `POST /admin/matches/:matchId/tickets` – create ticket for a match
+    - `GET /admin/tickets` – list tickets with filters (status, priority, matchId, createdBy) and pagination
+    - `GET /admin/tickets/:id` – get ticket by ID
+    - `PATCH /admin/tickets/:id` – update ticket (status, priority, resolutionNotes, assignedToAdminId)
+  - All ticket endpoints require `ADMIN` or `SUPER_ADMIN` role.
+
 ## v1.0.0 (2025-12-15)
 
 ### Added
