@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query, UploadedFile, UseInterceptors, ParseIntPipe, Res } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query, UploadedFile, UseInterceptors, ParseIntPipe, Res, Req } from '@nestjs/common';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -19,6 +19,8 @@ import { AccountingService } from './services/accounting.service';
 import { PlayerNationCostService } from './services/playernation-cost.service';
 import { FootballChiefLeaderboardService } from './services/football-chief-leaderboard.service';
 import { AnalyticsService } from './services/analytics.service';
+import { TicketsService } from './services/tickets.service';
+import { CreateTicketDto, UpdateTicketDto } from './dto/ticket.dto';
 
 @Controller('admin')
 @SkipThrottle()
@@ -33,6 +35,7 @@ export class AdminController {
         private readonly playerNationCostService: PlayerNationCostService,
         private readonly footballChiefLeaderboardService: FootballChiefLeaderboardService,
         private readonly analyticsService: AnalyticsService,
+        private readonly ticketsService: TicketsService,
     ) { }
 
     // User Management - Admin and Super Admin only
@@ -732,5 +735,50 @@ export class AdminController {
     @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
     async getDashboardStats() {
         return this.adminService.getDashboardStats();
+    }
+
+    // Match tickets - admin-only
+    @Post('matches/:matchId/tickets')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async createMatchTicket(
+        @Param('matchId', ParseIntPipe) matchId: number,
+        @Body() dto: CreateTicketDto,
+        @Req() req: any,
+    ) {
+        const adminId = req.user?.id;
+        const ticket = await this.ticketsService.createForMatch(matchId, dto, adminId);
+        return ticket;
+    }
+
+    @Get('tickets')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getTickets(@Query() raw: any) {
+        const { page = 1, limit = 25, status, matchId, priority, createdBy } = raw;
+        const result = await this.ticketsService.list({
+            page: Number(page),
+            limit: Number(limit),
+            status,
+            matchId: matchId ? Number(matchId) : undefined,
+            priority,
+            createdByAdminId: createdBy ? Number(createdBy) : undefined,
+        });
+        return result;
+    }
+
+    @Get('tickets/:id')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async getTicket(@Param('id', ParseIntPipe) id: number) {
+        const ticket = await this.ticketsService.findById(id);
+        return { data: ticket };
+    }
+
+    @Patch('tickets/:id')
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    async updateTicket(
+        @Param('id', ParseIntPipe) id: number,
+        @Body() dto: UpdateTicketDto,
+    ) {
+        const ticket = await this.ticketsService.update(id, dto);
+        return { data: ticket };
     }
 }
