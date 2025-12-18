@@ -69,12 +69,15 @@ export class TicketsService {
       where.createdByAdminId = params.createdByAdminId;
     }
 
-    const [items, total] = await this.ticketRepository.findAndCount({
-      where,
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const qb = this.ticketRepository
+      .createQueryBuilder('ticket')
+      .leftJoinAndSelect('ticket.createdByAdmin', 'createdByAdmin')
+      .where(where)
+      .orderBy('ticket.created_at', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
 
     return { data: items, total, page, limit };
   }
