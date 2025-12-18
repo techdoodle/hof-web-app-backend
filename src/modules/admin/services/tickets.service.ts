@@ -71,6 +71,9 @@ export class TicketsService {
 
     const [items, total] = await this.ticketRepository.findAndCount({
       where,
+      relations: {
+        createdByAdmin: true,
+      },
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
