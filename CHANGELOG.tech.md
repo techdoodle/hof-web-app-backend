@@ -1,3 +1,17 @@
+## v1.2.0 (2025-01-21)
+
+### Added
+- Promo code user restriction feature:
+  - New `promo_code_allowed_users` join table to restrict promo codes to specific users.
+  - `PromoCodeAllowedUser` entity (`src/modules/promo-codes/entities/promo-code-allowed-user.entity.ts`) with TypeORM mappings and relations to `PromoCode` and `User`.
+  - Database migration `1764312000000-CreatePromoCodeAllowedUsersTable.ts` creates the join table with foreign keys and composite unique index.
+  - Updated `CreatePromoCodeDto` and `UpdatePromoCodeDto` to accept optional `allowedUserIds` array.
+  - `PromoCodesService` now handles allowed users on create/update and enforces user restrictions during validation:
+    - If a promo code has allowed users configured, only those users can redeem it.
+    - If no allowed users are configured, the promo code behaves as before (no user restriction).
+  - Updated `validatePromoCode` method to check user eligibility before other validations.
+  - Promo code endpoints now return `allowedUsers` relation when fetching promo codes.
+
 ## v1.1.0 (2025-01-20)
 
 ### Added

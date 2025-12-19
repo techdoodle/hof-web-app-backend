@@ -4,12 +4,13 @@ import { PromoCodesController, PromoCodesAdminController } from './promo-codes.c
 import { PromoCodesService } from './promo-codes.service';
 import { PromoCode } from './entities/promo-code.entity';
 import { PromoCodeUsage } from './entities/promo-code-usage.entity';
+import { PromoCodeAllowedUser } from './entities/promo-code-allowed-user.entity';
 import { BookingEntity } from '../booking/booking.entity';
 import { Match } from '../matches/matches.entity';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([PromoCode, PromoCodeUsage, BookingEntity, Match])
+        TypeOrmModule.forFeature([PromoCode, PromoCodeUsage, PromoCodeAllowedUser, BookingEntity, Match])
     ],
     controllers: [PromoCodesController, PromoCodesAdminController],
     providers: [PromoCodesService],

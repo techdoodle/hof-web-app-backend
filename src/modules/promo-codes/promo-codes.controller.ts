@@ -7,17 +7,16 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
-import { Public } from '../../common/decorators/public.decorator';
 
 @Controller('promo-codes')
+@UseGuards(JwtAuthGuard)
 export class PromoCodesController {
     constructor(private readonly promoCodesService: PromoCodesService) { }
 
     @Post('validate')
-    @Public()
     @HttpCode(HttpStatus.OK)
     async validatePromoCode(@Body() dto: ValidatePromoCodeDto, @Req() req: any) {
-        // Extract user from token if available (optional for public endpoint)
+        // Extract user from token if available
         const userId = req.user?.userId || null;
         const cityId = req.user?.city?.id || null;
 

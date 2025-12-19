@@ -75,5 +75,11 @@ export class UpdatePromoCodeDto {
     @IsBoolean()
     @Type(() => Boolean)
     firstTimeUsersOnly?: boolean;
+
+    @IsOptional()
+    @IsArray()
+    @IsNumber({}, { each: true })
+    @Type(() => Number)
+    allowedUserIds?: number[];
 }
 
