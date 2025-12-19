@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Connection } from 'typeorm';
 import { PromoCode } from './entities/promo-code.entity';
 import { PromoCodeUsage } from './entities/promo-code-usage.entity';
+import { PromoCodeAllowedUser } from './entities/promo-code-allowed-user.entity';
 import { CreatePromoCodeDto } from './dto/create-promo-code.dto';
 import { UpdatePromoCodeDto } from './dto/update-promo-code.dto';
 import { DiscountType } from '../../common/enums/discount-type.enum';
@@ -34,6 +35,8 @@ export class PromoCodesService {
         private promoCodeRepository: Repository<PromoCode>,
         @InjectRepository(PromoCodeUsage)
         private promoCodeUsageRepository: Repository<PromoCodeUsage>,
+        @InjectRepository(PromoCodeAllowedUser)
+        private promoCodeAllowedUserRepository: Repository<PromoCodeAllowedUser>,
         @InjectRepository(BookingEntity)
         private bookingRepository: Repository<BookingEntity>,
         @InjectRepository(Match)
@@ -53,9 +56,10 @@ export class PromoCodesService {
         // Normalize code to uppercase
         const normalizedCode = code.toUpperCase().trim();
 
-        // Find promo code
+        // Find promo code with allowed users
         const promoCode = await this.promoCodeRepository.findOne({
-            where: { code: normalizedCode }
+            where: { code: normalizedCode },
+            relations: ['allowedUsers']
         });
 
         if (!promoCode) {
@@ -122,6 +126,31 @@ export class PromoCodesService {
                     discountAmount: 0,
                     finalAmount: bookingAmount,
                     message: 'You have already used this code'
+                };
+            }
+        }
+
+        // Check if promo code is restricted to specific users
+        if (promoCode.allowedUsers && promoCode.allowedUsers.length > 0) {
+            if (!userId) {
+                return {
+                    valid: false,
+                    discountAmount: 0,
+                    finalAmount: bookingAmount,
+                    message: 'This promo code is only available to specific users. Please log in to use it.'
+                };
+            }
+
+            const isUserAllowed = promoCode.allowedUsers.some(
+                allowedUser => allowedUser.userId === userId
+            );
+
+            if (!isUserAllowed) {
+                return {
+                    valid: false,
+                    discountAmount: 0,
+                    finalAmount: bookingAmount,
+                    message: 'This promo code is not available for your account'
                 };
             }
         }
@@ -329,7 +358,7 @@ export class PromoCodesService {
     async getPromoCodeById(id: number): Promise<PromoCode | null> {
         return this.promoCodeRepository.findOne({
             where: { id },
-            relations: ['createdBy']
+            relations: ['createdBy', 'allowedUsers', 'allowedUsers.user']
         });
     }
 
@@ -345,6 +374,8 @@ export class PromoCodesService {
         const queryBuilder = this.promoCodeRepository
             .createQueryBuilder('promo_code')
             .leftJoinAndSelect('promo_code.createdBy', 'createdBy')
+            .leftJoinAndSelect('promo_code.allowedUsers', 'allowedUsers')
+            .leftJoinAndSelect('allowedUsers.user', 'allowedUser')
             .orderBy('promo_code.createdAt', 'DESC');
 
         if (filters?.isActive !== undefined) {
@@ -407,7 +438,32 @@ export class PromoCodesService {
             createdById: createdById
         });
 
-        return this.promoCodeRepository.save(promoCode);
+        const savedPromoCode = await this.promoCodeRepository.save(promoCode);
+
+        // Handle allowed users if provided
+        if (dto.allowedUserIds && dto.allowedUserIds.length > 0) {
+            // Remove any existing allowed users
+            await this.promoCodeAllowedUserRepository.delete({
+                promoCodeId: savedPromoCode.id
+            });
+
+            // Create new allowed user entries
+            const allowedUsers = dto.allowedUserIds.map(userId => 
+                this.promoCodeAllowedUserRepository.create({
+                    promoCodeId: savedPromoCode.id,
+                    userId: userId
+                })
+            );
+
+            await this.promoCodeAllowedUserRepository.save(allowedUsers);
+        }
+
+        // Reload with relations
+        const reloaded = await this.getPromoCodeById(savedPromoCode.id);
+        if (!reloaded) {
+            throw new NotFoundException('Failed to reload promo code after creation');
+        }
+        return reloaded;
     }
 
     async updatePromoCode(id: number, dto: UpdatePromoCodeDto): Promise<PromoCode> {
@@ -465,7 +521,34 @@ export class PromoCodesService {
             throw new BadRequestException('Discount value must be greater than 0');
         }
 
-        return this.promoCodeRepository.save(promoCode);
+        const savedPromoCode = await this.promoCodeRepository.save(promoCode);
+
+        // Handle allowed users if provided
+        if (dto.allowedUserIds !== undefined) {
+            // Remove any existing allowed users
+            await this.promoCodeAllowedUserRepository.delete({
+                promoCodeId: savedPromoCode.id
+            });
+
+            // Create new allowed user entries if array is not empty
+            if (dto.allowedUserIds.length > 0) {
+                const allowedUsers = dto.allowedUserIds.map(userId => 
+                    this.promoCodeAllowedUserRepository.create({
+                        promoCodeId: savedPromoCode.id,
+                        userId: userId
+                    })
+                );
+
+                await this.promoCodeAllowedUserRepository.save(allowedUsers);
+            }
+        }
+
+        // Reload with relations
+        const reloaded = await this.getPromoCodeById(savedPromoCode.id);
+        if (!reloaded) {
+            throw new NotFoundException('Failed to reload promo code after update');
+        }
+        return reloaded;
     }
 
     async deletePromoCode(id: number): Promise<void> {

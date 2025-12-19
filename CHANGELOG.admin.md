@@ -1,3 +1,22 @@
+## v1.2.0 (2025-01-21)
+
+### What changed
+- Promo codes can now be restricted to specific users:
+  - When creating or editing a promo code, you can select which users are allowed to use it.
+  - If you don't select any users, the promo code works for everyone (subject to other restrictions like cities, matches, first-time users, etc.).
+  - If you select specific users, only those users can redeem the promo code.
+  - The promo code detail page shows which users are allowed to use it.
+
+### How to test
+1. Go to **Promo Codes** → click **Create**.
+2. Fill in the basic promo code details (code, discount, dates, etc.).
+3. Scroll to the **Eligibility Rules** section.
+4. In the **Allowed Users** field, search for and select one or more users.
+5. Save the promo code.
+6. Open the promo code detail page (click **Show**) and verify the selected users are displayed.
+7. Try to validate the promo code with a user who is NOT in the allowed list (should fail with "This promo code is not available for your account").
+8. Try to validate the promo code with a user who IS in the allowed list (should work if other conditions are met).
+
 ## v1.1.0 (2025-01-20)
 
 ### What changed

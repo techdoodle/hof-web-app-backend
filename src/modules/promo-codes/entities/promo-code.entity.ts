@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateCol
 import { DiscountType } from '../../../common/enums/discount-type.enum';
 import { User } from '../../user/user.entity';
 import { PromoCodeUsage } from './promo-code-usage.entity';
+import { PromoCodeAllowedUser } from './promo-code-allowed-user.entity';
 
 @Entity('promo_codes')
 @Index(['code'], { unique: true })
@@ -74,5 +75,8 @@ export class PromoCode {
 
     @OneToMany(() => PromoCodeUsage, usage => usage.promoCode)
     usages: PromoCodeUsage[];
+
+    @OneToMany(() => PromoCodeAllowedUser, allowedUser => allowedUser.promoCode)
+    allowedUsers: PromoCodeAllowedUser[];
 }
 
