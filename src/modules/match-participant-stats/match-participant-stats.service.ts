@@ -493,17 +493,17 @@ export class MatchParticipantStatsService {
         'COUNT(*) as matchesPlayed',
         'player.playerCategory as playerCategory',
         // Compact-only aggregates
-        'AVG(COALESCE(stats.shotAccuracy, 0)) as avgShotAccuracy',
-        'SUM(COALESCE(stats.totalShot, 0)) as totalShots',
-        'AVG(COALESCE(stats.totalPassingAccuracy, 0)) as avgPassingAccuracy',
-        'SUM(COALESCE(stats.totalPass, 0)) as totalPasses',
-        'SUM(COALESCE(stats.totalKeyPass, 0)) as totalKeyPasses',
-        'SUM(COALESCE(stats.totalTackles, 0)) as totalTackles',
-        'SUM(COALESCE(stats.totalInterceptions, 0)) as totalInterceptions',
-        'SUM(COALESCE(stats.totalGoal, 0)) as totalGoals',
-        'SUM(COALESCE(stats.totalAssist, 0)) as totalAssists',
-        'SUM(CASE WHEN stats.isMvp = true THEN 1 ELSE 0 END) as totalMvpWins',
-        'SUM(COALESCE(stats.totalSave, 0)) as totalSave',
+        'AVG(COALESCE(stats.shot_accuracy, 0)) as avgShotAccuracy',
+        'SUM(COALESCE(stats.total_shot, 0)) as totalShots',
+        'AVG(COALESCE(stats.total_passing_accuracy, 0)) as avgPassingAccuracy',
+        'SUM(COALESCE(stats.total_pass, 0)) as totalPasses',
+        'SUM(COALESCE(stats.total_key_pass, 0)) as totalKeyPasses',
+        'SUM(COALESCE(stats.total_tackles, 0)) as totalTackles',
+        'SUM(COALESCE(stats.total_interceptions, 0)) as totalInterceptions',
+        'SUM(COALESCE(stats.total_goal, 0)) as totalGoals',
+        'SUM(COALESCE(stats.total_assist, 0)) as totalAssists',
+        'SUM(CASE WHEN stats.is_mvp = true THEN 1 ELSE 0 END) as totalMvpWins',
+        'SUM(COALESCE(stats.total_save, 0)) as totalSave',
       ])
       .where('stats.player.id = :playerId', { playerId })
       .groupBy('player.playerCategory')
@@ -514,37 +514,40 @@ export class MatchParticipantStatsService {
 
     const shotAccuracy = (parseFloat(rawStats?.avgshotaccuracy) || 0) * 100;
     const totalShots = parseInt(rawStats?.totalshots) || 0;
-    const shotsPerMatch = totalShots / matchesPlayed || 0;
+    const shotsPerMatch = matchesPlayed > 0 ? totalShots / matchesPlayed : 0;
 
     const overallPassingAccuracy = (parseFloat(rawStats?.avgpassingaccuracy) || 0) * 100;
 
     const totalTackles = parseInt(rawStats?.totaltackles) || 0;
-    const tacklesPerMatch = totalTackles / matchesPlayed || 0;
-    const totalInterceptionsVal = parseInt(rawStats?.totalinterceptions) || 0;
-    const interceptionsPerMatch = totalInterceptionsVal / matchesPlayed || 0;
+    const tacklesPerMatch = matchesPlayed > 0 ? totalTackles / matchesPlayed : 0;
+    const totalInterceptions = parseInt(rawStats?.totalinterceptions) || 0;
+    const interceptionsPerMatch = matchesPlayed > 0 ? totalInterceptions / matchesPlayed : 0;
 
     const totalGoals = parseInt(rawStats?.totalgoals) || 0;
     const totalAssists = parseInt(rawStats?.totalassists) || 0;
     const totalMvpWins = parseInt(rawStats?.totalmvpwins) || 0;
-    const totalSteals = parseInt(rawStats?.totalsteals) || 0;
-    const impactPerMatch = (totalGoals + totalAssists) / matchesPlayed || 0;
+    const impactPerMatch = matchesPlayed > 0 ? (totalGoals + totalAssists) / matchesPlayed : 0;
 
     const totalKeyPasses = parseInt(rawStats?.totalkeypasses) || 0;
     const totalPasses = parseInt(rawStats?.totalpasses) || 0;
     const totalSave = parseInt(rawStats?.totalsave) || 0;
+
+    // Calculate per-match averages for all stats
+    const goalsPerMatch = matchesPlayed > 0 ? totalGoals / matchesPlayed : 0;
+    const assistsPerMatch = matchesPlayed > 0 ? totalAssists / matchesPlayed : 0;
+    const keyPassesPerMatch = matchesPlayed > 0 ? totalKeyPasses / matchesPlayed : 0;
+    const passesPerMatch = matchesPlayed > 0 ? totalPasses / matchesPlayed : 0;
+    const savesPerMatch = matchesPlayed > 0 ? totalSave / matchesPlayed : 0;
 
     const shootingScore = Math.min(100, (shotAccuracy * 0.8) + (Math.min(shotsPerMatch * 4, 20) * 0.2));
     const passingScore = overallPassingAccuracy;
     const defTackles = Math.min(tacklesPerMatch * 20, 60);
     const defInterceptions = Math.min(interceptionsPerMatch * 20, 40);
     const tacklingScore = Math.min(100, defTackles + defInterceptions);
+
     // Position-based impact using compact stats only (per-match averages)
     const matches = matchesPlayed || 1;
-    const goalsPerMatch = totalGoals / matches;
-    const assistsPerMatch = totalAssists / matches;
-    const gnaPerMatch = (totalGoals + totalAssists) / matches;
-    const keyPassesPerMatch = totalKeyPasses / matches;
-    const savesPerMatch = totalSave / matches;
+    const gnaPerMatch = matches > 0 ? (totalGoals + totalAssists) / matches : 0;
 
     // Attack/Mid components
     const atk_gna = Math.min(100, (gnaPerMatch / 2.0) * 100);
@@ -596,7 +599,7 @@ export class MatchParticipantStatsService {
         case PlayerCategory.DEFENDER:
           return {
             ...commonStats,
-            totalInterceptions: totalInterceptionsVal,
+            totalInterceptions: totalInterceptions,
             totalTackles: totalTackles,
           };
         case PlayerCategory.STRIKER:
@@ -636,18 +639,26 @@ export class MatchParticipantStatsService {
         passing: {
           overallAccuracy: Math.round(overallPassingAccuracy * 100) / 100,
           totalPasses,
+          passesPerMatch: Math.round(passesPerMatch * 100) / 100,
+          totalKeyPasses: totalKeyPasses,
+          keyPassesPerMatch: Math.round(keyPassesPerMatch * 100) / 100,
         },
         tackling: {
           totalTackles: totalTackles,
-          interceptions: totalInterceptionsVal,
+          interceptions: totalInterceptions,
+          tacklesPerMatch: Math.round(tacklesPerMatch * 100) / 100,
+          interceptionsPerMatch: Math.round(interceptionsPerMatch * 100) / 100,
         },
         goalkeeping: {
           totalSave,
+          savesPerMatch: Math.round(savesPerMatch * 100) / 100,
         },
         impact: {
           goalsAndAssistsPerMatch: Math.round(impactPerMatch * 100) / 100,
           totalGoals,
           totalAssists,
+          goalsPerMatch: Math.round(goalsPerMatch * 100) / 100,
+          assistsPerMatch: Math.round(assistsPerMatch * 100) / 100,
           totalKeyPass: totalKeyPasses,
         },
       } : {},
