@@ -3,12 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { MatchParticipantStats } from './match-participant-stats.entity';
 import { PlayerCategory } from '../../common/enums/player-category.enum';
+import { MatchParticipant } from '../match-participants/match-participants.entity';
 
 @Injectable()
 export class MatchParticipantStatsService {
   constructor(
     @InjectRepository(MatchParticipantStats)
     private readonly matchParticipantStatsRepository: Repository<MatchParticipantStats>,
+    @InjectRepository(MatchParticipant)
+    private readonly matchParticipantRepository: Repository<MatchParticipant>,
   ) { }
 
   // Compact-stats-only XP calculators with updated weights
@@ -139,11 +142,54 @@ export class MatchParticipantStatsService {
         player: { id: userId },
         match: { matchId }
       },
-      relations: ['match', 'match.venue', 'player', 'matchParticipant'],
+      relations: ['match', 'match.venue', 'match.city', 'match.matchTypeRef', 'player', 'matchParticipant'],
     });
 
+    // If stats don't exist yet (e.g. PlayerNation hasn't returned them),
+    // but the user is a participant in the match, return a lightweight
+    // response with match metadata so the frontend can show the correct
+    // status messaging instead of erroring.
     if (!stats) {
-      throw new NotFoundException(`Stats not found for user ${userId} in match ${matchId}`);
+      const matchParticipant = await this.matchParticipantRepository.findOne({
+        where: {
+          user: { id: userId },
+          match: { matchId },
+        },
+        relations: ['match', 'match.venue', 'match.city', 'match.matchTypeRef', 'user'],
+      });
+
+      // If the user is not even a participant, keep the original 404 behaviour
+      if (!matchParticipant) {
+        throw new NotFoundException(`Stats not found for user ${userId} in match ${matchId}`);
+      }
+
+      const match = matchParticipant.match;
+      const player = matchParticipant.user;
+
+      return {
+        playerId: player.id,
+        matchId: match.matchId,
+        playerCategory: player.playerCategory || null,
+        playerHighlights: matchParticipant.playerHighlights || null,
+        match: {
+          id: match.matchId,
+          venue: match.venue?.name || null,
+          venueCity: match.city?.cityName || null,
+          startTime: match.startTime || null,
+          endTime: match.endTime || null,
+          status: match.status || null,
+          statsReceived: match.statsReceived ?? false,
+          matchType: match.matchType || null,
+          matchTypeRef: match.matchTypeRef || null,
+          matchHighlights: match.matchHighlights || null,
+          matchRecap: match.matchRecap || null,
+        },
+        myTeam: [],
+        opponentTeam: [],
+        spiderChart: null,
+        categorySpecificStats: null,
+        detailedStats: null,
+      };
     }
 
     const playerCategory = stats.player?.playerCategory || null;
@@ -280,7 +326,13 @@ export class MatchParticipantStatsService {
       match: {
         id: stats.match?.matchId,
         venue: stats.match?.venue?.name || null,
+        venueCity: stats.match?.city?.cityName || null,
         startTime: stats.match?.startTime || null,
+        endTime: stats.match?.endTime || null,
+        status: stats.match?.status || null,
+        statsReceived: stats.match?.statsReceived || false,
+        matchType: stats.match?.matchType || null,
+        matchTypeRef: stats.match?.matchTypeRef || null,
         matchHighlights: stats.match?.matchHighlights || null,
         matchRecap: stats.match?.matchRecap || null,
       },
