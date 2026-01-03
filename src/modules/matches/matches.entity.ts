@@ -64,6 +64,10 @@ export class Match {
   @JoinColumn({ name: 'football_chief' })
   footballChief: User;
 
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'vendor' })
+  vendor: User;
+
   @ManyToOne(() => City, { nullable: true })
   @JoinColumn({ name: 'city' })
   city: City;
