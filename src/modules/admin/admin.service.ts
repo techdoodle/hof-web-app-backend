@@ -25,6 +25,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { CreateUserDto, UpdateUserDto, UserFilterDto } from './dto/user.dto';
 import { CreateMatchDto, MatchFilterDto, UpdateMatchDto, CreateRecurringMatchesDto, TimeSlotDto } from './dto/match.dto';
+import { UserRole } from '../../common/enums/user-role.enum';
 
 @Injectable()
 export class AdminService {
@@ -169,7 +170,7 @@ export class AdminService {
     }
 
     // Match Management
-    async getAllMatches(filters: MatchFilterDto) {
+    async getAllMatches(filters: MatchFilterDto, userId?: number, userRole?: string) {
         // Optimize: Use leftJoin with addSelect to only load necessary fields
         // This reduces data transfer compared to leftJoinAndSelect which loads all fields
         // Note: Using leftJoinAndSelect for matchTypeRef as it's a small entity and addSelect has issues with relation aliases
@@ -177,6 +178,7 @@ export class AdminService {
             .leftJoin('match.venue', 'venue')
             .leftJoin('venue.city', 'city')
             .leftJoin('match.footballChief', 'footballChief')
+            .leftJoin('match.vendor', 'vendor')
             .leftJoinAndSelect('match.matchTypeRef', 'matchTypeRef')
             .addSelect([
                 'venue.id',
@@ -185,8 +187,14 @@ export class AdminService {
                 'city.cityName',
                 'footballChief.id',
                 'footballChief.firstName',
-                'footballChief.lastName'
+                'footballChief.lastName',
+                'vendor.id'
             ]);
+
+        // Filter by vendor if user is a vendor
+        if (userRole === UserRole.VENDOR && userId) {
+            queryBuilder.andWhere('vendor.id = :vendorId', { vendorId: userId });
+        }
 
         if (filters.search) {
             queryBuilder.where('match.name ILIKE :search', { search: `%${filters.search}%` });
@@ -291,7 +299,7 @@ export class AdminService {
         }
     }
 
-    async createMatch(createMatchDto: CreateMatchDto) {
+    async createMatch(createMatchDto: CreateMatchDto, vendorId?: number) {
         let cityId = createMatchDto.city;
 
         // If venue is provided but city is not, get city from venue
@@ -347,7 +355,8 @@ export class AdminService {
             footballChief: { id: createMatchDto.footballChief },
             venue: createMatchDto.venue ? { id: createMatchDto.venue } : null,
             city: cityId ? { id: cityId } : null,
-            matchTypeRef: matchType
+            matchTypeRef: matchType,
+            vendor: vendorId ? { id: vendorId } : null
         } as any);
         const savedMatch = await this.matchRepository.save(match) as unknown as Match;
         return { ...savedMatch, id: savedMatch.matchId };
@@ -405,7 +414,7 @@ export class AdminService {
     /**
      * Create multiple matches based on recurring pattern
      */
-    async createRecurringMatches(dto: CreateRecurringMatchesDto): Promise<{ created: number; matches: any[]; errors: string[] }> {
+    async createRecurringMatches(dto: CreateRecurringMatchesDto, vendorId?: number): Promise<{ created: number; matches: any[]; errors: string[] }> {
         // Validate date range
         const startDate = new Date(dto.startDate);
         const endDate = new Date(dto.endDate);
@@ -486,7 +495,7 @@ export class AdminService {
                     };
 
                     // Create match using existing logic
-                    const match = await this.createMatch(createMatchDto);
+                    const match = await this.createMatch(createMatchDto, vendorId);
                     createdMatches.push(match);
                     createdCount++;
                 } catch (error: any) {
@@ -506,13 +515,23 @@ export class AdminService {
         };
     }
 
-    async updateMatch(id: number, updateMatchDto: UpdateMatchDto) {
+    async updateMatch(id: number, updateMatchDto: UpdateMatchDto, userId?: number, userRole?: string) {
         try {
             console.log('updateMatch called with:', { id, updateMatchDto });
 
-            const match = await this.matchRepository.findOne({ where: { matchId: id } });
+            const match = await this.matchRepository.findOne({ 
+                where: { matchId: id },
+                relations: ['vendor']
+            });
             if (!match) {
                 throw new NotFoundException(`Match with ID ${id} not found`);
+            }
+
+            // If user is a vendor, verify they own this match
+            if (userRole === UserRole.VENDOR && userId) {
+                if (!match.vendor || match.vendor.id !== userId) {
+                    throw new NotFoundException(`Match with ID ${id} not found`);
+                }
             }
 
             if (updateMatchDto.venue && !updateMatchDto.city) {
@@ -699,14 +718,21 @@ export class AdminService {
         }
     }
 
-    async getMatch(id: number) {
+    async getMatch(id: number, userId?: number, userRole?: string) {
         const match = await this.matchRepository.findOne({
             where: { matchId: id },
-            relations: ['venue', 'venue.city', 'footballChief', 'matchTypeRef']
+            relations: ['venue', 'venue.city', 'footballChief', 'matchTypeRef', 'vendor']
         });
 
         if (!match) {
             throw new NotFoundException(`Match with ID ${id} not found`);
+        }
+
+        // If user is a vendor, verify they own this match
+        if (userRole === UserRole.VENDOR && userId) {
+            if (!match.vendor || match.vendor.id !== userId) {
+                throw new NotFoundException(`Match with ID ${id} not found`);
+            }
         }
 
         return {

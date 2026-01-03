@@ -96,10 +96,10 @@ export class AdminController {
         return this.adminService.deleteUser(id);
     }
 
-    // Match Management - Football Chief, Academy Admin, Admin, Super Admin
+    // Match Management - Football Chief, Academy Admin, Admin, Super Admin, Vendor
     @Get('matches')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async getAllMatches(@Query() raw: any) {
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
+    async getAllMatches(@Query() raw: any, @Req() req: any) {
         // React Admin passes filters under a `filter` query param (JSON string)
         let filters: any = { ...raw };
         if (raw && typeof raw.filter === 'string') {
@@ -139,34 +139,51 @@ export class AdminController {
         if (filters.city === null || filters.city === undefined || Number.isNaN(filters.city)) delete filters.city;
         if (filters.footballChief === null || filters.footballChief === undefined || Number.isNaN(filters.footballChief)) delete filters.footballChief;
 
-        return this.adminService.getAllMatches(filters as MatchFilterDto);
+        // Extract user info for vendor filtering
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+
+        return this.adminService.getAllMatches(filters as MatchFilterDto, userId, userRole);
     }
 
     @Get('matches/:id')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async getMatch(@Param('id', ParseIntPipe) id: number) {
-        return this.adminService.getMatch(id);
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
+    async getMatch(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.getMatch(id, userId, userRole);
     }
 
     @Post('matches')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async createMatch(@Body() createMatchDto: CreateMatchDto) {
-        return this.adminService.createMatch(createMatchDto);
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
+    async createMatch(@Body() createMatchDto: CreateMatchDto, @Req() req: any) {
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        // If user is vendor, set vendorId; otherwise use existing logic
+        const vendorId = userRole === UserRole.VENDOR ? userId : undefined;
+        return this.adminService.createMatch(createMatchDto, vendorId);
     }
 
     @Post('matches/recurring')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async createRecurringMatches(@Body() dto: CreateRecurringMatchesDto) {
-        return this.adminService.createRecurringMatches(dto);
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
+    async createRecurringMatches(@Body() dto: CreateRecurringMatchesDto, @Req() req: any) {
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        // If user is vendor, set vendorId; otherwise use existing logic
+        const vendorId = userRole === UserRole.VENDOR ? userId : undefined;
+        return this.adminService.createRecurringMatches(dto, vendorId);
     }
 
     @Patch('matches/:id')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     async updateMatch(
         @Param('id', ParseIntPipe) id: number,
-        @Body() updateMatchDto: UpdateMatchDto
+        @Body() updateMatchDto: UpdateMatchDto,
+        @Req() req: any
     ) {
-        return this.adminService.updateMatch(id, updateMatchDto);
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.updateMatch(id, updateMatchDto, userId, userRole);
     }
 
     @Get('matches/:id/cancel-preview')
