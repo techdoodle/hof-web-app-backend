@@ -211,27 +211,16 @@ export class AdminService {
             queryBuilder.andWhere('match.status != :statusNot', { statusNot: filters.statusNot });
         }
 
-        // Backward compatible filters
+        // Unified date range filtering (removed duplicate logic)
         // Accept dateFrom/dateTo (primary) and also startDate/startTime, endDate/endTime (back-compat)
-        const startLower = (filters as any).dateFrom || (filters as any).startDate || (filters as any).startTime;
-        const endUpper = (filters as any).dateTo || (filters as any).endDate || (filters as any).endTime;
-        if (startLower) {
-            queryBuilder.andWhere('match.start_time >= :startLower', { startLower });
-            console.log('[AdminService] Applied startLower filter on start_time >=', startLower);
+        const dateFrom = filters.dateFrom || (filters as any).startDate || (filters as any).startTime;
+        const dateTo = filters.dateTo || (filters as any).endDate || (filters as any).endTime;
+        
+        if (dateFrom) {
+            queryBuilder.andWhere('match.start_time >= :dateFrom', { dateFrom });
         }
-        if (endUpper) {
-            queryBuilder.andWhere('match.start_time <= :endUpper', { endUpper });
-            // console.log('[AdminService] Applied endUpper filter on start_time <=', endUpper);
-        }
-
-        // (logs removed)
-
-        // New generic date range filters
-        if (filters.dateFrom) {
-            queryBuilder.andWhere('match.start_time >= :dateFrom', { dateFrom: filters.dateFrom });
-        }
-        if (filters.dateTo) {
-            queryBuilder.andWhere('match.start_time <= :dateTo', { dateTo: filters.dateTo });
+        if (dateTo) {
+            queryBuilder.andWhere('match.start_time <= :dateTo', { dateTo });
         }
 
         // console.log('Match query filters:', filters);
@@ -253,37 +242,24 @@ export class AdminService {
         }
         const sortOrder = filters.order?.toUpperCase() || 'DESC';
 
-        // (logs removed)
-
         try {
+            // Use proper pagination - respect limit from frontend (default 25 per page)
+            const limit = filters.limit || 25;
+            const offset = filters.offset || 0;
+            
             const [matches, total] = await queryBuilder
                 .orderBy(sortField, sortOrder as 'ASC' | 'DESC')
-                .limit(filters.limit || 50)
-                .offset(filters.offset || 0)
+                .limit(limit)
+                .offset(offset)
                 .getManyAndCount();
 
-            // (logs removed)
-
-            // Safety net: locally filter by date window if provided
-            const df = (filters as any).dateFrom || (filters as any).startDate || (filters as any).startTime;
-            const dt = (filters as any).dateTo || (filters as any).endDate || (filters as any).endTime;
-            let finalMatches = matches;
-            if (df || dt) {
-                const fromTs = df ? new Date(df).getTime() : Number.NEGATIVE_INFINITY;
-                const toTs = dt ? new Date(dt).getTime() : Number.POSITIVE_INFINITY;
-                finalMatches = matches.filter(m => {
-                    const ts = new Date((m as any).startTime).getTime();
-                    return ts >= fromTs && ts <= toTs;
-                });
-                // (logs removed)
-            }
-
-            // Get participant counts for all matches
-            const matchIds = finalMatches.map(m => m.matchId);
+            // Get participant counts for all matches in batch
+            const matchIds = matches.map(m => m.matchId);
             const countMap = new Map<number, number>();
 
             if (matchIds.length > 0) {
                 // Use raw SQL query for more reliable column names
+                // This query uses the IDX_match_participants_match_id index
                 const participantCounts = await this.dataSource.query(
                     `SELECT match_id as "matchId", COUNT(*) as count 
                      FROM match_participants 
@@ -298,7 +274,7 @@ export class AdminService {
             }
 
             // Map matchId to id for frontend compatibility
-            const mappedMatches = finalMatches.map(match => ({
+            const mappedMatches = matches.map(match => ({
                 ...match,
                 id: match.matchId, // Add id field while keeping matchId
                 matchTypeId: match.matchTypeRef?.id,
@@ -307,7 +283,7 @@ export class AdminService {
 
             return {
                 data: mappedMatches,
-                total: df || dt ? mappedMatches.length : total
+                total: total
             };
         } catch (error) {
             console.error('Match query error:', error);
