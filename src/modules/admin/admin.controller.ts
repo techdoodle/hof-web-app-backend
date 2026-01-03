@@ -59,7 +59,7 @@ export class AdminController {
     }
 
     @Get('chiefs')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     async getChiefs(@Query() raw: any) {
         return this.adminService.getChiefs();
     }
@@ -271,7 +271,7 @@ export class AdminController {
 
     // Cities - reference data only
     @Get('cities')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN)
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.VENDOR)
     async getCities(@Query() query: any) {
         return this.adminService.getCities(query);
     }
@@ -285,7 +285,7 @@ export class AdminController {
 
     // Venue Management
     @Get('venues')
-    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN)
+    @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.VENDOR)
     async getVenues(@Query() query: any) {
         return this.adminService.getVenues(query);
     }
@@ -356,14 +356,14 @@ export class AdminController {
 
     // Match Types
     @Get('match_types')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     async getMatchTypes(@Query() query: any) {
         console.log('inside getMatchTypes', query);
         return this.adminService.getMatchTypes(query);
     }
 
     @Get('match_types/:id')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     async getMatchType(@Param('id', ParseIntPipe) id: number) {
         console.log('inside getMatchType', id);
         return this.adminService.getMatchType(id);
