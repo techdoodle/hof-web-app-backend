@@ -187,7 +187,7 @@ export class AdminController {
     }
 
     @Get('matches/:id/cancel-preview')
-    @Roles(UserRole.SUPER_ADMIN, UserRole.VENDOR) // Super admin and vendors can preview match cancellation
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.VENDOR) // Super admin, admin, and vendors can preview match cancellation
     async getMatchCancellationPreview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
         const userId = req.user?.id || req.user?.userId;
         const userRole = req.user?.role;
@@ -195,7 +195,7 @@ export class AdminController {
     }
 
     @Delete('matches/:id/cancel')
-    @Roles(UserRole.SUPER_ADMIN, UserRole.VENDOR) // Super admin and vendors can cancel matches
+    @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.VENDOR) // Super admin, admin, and vendors can cancel matches
     async cancelMatch(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
         const userId = req.user?.id || req.user?.userId;
         const userRole = req.user?.role;
