@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query, UploadedFile, UseInterceptors, ParseIntPipe, Res, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, Query, UploadedFile, UseInterceptors, ParseIntPipe, Res, Req, NotFoundException } from '@nestjs/common';
 import { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -187,79 +187,102 @@ export class AdminController {
     }
 
     @Get('matches/:id/cancel-preview')
-    @Roles(UserRole.SUPER_ADMIN) // Only super admin can preview match cancellation
-    async getMatchCancellationPreview(@Param('id', ParseIntPipe) id: number) {
-        return this.adminService.getMatchCancellationPreview(id);
+    @Roles(UserRole.SUPER_ADMIN, UserRole.VENDOR) // Super admin and vendors can preview match cancellation
+    async getMatchCancellationPreview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.getMatchCancellationPreview(id, userId, userRole);
     }
 
     @Delete('matches/:id/cancel')
-    @Roles(UserRole.SUPER_ADMIN) // Only super admin can cancel matches
-    async cancelMatch(@Param('id', ParseIntPipe) id: number) {
-        return this.adminService.cancelMatchWithRefunds(id);
+    @Roles(UserRole.SUPER_ADMIN, UserRole.VENDOR) // Super admin and vendors can cancel matches
+    async cancelMatch(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.cancelMatchWithRefunds(id, userId, userRole);
     }
 
     // Match Participants Management
     @Get('match-participants')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async getAllMatchParticipants(@Query() query: any) {
-        return this.adminService.getAllMatchParticipants(query);
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
+    async getAllMatchParticipants(@Query() query: any, @Req() req: any) {
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.getAllMatchParticipants(query, userId, userRole);
     }
 
     @Get('matches/:id/participants')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async getMatchParticipants(@Param('id', ParseIntPipe) matchId: number) {
-        return this.adminService.getMatchParticipants(matchId);
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
+    async getMatchParticipants(@Param('id', ParseIntPipe) matchId: number, @Req() req: any) {
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.getMatchParticipants(matchId, userId, userRole);
     }
 
     @Post('matches/:id/participants')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     async addMatchParticipant(
         @Param('id', ParseIntPipe) matchId: number,
-        @Body() participantData: any
+        @Body() participantData: any,
+        @Req() req: any
     ) {
-        return this.adminService.addMatchParticipant(matchId, participantData);
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.addMatchParticipant(matchId, participantData, userId, userRole);
     }
 
     @Delete('matches/:matchId/participants/:userId')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     async removeMatchParticipant(
         @Param('matchId', ParseIntPipe) matchId: number,
         @Param('userId', ParseIntPipe) userId: number,
-        @Body() body?: { shouldRefund?: boolean }
+        @Body() body?: { shouldRefund?: boolean },
+        @Req() req?: any
     ) {
         const shouldRefund = body?.shouldRefund ?? false;
-        return this.adminService.removeMatchParticipant(matchId, userId, shouldRefund);
+        const vendorId = req?.user?.id || req?.user?.userId;
+        const vendorRole = req?.user?.role;
+        return this.adminService.removeMatchParticipant(matchId, userId, shouldRefund, vendorId, vendorRole);
     }
 
     // CSV Upload Preview - doesn't actually save to database
     @Post('matches/:id/preview-csv')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     @UseInterceptors(FileInterceptor('file'))
     async previewCsvUpload(
         @Param('id', ParseIntPipe) matchId: number,
-        @UploadedFile() file: Express.Multer.File
+        @UploadedFile() file: Express.Multer.File,
+        @Req() req: any
     ) {
-        return this.adminService.previewCsvUpload(file, matchId);
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.previewCsvUpload(file, matchId, userId, userRole);
     }
 
     // Final CSV Upload - saves to database after admin review
     @Post('matches/:id/upload-stats')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     async uploadMatchStats(
         @Param('id', ParseIntPipe) matchId: number,
-        @Body() csvData: any[]
+        @Body() csvData: any[],
+        @Req() req: any
     ) {
-        return this.adminService.uploadMatchStats(matchId, csvData);
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.uploadMatchStats(matchId, csvData, userId, userRole);
     }
 
     // MVP Selection
     @Patch('matches/:id/mvp')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
     async setMatchMvp(
         @Param('id', ParseIntPipe) matchId: number,
-        @Body() mvpData: { userId: number }
+        @Body() mvpData: { userId: number },
+        @Req() req: any
     ) {
-        return this.adminService.setMatchMvp(matchId, mvpData.userId);
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        return this.adminService.setMatchMvp(matchId, mvpData.userId, userId, userRole);
     }
 
     // Football Teams - reference data only (for user favorite teams)
@@ -415,8 +438,17 @@ export class AdminController {
     }
 
     @Post('playernation/process-stats/:matchId')
-    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-    async processMatchedStats(@Param('matchId', ParseIntPipe) matchId: number) {
+    @Roles(UserRole.FOOTBALL_CHIEF, UserRole.ACADEMY_ADMIN, UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.VENDOR)
+    async processMatchedStats(@Param('matchId', ParseIntPipe) matchId: number, @Req() req: any) {
+        const userId = req.user?.id || req.user?.userId;
+        const userRole = req.user?.role;
+        // Verify ownership if vendor
+        if (userRole === UserRole.VENDOR && userId) {
+            const match = await this.adminService.getMatch(matchId, userId, userRole);
+            if (!match) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+        }
         const result = await this.playerNationService.processMatchedPlayerStats(matchId);
         return { message: 'Stats processed', ...result };
     }

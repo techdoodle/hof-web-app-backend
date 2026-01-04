@@ -589,13 +589,14 @@ export class AdminService {
 
 
     // Match Participants Management
-    async getAllMatchParticipants(query: any) {
+    async getAllMatchParticipants(query: any, userId?: number, userRole?: string) {
         console.log('Query params:', query); // Debug log
         // Optimize: Use leftJoin with addSelect to only load necessary fields
         const queryBuilder = this.matchParticipantRepository.createQueryBuilder('mp')
             .leftJoin('mp.user', 'user')
             .leftJoin('mp.match', 'match')
             .leftJoin('match.venue', 'venue')
+            .leftJoin('match.vendor', 'vendor')
             .addSelect([
                 'user.id',
                 'user.firstName',
@@ -605,8 +606,14 @@ export class AdminService {
                 'match.matchId',
                 'match.startTime',
                 'venue.id',
-                'venue.name'
+                'venue.name',
+                'vendor.id'
             ]);
+
+        // Filter by vendor if user is a vendor
+        if (userRole === UserRole.VENDOR && userId) {
+            queryBuilder.andWhere('vendor.id = :vendorId', { vendorId: userId });
+        }
 
         // Apply matchId filter from direct query params
         if (query.matchId) {
@@ -770,7 +777,18 @@ export class AdminService {
         };
     }
 
-    async getMatchParticipants(matchId: number) {
+    async getMatchParticipants(matchId: number, userId?: number, userRole?: string) {
+        // If user is a vendor, verify they own this match
+        if (userRole === UserRole.VENDOR && userId) {
+            const match = await this.matchRepository.findOne({
+                where: { matchId },
+                relations: ['vendor']
+            });
+            if (!match || !match.vendor || match.vendor.id !== userId) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+        }
+
         const participants = await this.matchParticipantRepository.find({
             where: { match: { matchId } },
             relations: ['user', 'match'],
@@ -905,7 +923,7 @@ export class AdminService {
         return { booking: savedBooking, slot: savedSlot };
     }
 
-    async addMatchParticipant(matchId: number, participantData: any) {
+    async addMatchParticipant(matchId: number, participantData: any, userId?: number, userRole?: string) {
         const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
         await queryRunner.startTransaction();
@@ -922,6 +940,15 @@ export class AdminService {
         }
 
             const matchData = match[0];
+
+            // If user is a vendor, verify they own this match
+            if (userRole === UserRole.VENDOR && userId) {
+                // matchData from raw query has vendor as integer, not object
+                const matchVendorId = matchData.vendor;
+                if (!matchVendorId || matchVendorId !== userId) {
+                    throw new NotFoundException(`Match with ID ${matchId} not found`);
+                }
+            }
 
         const user = await this.userRepository.findOne({ where: { id: participantData.userId } });
         if (!user) {
@@ -990,8 +1017,19 @@ export class AdminService {
         }
     }
 
-    async removeMatchParticipant(matchId: number, userId: number, shouldRefund: boolean = false) {
+    async removeMatchParticipant(matchId: number, userId: number, shouldRefund: boolean = false, vendorId?: number, vendorRole?: string) {
         this.logger.log(`[removeMatchParticipant] Starting removal of participant - Match ID: ${matchId}, User ID: ${userId}, Should Refund: ${shouldRefund}`);
+        
+        // If user is a vendor, verify they own this match
+        if (vendorRole === UserRole.VENDOR && vendorId) {
+            const match = await this.matchRepository.findOne({
+                where: { matchId },
+                relations: ['vendor']
+            });
+            if (!match || !match.vendor || match.vendor.id !== vendorId) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+        }
         
         const queryRunner = this.dataSource.createQueryRunner();
         await queryRunner.connect();
@@ -1258,7 +1296,18 @@ export class AdminService {
     }
 
     // CSV Upload Preview
-    async previewCsvUpload(file: Express.Multer.File, matchId: number) {
+    async previewCsvUpload(file: Express.Multer.File, matchId: number, userId?: number, userRole?: string) {
+        // If user is a vendor, verify they own this match
+        if (userRole === UserRole.VENDOR && userId) {
+            const match = await this.matchRepository.findOne({
+                where: { matchId },
+                relations: ['vendor']
+            });
+            if (!match || !match.vendor || match.vendor.id !== userId) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+        }
+
         if (!file) {
             throw new BadRequestException('No file uploaded');
         }
@@ -1315,7 +1364,18 @@ export class AdminService {
     }
 
     // Final CSV Upload
-    async uploadMatchStats(matchId: number, csvData: any[]) {
+    async uploadMatchStats(matchId: number, csvData: any[], userId?: number, userRole?: string) {
+        // If user is a vendor, verify they own this match
+        if (userRole === UserRole.VENDOR && userId) {
+            const match = await this.matchRepository.findOne({
+                where: { matchId },
+                relations: ['vendor']
+            });
+            if (!match || !match.vendor || match.vendor.id !== userId) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+        }
+
         // Convert the processed CSV data back to the format expected by CsvUploadService
         const mockFile = {
             buffer: Buffer.from(this.arrayToCsv(csvData)),
@@ -1326,7 +1386,18 @@ export class AdminService {
     }
 
     // MVP Selection
-    async setMatchMvp(matchId: number, userId: number) {
+    async setMatchMvp(matchId: number, userId: number, vendorId?: number, vendorRole?: string) {
+        // If user is a vendor, verify they own this match
+        if (vendorRole === UserRole.VENDOR && vendorId) {
+            const match = await this.matchRepository.findOne({
+                where: { matchId },
+                relations: ['vendor']
+            });
+            if (!match || !match.vendor || match.vendor.id !== vendorId) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+        }
+
         // First, remove MVP status from all participants in this match
         await this.matchParticipantStatsRepository.update(
             { match: { matchId } },
@@ -1511,7 +1582,8 @@ export class AdminService {
 
     async getChiefs() {
         // Include all roles that can manage matches (consistent with frontend permissions)
-        const roles = ['football_chief', 'academy_admin', 'admin', 'super_admin'];
+        // Added 'vendor' so vendors can select themselves as football chief
+        const roles = ['football_chief', 'academy_admin', 'admin', 'super_admin', 'vendor'];
         const qb = this.userRepository.createQueryBuilder('user')
             .where('user.role IN (:...roles)', { roles })
             .orderBy('user.firstName', 'ASC');
@@ -1887,7 +1959,7 @@ export class AdminService {
         console.log('Video URL updated successfully');
     }
 
-    async cancelMatchWithRefunds(matchId: number): Promise<{
+    async cancelMatchWithRefunds(matchId: number, userId?: number, userRole?: string): Promise<{
         success: boolean;
         matchId: number;
         refundsProcessed: number;
@@ -1904,11 +1976,18 @@ export class AdminService {
             // Get match details
             const match = await this.matchRepository.findOne({
                 where: { matchId },
-                relations: ['venue', 'city', 'footballChief']
+                relations: ['venue', 'city', 'footballChief', 'vendor']
             });
 
             if (!match) {
                 throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
+
+            // If user is a vendor, verify they own this match
+            if (userRole === UserRole.VENDOR && userId) {
+                if (!match.vendor || match.vendor.id !== userId) {
+                    throw new NotFoundException(`Match with ID ${matchId} not found`);
+                }
             }
 
             if (match.status === 'CANCELLED') {
@@ -2087,7 +2166,7 @@ export class AdminService {
         }
     }
 
-    async getMatchCancellationPreview(matchId: number): Promise<{
+    async getMatchCancellationPreview(matchId: number, userId?: number, userRole?: string): Promise<{
         match: any;
         confirmedBookings: Array<{ id: number; bookingReference: string; email: string; amount: number; razorpayOrderId?: string | null }>;
         nonConfirmedBookings: Array<{ id: number; bookingReference: string; email: string; amount: number; razorpayOrderId?: string | null }>;
@@ -2096,11 +2175,18 @@ export class AdminService {
         // Get match details
         const match = await this.matchRepository.findOne({
             where: { matchId },
-            relations: ['venue', 'city', 'footballChief']
+            relations: ['venue', 'city', 'footballChief', 'vendor']
         });
 
         if (!match) {
             throw new NotFoundException(`Match with ID ${matchId} not found`);
+        }
+
+        // If user is a vendor, verify they own this match
+        if (userRole === UserRole.VENDOR && userId) {
+            if (!match.vendor || match.vendor.id !== userId) {
+                throw new NotFoundException(`Match with ID ${matchId} not found`);
+            }
         }
 
         if (match.status === 'CANCELLED') {
