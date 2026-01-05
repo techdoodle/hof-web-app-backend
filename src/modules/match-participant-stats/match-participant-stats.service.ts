@@ -272,7 +272,7 @@ export class MatchParticipantStatsService {
       const commonStats = {
         goals: stats.totalGoal || 0,
         assists: stats.totalAssist || 0,
-        passingAccuracy: Math.round(passingAccuracy * 100) / 100,
+        passingAccuracy: Math.round(passingAccuracy),
       };
 
       switch (playerCategory) {
@@ -299,7 +299,7 @@ export class MatchParticipantStatsService {
           return {
             ...commonStats,
             totalShots: stats.totalShot || 0,
-            shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+            shotAccuracy: Math.round(shotAccuracy),
             dribbleAttempts: stats.totalDribbleAttempt || 0,
             dribbleCompleted: stats.totalSuccessfulDribble || 0,
             totalSuccessfulDribbles: stats.totalSuccessfulDribble || 0,
@@ -308,7 +308,7 @@ export class MatchParticipantStatsService {
           return {
             ...commonStats,
             totalShots: stats.totalShot || 0,
-            shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+            shotAccuracy: Math.round(shotAccuracy),
             totalDefensiveActions: totalDefensiveActions,
             totalTackles: totalTackleAttempts,
             dribbleAttempts: stats.totalDribbleAttempt || 0,
@@ -339,24 +339,24 @@ export class MatchParticipantStatsService {
       myTeam: myTeam,
       opponentTeam: opponentTeam,
       spiderChart: {
-        shooting: Math.round(shootingScore * 100) / 100,
-        passing: Math.round(passingScore * 100) / 100,
-        dribbling: Math.round(dribblingScore * 100) / 100,
-        tackling: Math.round(tacklingScore * 100) / 100,
-        impact: Math.round(impactScore * 100) / 100,
+        shooting: Math.round(shootingScore),
+        passing: Math.round(passingScore),
+        dribbling: Math.round(dribblingScore),
+        tackling: Math.round(tacklingScore),
+        impact: Math.round(impactScore),
       },
       categorySpecificStats: getCategorySpecificStats(),
       detailedStats: {
         shooting: {
-          shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+          shotAccuracy: Math.round(shotAccuracy),
           totalShots: stats.totalShot || 0,
         },
         passing: {
-          overallAccuracy: Math.round((stats.totalPassingAccuracy || 0) * 10000) / 100,
+          overallAccuracy: Math.round((stats.totalPassingAccuracy || 0) * 100),
           totalPasses: stats.totalPass || 0,
         },
         dribbling: {
-          successRate: Math.round(dribbleSuccess * 100) / 100,
+          successRate: Math.round(dribbleSuccess),
           totalAttempts: stats.totalDribbleAttempt || 0,
           totalSuccessful: stats.totalSuccessfulDribble || 0,
         },
@@ -638,7 +638,7 @@ export class MatchParticipantStatsService {
       const commonStats = {
         goals: totalGoals,
         assists: totalAssists,
-        passingAccuracy: Math.round(overallPassingAccuracy * 100) / 100,
+        passingAccuracy: Math.round(overallPassingAccuracy),
         totalKeyPasses,
       };
 
@@ -658,13 +658,13 @@ export class MatchParticipantStatsService {
           return {
             ...commonStats,
             totalShots,
-            shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+            shotAccuracy: Math.round(shotAccuracy),
           };
         default:
           return {
             ...commonStats,
             totalShots,
-            shotAccuracy: Math.round(shotAccuracy * 100) / 100,
+            shotAccuracy: Math.round(shotAccuracy),
             totalTackles: totalTackles,
           };
       }
@@ -676,41 +676,41 @@ export class MatchParticipantStatsService {
       matchesPlayed,
       totalMvpWins,
       spiderChart: matchesPlayed > 0 ? {
-        shooting: Math.round(shootingScore * 100) / 100,
-        passing: Math.round(passingScore * 100) / 100,
-        tackling: Math.round(tacklingScore * 100) / 100,
-        impact: Math.round(impactScore * 100) / 100,
+        shooting: Math.round(shootingScore),
+        passing: Math.round(passingScore),
+        tackling: Math.round(tacklingScore),
+        impact: Math.round(impactScore),
       } : {},
       categorySpecificStats: matchesPlayed > 0 ? getCategorySpecificStats() : {},
       detailedStats: matchesPlayed > 0 ? {
         shooting: {
-          shotAccuracy: Math.round(shotAccuracy * 100) / 100,
-          shotsPerMatch: Math.round(shotsPerMatch * 100) / 100,
+          shotAccuracy: Math.round(shotAccuracy),
+          shotsPerMatch: Math.round(shotsPerMatch),
           totalShots,
         },
         passing: {
-          overallAccuracy: Math.round(overallPassingAccuracy * 100) / 100,
+          overallAccuracy: Math.round(overallPassingAccuracy),
           totalPasses,
-          passesPerMatch: Math.round(passesPerMatch * 100) / 100,
+          passesPerMatch: Math.round(passesPerMatch),
           totalKeyPasses: totalKeyPasses,
-          keyPassesPerMatch: Math.round(keyPassesPerMatch * 100) / 100,
+          keyPassesPerMatch: Math.round(keyPassesPerMatch),
         },
         tackling: {
           totalTackles: totalTackles,
           interceptions: totalInterceptions,
-          tacklesPerMatch: Math.round(tacklesPerMatch * 100) / 100,
-          interceptionsPerMatch: Math.round(interceptionsPerMatch * 100) / 100,
+          tacklesPerMatch: Math.round(tacklesPerMatch),
+          interceptionsPerMatch: Math.round(interceptionsPerMatch),
         },
         goalkeeping: {
           totalSave,
-          savesPerMatch: Math.round(savesPerMatch * 100) / 100,
+          savesPerMatch: Math.round(savesPerMatch),
         },
         impact: {
-          goalsAndAssistsPerMatch: Math.round(impactPerMatch * 100) / 100,
+          goalsAndAssistsPerMatch: Math.round(impactPerMatch),
           totalGoals,
           totalAssists,
-          goalsPerMatch: Math.round(goalsPerMatch * 100) / 100,
-          assistsPerMatch: Math.round(assistsPerMatch * 100) / 100,
+          goalsPerMatch: Math.round(goalsPerMatch),
+          assistsPerMatch: Math.round(assistsPerMatch),
           totalKeyPass: totalKeyPasses,
         },
       } : {},
@@ -805,11 +805,11 @@ export class MatchParticipantStatsService {
         totalGoals,
         totalAssists,
         spiderChart: type === 'overall' ? {
-          shooting: Math.round((Math.min(100, ((parseFloat(rawStats.avgshotaccuracy) || 0) * 100 * 0.8) + (Math.min((parseInt(rawStats.totalshots) || 0) / matchesPlayed * 4, 20) * 0.2))) * 100) / 100,
-          passing: Math.round(Math.max((parseFloat(rawStats.avgpassingaccuracy) || 0) * 100, (parseFloat(rawStats.avgopenplaypassingaccuracy) || 0) * 100) * 100) / 100,
-          dribbling: Math.round((Math.min(100, ((parseFloat(rawStats.avgdribblesuccess) || 0) * 100 * 0.9) + (Math.min((parseInt(rawStats.totaldribbleattempts) || 0) / matchesPlayed * 2, 10) * 0.1))) * 100) / 100,
-          tackling: Math.round((Math.min(100, (((parseInt(rawStats.successfultackles) || 0) / (parseInt(rawStats.totaltackleattempts) || 1) * 100) * 0.7) + (Math.min((parseInt(rawStats.totaldefensiveactions) || 0) / matchesPlayed * 1.5, 30) * 0.3))) * 100) / 100,
-          impact: Math.round((Math.min(100, ((totalGoals + totalAssists) / matchesPlayed / 2.0) * 100)) * 100) / 100,
+          shooting: Math.round(Math.min(100, ((parseFloat(rawStats.avgshotaccuracy) || 0) * 100 * 0.8) + (Math.min((parseInt(rawStats.totalshots) || 0) / matchesPlayed * 4, 20) * 0.2))),
+          passing: Math.round(Math.max((parseFloat(rawStats.avgpassingaccuracy) || 0) * 100, (parseFloat(rawStats.avgopenplaypassingaccuracy) || 0) * 100)),
+          dribbling: Math.round(Math.min(100, ((parseFloat(rawStats.avgdribblesuccess) || 0) * 100 * 0.9) + (Math.min((parseInt(rawStats.totaldribbleattempts) || 0) / matchesPlayed * 2, 10) * 0.1))),
+          tackling: Math.round(Math.min(100, (((parseInt(rawStats.successfultackles) || 0) / (parseInt(rawStats.totaltackleattempts) || 1) * 100) * 0.7) + (Math.min((parseInt(rawStats.totaldefensiveactions) || 0) / matchesPlayed * 1.5, 30) * 0.3))),
+          impact: Math.round(Math.min(100, ((totalGoals + totalAssists) / matchesPlayed / 2.0) * 100)),
         } : undefined
       };
     }).filter(player => player !== null);
