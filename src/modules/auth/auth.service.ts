@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import axios from 'axios';
 import * as crypto from 'crypto';
+import * as https from 'https';
 import { UserService } from '../user/user.service';
 
 @Injectable()
@@ -92,7 +93,12 @@ export class AuthService {
                 timeout: 10000, // 10 second timeout
                 headers: {
                     'User-Agent': 'HOF-Backend/1.0'
-                }
+                },
+                // SSL configuration to handle certificate verification issues
+                httpsAgent: new https.Agent({
+                    rejectUnauthorized: false, // Allow self-signed or incomplete certificate chains
+                    secureProtocol: 'TLSv1_2_method',
+                }),
             });
 
             console.log('SMS API Response:', response.data);

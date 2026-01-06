@@ -1,3 +1,18 @@
+## v1.3.0 (2025-01-22)
+
+### What changed
+- Player profile stats now display per-match averages (means) for all stats except the top 2 highlighted ones (Goals and Assists):
+  - The spider chart API endpoint now returns per-match averages for all stats in the profile card table.
+  - All stats in the profile card (except Goals and Assists at the top) are calculated as averages across all matches played.
+  - Stats are marked with a `*` symbol in the UI and include a note: `* stats calculated as per average of all matches`.
+
+### How to test
+1. View any player's profile page in the app.
+2. Check the stats tab and verify that all stats in the table (except Goals and Assists at the top) show per-match averages.
+3. Verify that each stat label has a `*` symbol.
+4. Confirm the footnote appears at the bottom: `* stats calculated as per average of all matches`.
+5. Test with different positions (GK, DEF, FWD) to ensure averages are displayed correctly for all positions.
+
 ## v1.2.0 (2025-01-21)
 
 ### What changed

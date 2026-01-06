@@ -1,3 +1,13 @@
+## v1.3.0 (2025-01-22)
+
+### Changed
+- Spider chart endpoint (`GET /match-participant-stats/player/:playerId/spider-chart`) now returns per-match averages for all stats in `detailedStats`:
+  - Added `passesPerMatch`, `keyPassesPerMatch`, `tacklesPerMatch`, `interceptionsPerMatch`, `savesPerMatch`, `goalsPerMatch`, `assistsPerMatch` fields.
+  - All per-match calculations use safe division (return 0 when `matchesPlayed === 0`).
+  - Existing total fields (`totalShots`, `totalPasses`, etc.) remain available for highlighted stats.
+  - Updated query to use correct database column names (snake_case).
+  - Updated `match-participant-stats.service.ts` → `getPlayerSpiderChartStats` method.
+
 ## v1.2.0 (2025-01-21)
 
 ### Added
