@@ -347,6 +347,7 @@ export class MatchesService {
           AND m.start_time > $7
           AND m.start_time <= $8
           AND m.status != 'CANCELLED'
+          AND (m.is_private IS NULL OR m.is_private = false)
       )
       SELECT * FROM matches_with_distance
       WHERE distance <= 50
