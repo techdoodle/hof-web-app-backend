@@ -163,7 +163,10 @@ export class AccountingService {
     const onlineIncome = Number(onlineIncomeResult?.total || 0);
 
     // Calculate costs
-    const venueCost = await this.venueCostService.calculateVenueCost(match);
+    // Use stored venueCost if available, otherwise calculate from venue format
+    const venueCost = match.venueCost != null 
+      ? Number(match.venueCost) 
+      : await this.venueCostService.calculateVenueCost(match);
     const footballChiefCost = Number(match.footballChiefCost || 0);
     const playerNationCost = await this.playerNationCostService.calculatePlayerNationCost(matchId);
 
@@ -462,7 +465,11 @@ export class AccountingService {
   private async calculateTotalVenueCosts(matches: Match[]): Promise<number> {
     let total = 0;
     for (const match of matches) {
-      total += await this.venueCostService.calculateVenueCost(match);
+      // Use stored venueCost if available, otherwise calculate from venue format
+      const venueCost = match.venueCost != null 
+        ? Number(match.venueCost) 
+        : await this.venueCostService.calculateVenueCost(match);
+      total += venueCost;
     }
     return total;
   }

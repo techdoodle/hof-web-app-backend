@@ -91,12 +91,18 @@ export class Match {
   @Column({ name: 'football_chief_cost', type: 'decimal', precision: 10, scale: 2, nullable: true })
   footballChiefCost?: number;
 
+  @Column({ name: 'venue_cost', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  venueCost?: number;
+
   // Optional team names; default to Home/Away when not provided
   @Column({ name: 'team_a_name', type: 'varchar', length: 100, nullable: true, default: 'Home' })
   teamAName: string;
 
   @Column({ name: 'team_b_name', type: 'varchar', length: 100, nullable: true, default: 'Away' })
   teamBName: string;
+
+  @Column({ name: 'is_private', type: 'boolean', default: false })
+  isPrivate: boolean;
 
   // PlayerNation integration columns
   @Column({ name: 'playernation_status', type: 'varchar', length: 50, nullable: true })

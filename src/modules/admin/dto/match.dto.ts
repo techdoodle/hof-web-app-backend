@@ -79,6 +79,11 @@ export class CreateMatchDto {
   @IsOptional()
   @Min(0)
   footballChiefCost?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  venueCost?: number;
 }
 
 export class UpdateMatchDto {
@@ -156,6 +161,15 @@ export class UpdateMatchDto {
   @IsOptional()
   @Min(0)
   footballChiefCost?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  venueCost?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isPrivate?: boolean;
 }
 
 export class MatchFilterDto {
