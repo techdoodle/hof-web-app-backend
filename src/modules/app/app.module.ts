@@ -52,7 +52,7 @@ import { PromoCodesModule } from '../promo-codes/promo-codes.module';
         poolSize: 20,  // Maximum number of connections in pool
 
         // Connection timeout settings
-        connectTimeoutMS: 5000,  // 5 seconds to establish connection
+        connectTimeoutMS: 30000,  // 30 seconds to establish connection (increased from 5s)
 
         extra: {
           timezone: 'Asia/Kolkata',
@@ -69,8 +69,10 @@ import { PromoCodesModule } from '../promo-codes/promo-codes.module';
           // Total dead connection detection: 30 + (10 * 3) = 60 seconds
 
           // Connection lifetime management
-          connectionTimeoutMillis: 5000,  // 5 seconds waiting for connection from pool
+          connectionTimeoutMillis: 30000,  // 30 seconds waiting for connection from pool (increased from 5s)
           idleTimeoutMillis: 30000,       // 30 seconds - release idle connections
+          max: 20,                        // Maximum pool size
+          min: 2,                         // Minimum pool size
         },
 
         ssl: {

@@ -32,21 +32,38 @@ export class AuthController {
     @Body('otp') otp: string,
     @Body('mobile') mobile: string,
   ) {
-    const isValid = this.authService.verifyOtp(encryptedOtp, iv, otp, mobile);
-    if (!isValid) {
-      return { valid: false, message: 'Invalid OTP' };
+    try {
+      const isValid = this.authService.verifyOtp(encryptedOtp, iv, otp, mobile);
+      if (!isValid) {
+        return { valid: false, message: 'Invalid OTP' };
+      }
+
+      const user = await this.authService.findOrCreateUser(mobile);
+
+      if (!user) {
+        return { valid: false, message: 'Failed to create or retrieve user' };
+      }
+
+      // Generate JWT token
+      const accessToken = this.authService.generateJwtAccessToken({ mobile: String(mobile), sub: user.id });
+      const refreshToken = this.authService.generateJwtRefreshToken({ mobile: String(mobile), sub: user.id });
+      return { valid: true, accessToken, refreshToken, ...user };
+    } catch (error) {
+      console.error('Error in verify-otp:', error);
+      
+      // Check if it's a database connection error
+      if (error.message?.includes('timeout') || error.message?.includes('connect') || error.code === 'ETIMEDOUT') {
+        console.error('Database connection timeout. Check DB_URL and database server status.');
+        return { 
+          valid: false, 
+          message: 'Database connection failed. Please try again in a moment.',
+          error: 'DATABASE_CONNECTION_ERROR'
+        };
+      }
+      
+      // Re-throw other errors to be handled by NestJS exception filter
+      throw error;
     }
-
-    const user = await this.authService.findOrCreateUser(mobile);
-
-    if (!user) {
-      return { valid: false, message: 'Failed to create or retrieve user' };
-    }
-
-    // Generate JWT token
-    const accessToken = this.authService.generateJwtAccessToken({ mobile: String(mobile), sub: user.id });
-    const refreshToken = this.authService.generateJwtRefreshToken({ mobile: String(mobile), sub: user.id });
-    return { valid: true, accessToken, refreshToken, ...user };
   }
 
   @Post('refresh')
