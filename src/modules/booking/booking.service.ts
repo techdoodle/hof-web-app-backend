@@ -300,7 +300,8 @@ export class BookingService {
                     dto.promoCode,
                     userId,
                     originalAmount,
-                    cityId
+                    cityId,
+                    dto.matchId ? Number(dto.matchId) : null
                 );
 
                 if (validation.valid && validation.promoCode) {
