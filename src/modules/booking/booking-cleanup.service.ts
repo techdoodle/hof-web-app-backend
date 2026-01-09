@@ -35,6 +35,22 @@ export class BookingCleanupService {
     }
 
     /**
+     * Normalize phone numbers to a consistent 10-digit format so that
+     * team mappings and player lookups don't break due to formatting differences.
+     */
+    private normalizePhone(raw: string | null | undefined): string {
+        if (!raw) return '';
+        let digits = String(raw).replace(/\D/g, '');
+        // If exactly 10 digits, assume it's a local mobile number
+        if (digits.length === 10) return digits;
+        // If starts with 91 and 12 digits, strip country code
+        if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+        // Fallback: keep last 10 digits if longer
+        if (digits.length > 10) return digits.slice(-10);
+        return digits;
+    }
+
+    /**
      * Test cron job - runs every minute for testing
      */
     @Cron('*/1 * * * *') // Every minute
@@ -662,10 +678,45 @@ export class BookingCleanupService {
 
             // ✅ Create match participants for each unique player in activated slots
             try {
-                const activatedSlots: Array<{ slot_number: number; player_id: number }> = await queryRunner.query(
-                    `SELECT slot_number, player_id FROM booking_slots WHERE booking_id = $1 AND status = $2`,
+                const activatedSlots: Array<{ slot_number: number; player_id: number; player_phone: string }> = await queryRunner.query(
+                    `SELECT slot_number, player_id, player_phone FROM booking_slots WHERE booking_id = $1 AND status = $2`,
                     [bookingId, BookingSlotStatus.ACTIVE]
                 );
+
+                // Get team selections from booking metadata
+                const teamSelections = booking.metadata?.teamSelections || [];
+
+                // Build playerId -> teamName map (preferred), with a legacy
+                // normalized phone -> teamName map as fallback.
+                const playerTeamMap = new Map<number, string>();
+                const phoneTeamMap = new Map<string, string>();
+
+                (teamSelections as Array<{ playerId?: number; existingUserId?: number; phone?: string; teamName?: string }>).forEach((sel, index) => {
+                    const teamName = sel.teamName || 'Unassigned';
+                    const primaryPlayerId = sel.playerId ?? sel.existingUserId;
+                    if (primaryPlayerId) {
+                        // If multiple entries exist for same playerId, last one wins but log it
+                        if (playerTeamMap.has(primaryPlayerId)) {
+                            this.logger.warn(
+                                `[reconcilePaidBooking] Duplicate team selection for playerId=${primaryPlayerId}. Overwriting previous value.`
+                            );
+                        }
+                        playerTeamMap.set(primaryPlayerId, teamName);
+                        this.logger.log(
+                            `[reconcilePaidBooking] Team selection ${index}: playerId=${primaryPlayerId}, team=${teamName}`
+                        );
+                    }
+
+                    const normalized = this.normalizePhone(sel.phone);
+                    if (normalized) {
+                        phoneTeamMap.set(normalized, teamName);
+                    }
+                });
+
+                this.logger.log(
+                    `[reconcilePaidBooking] Team selection maps built. playerTeamMap.size=${playerTeamMap.size}, phoneTeamMap.size=${phoneTeamMap.size}`
+                );
+
                 const uniquePlayerIds = Array.from(new Set(activatedSlots.map(s => s.player_id).filter(Boolean)));
 
                 for (const playerId of uniquePlayerIds) {
@@ -674,13 +725,30 @@ export class BookingCleanupService {
                         where: { match: { matchId: booking.matchId }, user: { id: playerId } },
                     });
                     if (!existing) {
+                        // Find the slot for this player to get their phone number
+                        const playerSlot = activatedSlots.find(s => s.player_id === playerId);
+                        const playerPhoneRaw = playerSlot?.player_phone || '';
+                        const normalizedPhone = this.normalizePhone(playerPhoneRaw);
+
+                        // Get team name from the mapping:
+                        // 1) Prefer explicit playerId-based mapping
+                        // 2) Fallback to phone-based mapping
+                        // 3) Finally, default to 'Unassigned'
+                        const teamNameFromPlayer = playerTeamMap.get(playerId);
+                        const teamNameFromPhone = normalizedPhone ? phoneTeamMap.get(normalizedPhone) : undefined;
+                        const teamName = teamNameFromPlayer || teamNameFromPhone || 'Unassigned';
+
+                        this.logger.log(
+                            `[reconcilePaidBooking] Creating participant: user=${playerId}, phoneRaw=${playerPhoneRaw}, normalized=${normalizedPhone}, team=${teamName}`
+                        );
+
                         const participant = queryRunner.manager.create(MatchParticipant, {
                             match: { matchId: booking.matchId },
                             user: { id: playerId },
-                            teamName: 'Unassigned',
+                            teamName: teamName,
                         });
                         await queryRunner.manager.save(MatchParticipant, participant);
-                        this.logger.log(`✅ Created match participant for user ${playerId} in match ${booking.matchId}`);
+                        this.logger.log(`✅ Created match participant for user ${playerId} in match ${booking.matchId} with team ${teamName}`);
                     }
                 }
             } catch (e) {
