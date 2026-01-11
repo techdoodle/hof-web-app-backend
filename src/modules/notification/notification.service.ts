@@ -140,6 +140,11 @@ export class NotificationService {
         subject: 'Slots Available - Humans of Football',
         template: 'waitlist-notification',
         data
+      },
+      [NotificationType.CASH_PAYMENT_RECORDED]: {
+        subject: 'Cash Payment Recorded - Humans of Football',
+        template: 'cash-payment-recorded',
+        data
       }
     };
 

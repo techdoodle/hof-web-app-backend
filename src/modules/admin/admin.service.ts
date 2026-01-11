@@ -26,6 +26,8 @@ import * as path from 'path';
 import { CreateUserDto, UpdateUserDto, UserFilterDto } from './dto/user.dto';
 import { CreateMatchDto, MatchFilterDto, UpdateMatchDto, CreateRecurringMatchesDto, TimeSlotDto } from './dto/match.dto';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { NotificationService } from '../notification/notification.service';
+import { NotificationType } from '../notification/interfaces/notification.interface';
 
 @Injectable()
 export class AdminService {
@@ -57,6 +59,7 @@ export class AdminService {
         private readonly csvUploadService: CsvUploadService,
         private readonly dataSource: DataSource,
         private readonly refundService: RefundService,
+        private readonly notificationService: NotificationService,
     ) { }
 
     // User Management
@@ -1008,12 +1011,126 @@ export class AdminService {
                 `Created cash booking for user ${participantData.userId} in match ${matchId}, slot ${slot.slotNumber}`
             );
 
+            // Send email notification for cash payment asynchronously (fire-and-forget)
+            // Note: Email is sent in the background and won't block the participant addition
+            if (cashAmount > 0) {
+                this.sendCashPaymentNotificationEmail(
+                    matchId,
+                    booking,
+                    slot,
+                    user,
+                    cashAmount,
+                    userId,
+                    userRole
+                ).catch((emailError) => {
+                    this.logger.warn(
+                        `⚠️ Failed to send cash payment notification email: ${emailError.message}`
+                    );
+                    // Don't fail the participant addition - email is non-critical
+                });
+            }
+
             return savedParticipant;
         } catch (error) {
             await queryRunner.rollbackTransaction();
             throw error;
         } finally {
             await queryRunner.release();
+        }
+    }
+
+    /**
+     * Send cash payment notification email asynchronously (fire-and-forget)
+     * This method runs in the background and doesn't block the participant addition process
+     */
+    private async sendCashPaymentNotificationEmail(
+        matchId: number,
+        booking: BookingEntity,
+        slot: BookingSlotEntity,
+        user: User,
+        cashAmount: number,
+        userId?: number,
+        userRole?: string
+    ): Promise<void> {
+        try {
+            // Fetch match details with relations
+            const matchDetails = await this.matchRepository.findOne({
+                where: { matchId },
+                relations: ['venue', 'city'],
+            });
+
+            // Fetch admin/football chief user details if userId is provided
+            let adminUser: User | null = null;
+            if (userId) {
+                adminUser = await this.userRepository.findOne({
+                    where: { id: userId },
+                });
+            }
+
+            if (matchDetails) {
+                // Format dates
+                const matchDate = new Date(matchDetails.startTime).toLocaleDateString('en-IN', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                });
+                const matchStartTime = new Date(matchDetails.startTime).toLocaleTimeString('en-IN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+                const matchEndTime = new Date(matchDetails.endTime).toLocaleTimeString('en-IN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+                const recordedAt = new Date().toLocaleString('en-IN', {
+                    dateStyle: 'long',
+                    timeStyle: 'short',
+                });
+
+                await this.notificationService.sendNotification({
+                    type: NotificationType.CASH_PAYMENT_RECORDED,
+                    recipient: {
+                        email: 'maulik@humansoffootball.in',
+                        name: 'Maulik',
+                    },
+                    templateData: {
+                        cashAmount: cashAmount.toFixed(2),
+                        bookingReference: booking.bookingReference || `BK-${booking.id}`,
+                        recordedAt,
+                        matchId,
+                        venueName: matchDetails.venue?.name || 'N/A',
+                        venueAddress: matchDetails.venue?.address || 'N/A',
+                        cityName: matchDetails.city?.cityName || 'N/A',
+                        matchDate,
+                        matchStartTime,
+                        matchEndTime,
+                        playerName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'N/A',
+                        playerEmail: user.email || 'N/A',
+                        playerPhone: user.phoneNumber || 'N/A',
+                        slotNumber: slot.slotNumber,
+                        adminName: adminUser 
+                            ? `${adminUser.firstName || ''} ${adminUser.lastName || ''}`.trim() || 'Unknown'
+                            : 'Unknown',
+                        adminEmail: adminUser?.email || 'N/A',
+                        adminRole: userRole || 'Unknown',
+                    },
+                });
+
+                this.logger.log(
+                    `Cash payment notification email sent to maulik@humansoffootball.in for booking ${booking.id}`
+                );
+            } else {
+                this.logger.warn(
+                    `Could not send cash payment notification: Match ${matchId} not found`
+                );
+            }
+        } catch (error) {
+            this.logger.error(
+                `Failed to send cash payment notification email: ${error.message}`,
+                error.stack
+            );
+            throw error; // Re-throw to be caught by the caller's catch handler
         }
     }
 

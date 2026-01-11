@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Cash Payment Recorded - Humans of Football</title>
+</head>
+<body>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #2c3e50; margin: 0;">⚽ Humans of Football</h1>
+            <p style="color: #7f8c8d; margin: 5px 0;">Cash Payment Notification</p>
+        </div>
+
+        <!-- Main Content -->
+        <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h2 style="color: #27ae60; margin-top: 0;">💰 Cash Payment Recorded</h2>
+
+            <p>Dear Maulik,</p>
+
+            <p>A cash payment has been recorded on the admin panel. Please find the details below:</p>
+
+            <!-- Payment Details -->
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #2c3e50;">Payment Details</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Amount:</td>
+                        <td style="padding: 8px 0; color: #27ae60; font-weight: bold;">₹{{cashAmount}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Booking Reference:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{bookingReference}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Recorded At:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{recordedAt}}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Match Details -->
+            <div style="background-color: #e8f4fd; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #2c3e50;">Match Details</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Match ID:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{matchId}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Venue:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{venueName}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Address:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{venueAddress}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">City:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{cityName}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Date & Time:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{matchDate}} ({{matchStartTime}} - {{matchEndTime}})</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Player Details -->
+            <div style="background-color: #fff3cd; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #2c3e50;">Player Details</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Name:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{playerName}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Email:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{playerEmail}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Phone:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{playerPhone}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Slot Number:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{slotNumber}}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Admin Details -->
+            <div style="background-color: #e8f5e8; padding: 20px; border-radius: 6px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #2c3e50;">Recorded By</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Name:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{adminName}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Email:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{adminEmail}}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; font-weight: bold; color: #34495e;">Role:</td>
+                        <td style="padding: 8px 0; color: #2c3e50;">{{adminRole}}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 30px; color: #7f8c8d; font-size: 12px;">
+            <p>This is an automated email. Please do not reply to this message.</p>
+            <p>© 2024 Humans of Football. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+
