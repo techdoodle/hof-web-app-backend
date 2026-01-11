@@ -33,6 +33,7 @@ import { AnalyticsService } from './services/analytics.service';
 import { PlayerNationCostConfig } from './entities/playernation-cost-config.entity';
 import { RefundEntity } from '../payment/refund.entity';
 import { MatchParticipantsModule } from '../match-participants/match-participants.module';
+import { NotificationModule } from '../notification/notification.module';
 import { Ticket } from './entities/ticket.entity';
 import { TicketsService } from './services/tickets.service';
 
@@ -61,6 +62,7 @@ import { TicketsService } from './services/tickets.service';
         MatchesModule,
         VenueModule,
         MatchParticipantsModule,
+        NotificationModule,
     ],
     controllers: [AdminController, TestController],
     providers: [AdminService, CsvUploadService, PlayerNationService, PlayerNationPollingJob, FirebaseStorageService, FirebaseConfig, VenueCsvUploadService, AccountingService, PlayerNationCostService, FootballChiefLeaderboardService, AnalyticsService, TicketsService],
